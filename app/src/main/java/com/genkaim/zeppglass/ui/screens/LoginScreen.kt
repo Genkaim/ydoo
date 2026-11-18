@@ -180,6 +180,37 @@ fun LoginScreen(
         }
     }
 
+    /** The native cookie store, which also holds HttpOnly cookies. */
+    fun readCookieJar(): String = listOf(
+        LOGIN_URL,
+        "https://user.zepp.com/",
+        "https://zepp.com/",
+        "https://account.zepp.com/",
+        "https://api-mifit-cn.huami.com/",
+        "https://api-mifit-cn.zepp.com/"
+    ).mapNotNull { url -> CookieManager.getInstance().getCookie(url) }
+        .joinToString("; ")
+
+    /**
+     * Cookie-only read. Called before the page's own scripts run, because a web
+     * session that is already invalid gets logged out (and its cookies deleted)
+     * during load — the apptoken can be gone a second later.
+     */
+    fun extractCookies(announce: Boolean) {
+        val jar = readCookieJar()
+        if (jar.isBlank()) return
+        val parsed = JSONObject()
+            .put("storage", JSONObject())
+            .put("cookie", jar)
+        val found = com.genkaim.zeppglass.data.ZeppLogin.parse(parsed)
+        if (found != null) {
+            status = "已读到 Zepp 凭据，正在验证…"
+            finish(found.appToken, found.userId, found.hostHint)
+        } else if (announce && !busy) {
+            status = "请在下方登录 Zepp 账号（邮箱或手机号 + 密码）"
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     fun extract(webView: WebView, announce: Boolean) {
         webView.evaluateJavascript(HIDE_GOOGLE_SCRIPT, null)
@@ -188,16 +219,10 @@ fun LoginScreen(
             val parsed = runCatching { JSONObject(text) }.getOrNull() ?: return@evaluateJavascript
             if (parsed.has("error")) return@evaluateJavascript
             // document.cookie misses HttpOnly cookies; the WebView cookie store
-            // still has them, and Zepp sometimes keeps the session there.
-            val cookieJar = listOf(
-                LOGIN_URL,
-                "https://user.zepp.com/",
-                "https://api-mifit-cn.huami.com/",
-                "https://api-mifit-cn.zepp.com/"
-            ).mapNotNull { url -> CookieManager.getInstance().getCookie(url) }
-                .joinToString("; ")
-            if (cookieJar.isNotBlank()) {
-                parsed.put("cookie", parsed.optString("cookie") + "; " + cookieJar)
+            // still has them, and Zepp keeps the app token there.
+            val jar = readCookieJar()
+            if (jar.isNotBlank()) {
+                parsed.put("cookie", parsed.optString("cookie") + "; " + jar)
             }
             val found = com.genkaim.zeppglass.data.ZeppLogin.parse(parsed)
             if (found != null) {
@@ -214,7 +239,7 @@ fun LoginScreen(
     LaunchedEffect(webView) {
         val view = webView ?: return@LaunchedEffect
         while (true) {
-            kotlinx.coroutines.delay(1200)
+            kotlinx.coroutines.delay(600)
             if (!busy && !manual) extract(view, announce = false)
         }
     }
@@ -293,6 +318,18 @@ fun LoginScreen(
                                             favicon: Bitmap?
                                         ) {
                                             status = "正在加载 ${url?.let(::hostOf) ?: "Zepp"}"
+                                            // Before the page's scripts can log an
+                                            // expired session out, see whether the
+                                            // token cookie is still there.
+                                            extractCookies(announce = false)
+                                        }
+
+                                        override fun doUpdateVisitedHistory(
+                                            view: WebView?,
+                                            url: String?,
+                                            isReload: Boolean
+                                        ) {
+                                            view?.let { extract(it, announce = false) }
                                         }
 
                                         override fun onPageFinished(view: WebView?, url: String?) {

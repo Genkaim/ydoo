@@ -111,6 +111,11 @@ fun PaiWeekBars(
     )
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
     val todayInk = MaterialTheme.colorScheme.onSurface
+    // On a dark page the standard amber reads as a muddy brown, so the bars get
+    // a lighter tint there; the light theme keeps the official colour.
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val barColor = if (dark) Color(0xFFFFD37A) else PaiAmber
+    val trackColor = if (dark) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else PaiTrack
     val today = remember { LocalDate.now() }
     val formatter = remember { DateTimeFormatter.ofPattern("M/d") }
 
@@ -126,7 +131,7 @@ fun PaiWeekBars(
         days.forEachIndexed { index, day ->
             val centerX = slot * (index + 0.5f)
             drawRoundRect(
-                color = PaiTrack,
+                color = trackColor,
                 topLeft = Offset(centerX - barWidth / 2f, topPad),
                 size = Size(barWidth, plotHeight),
                 cornerRadius = CornerRadius(barWidth / 2f)
@@ -135,7 +140,7 @@ fun PaiWeekBars(
             if (daily > 0f) {
                 val height = (daily / 100f * plotHeight).coerceAtLeast(4.dp.toPx())
                 drawRoundRect(
-                    color = PaiAmber,
+                    color = barColor,
                     topLeft = Offset(centerX - barWidth / 2f, topPad + plotHeight - height),
                     size = Size(barWidth, height),
                     cornerRadius = CornerRadius(barWidth / 2f)

@@ -182,7 +182,6 @@ fun OverviewScreen(
             date = date,
             today = today,
             expanded = calendarOpen,
-            refreshing = state.refreshing,
             loggedIn = settings.isLoggedIn,
             onPrevious = { selectedText = date.minusDays(1).toString() },
             onNext = { if (date < today) selectedText = date.plusDays(1).toString() },
@@ -215,34 +214,22 @@ fun OverviewScreen(
                 .fillMaxWidth(),
             // The page never moves with the finger. Pulling only reveals this
             // small dial under the header, and it withdraws the moment the finger
-            // lifts; the header spinner reports the request itself.
+            // lifts; the dial itself reports the request.
             indicator = {
                 val fraction = pullState.distanceFraction.coerceIn(0f, 1f)
                 when {
-                    state.refreshing -> Box(
-                        Modifier
+                    state.refreshing -> PullDial(
+                        progress = null,
+                        modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 10.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp
-                        )
-                    }
-                    fraction > 0.02f -> Box(
-                        Modifier
+                            .padding(top = 8.dp)
+                    )
+                    fraction > 0.02f -> PullDial(
+                        progress = fraction,
+                        modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 10.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            progress = { fraction },
-                            modifier = Modifier.size((16 + 8 * fraction).dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                                .copy(alpha = 0.35f + 0.65f * fraction),
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        )
-                    }
+                            .padding(top = 8.dp)
+                    )
                 }
             }
         ) {
@@ -446,15 +433,43 @@ fun OverviewScreen(
 }
 
 /**
+ * Small dial that hangs under the header while the page is being pulled. It has
+ * its own surface so it stays readable over the rings behind it.
+ */
+@Composable
+private fun PullDial(progress: Float?, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(32.dp)
+            .background(MaterialTheme.colorScheme.surface, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (progress == null) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp
+            )
+        } else {
+            CircularProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f + 0.55f * progress),
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+            )
+        }
+    }
+}
+
+/**
  * Home header: no title. The day switcher takes its place and is centred on
- * the screen, with the refresh spinner, connect entry and settings on the right.
+ * the screen, with the connect entry and settings on the right.
  */
 @Composable
 private fun HomeHeader(
     date: LocalDate,
     today: LocalDate,
     expanded: Boolean,
-    refreshing: Boolean,
     loggedIn: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -512,10 +527,6 @@ private fun HomeHeader(
             Modifier.align(Alignment.CenterEnd),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (refreshing) {
-                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp)
-                Spacer(Modifier.width(6.dp))
-            }
             if (!loggedIn) {
                 Surface(
                     onClick = onLogin,

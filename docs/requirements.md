@@ -179,6 +179,7 @@
 - ✅ 登录读取时机加固：onPageStarted 先读一次 cookie（页面脚本可能把失效会话登出并删 cookie）、路由变化再读一次、轮询 1200→600ms
 - ✅ 源码推到 github.com/Genkaim/ydoo（main 分支），关于页「项目地址」改为可点开的仓库链接，版本号读 BuildConfig；测试样本里的真实 userId 已替换为占位值
 - ✅ release 包：release 用本机 debug 密钥签名，可覆盖安装不丢数据；`author_avatar.png` 实际是 JPEG，转成真 PNG 后 AAPT 才能编译
+- ✅ PAI 柱状图在深色模式改用更亮的琥珀色（浅色模式不变），空心轨道改用 onSurface 8%；下拉刷新小圆环加 surface 圆形底；删掉标题栏设置左侧的刷新小圈（刷新状态由下拉圆环表示）
 
 
 ## 八、待办顺序（下一轮）

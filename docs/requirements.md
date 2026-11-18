@@ -176,6 +176,9 @@
 - ✅ 未登录时不再直接弹网页：先弹底部抽屉（品牌标志 + 底部胶囊「登录 Zepp 账号」），可下拉/返回/点空白关闭，按按钮才打开登录网页
 - ✅ 登录页放开第三方登录：只隐藏 Google（WebView 里必然 403），Apple / 小米等网页 OAuth 保留，点击后弹窗地址载入同一 WebView，会话仍能被轮询读到
 - ✅ 修好「登录成功却读不到」：网页登录的会话实际存在 `.zepp.com` 的 `apptoken` / `userid` cookie 里（不是 hm-user-login-info），登录页只解析了后者。现在按 cookie 名读 apptoken/userid，并从 `domains` cookie 取 api-mifit 的 cname 作为区域地址提示
+- ✅ 登录读取时机加固：onPageStarted 先读一次 cookie（页面脚本可能把失效会话登出并删 cookie）、路由变化再读一次、轮询 1200→600ms
+- ✅ 源码推到 github.com/Genkaim/ydoo（main 分支），关于页「项目地址」改为可点开的仓库链接，版本号读 BuildConfig；测试样本里的真实 userId 已替换为占位值
+- ✅ release 包：release 用本机 debug 密钥签名，可覆盖安装不丢数据；`author_avatar.png` 实际是 JPEG，转成真 PNG 后 AAPT 才能编译
 
 
 ## 八、待办顺序（下一轮）

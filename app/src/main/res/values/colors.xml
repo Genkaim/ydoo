@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Near-white grey behind the black Zepp mark. -->
+    <color name="ic_launcher_background">#F2F2F2</color>
+</resources>
+

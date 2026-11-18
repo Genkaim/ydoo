@@ -1,0 +1,22 @@
+# Gradle / IDE
+.gradle/
+.kotlin/
+.idea/
+*.iml
+local.properties
+
+# Build output
+build/
+app/build/
+captures/
+.cxx/
+
+# Packages and signing material
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# OS noise
+.DS_Store
+Thumbs.db

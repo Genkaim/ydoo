@@ -9,7 +9,10 @@ enum class DetailKind {
     SLEEP_HR, SLEEP_RR, SLEEP_APNEA,
 
     /** The watch's 0–100 skin-temperature score, with a 7-day line. */
-    SKIN_TEMP
+    SKIN_TEMP,
+
+    /** Morning Charge (energy at wake), with a 7-day line. */
+    MORNING_CHARGE
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */

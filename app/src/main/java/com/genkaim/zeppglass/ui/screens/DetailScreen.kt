@@ -52,6 +52,7 @@ import com.genkaim.zeppglass.data.ChargeDay
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.PaiDay
+import com.genkaim.zeppglass.data.morningScore
 import com.genkaim.zeppglass.data.ReadinessDay
 import com.genkaim.zeppglass.data.SleepNight
 import com.genkaim.zeppglass.data.SleepStageSlice
@@ -154,6 +155,7 @@ fun DetailScreen(
                 DetailKind.SLEEP_RR -> SleepMetricDetail(data, target.date, SleepMetric.RESPIRATION)
                 DetailKind.SLEEP_APNEA -> SleepMetricDetail(data, target.date, SleepMetric.APNEA)
                 DetailKind.SKIN_TEMP -> SkinTempDetail(data, target.date)
+                DetailKind.MORNING_CHARGE -> MorningChargeDetail(data, target.date)
             }
         }
 
@@ -209,6 +211,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.SLEEP_RR -> "呼吸率"
     DetailKind.SLEEP_APNEA -> "低通气"
     DetailKind.SKIN_TEMP -> "皮肤温度"
+    DetailKind.MORNING_CHARGE -> "晨起 Charge"
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -231,6 +234,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.SLEEP_RR -> target.date?.let(Fmt::date) ?: "每夜平均呼吸率，近 7 天趋势"
     DetailKind.SLEEP_APNEA -> target.date?.let(Fmt::date) ?: "夜间低通气指数，近 7 天趋势"
     DetailKind.SKIN_TEMP -> target.date?.let(Fmt::date) ?: "手表评分，近 7 天趋势"
+    DetailKind.MORNING_CHARGE -> target.date?.let(Fmt::date) ?: "起床时的能量，近 7 天趋势"
 }
 
 // ---------------- sleep ----------------
@@ -1369,13 +1373,16 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
     val zone = ZoneId.systemDefault()
     val points = data?.weights.orEmpty()
     val latest = if (date != null) {
-        points.filter { Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() == date }
+        // The card opens for "today", but the last weighing may be days earlier:
+        // show the newest reading on or before that day instead of an empty page.
+        points.filter { Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() <= date }
             .maxByOrNull { it.epochMs }
+            ?: points.maxByOrNull { it.epochMs }
     } else {
         points.maxByOrNull { it.epochMs }
     }
     if (latest == null) {
-        Missing(if (date != null) "这一天没有称重记录" else "还没有称重记录")
+        Missing("还没有称重记录")
         return
     }
     val ink = MaterialTheme.colorScheme.onSurface
@@ -2396,6 +2403,93 @@ private fun sleepRhythm(nights: List<SleepNight>): SleepRhythm? {
         averageWake = toClock(wakes.average().roundToInt()),
         score = (100 - sd).roundToInt().coerceIn(0, 100)
     )
+}
+
+// ---------------- morning charge ----------------
+
+@Composable
+private fun MorningChargeDetail(data: HealthData?, date: LocalDate?) {
+    val source = data ?: run {
+        Missing("还没有 Charge 数据")
+        return
+    }
+    fun morningOn(target: LocalDate): Int? =
+        source.chargeOn(target)?.morningScore(source.nightOn(target)?.endEpochSec)
+    val day = date ?: source.chargeDays.maxByOrNull { it.date }?.date
+    if (day == null) {
+        Missing("还没有 Charge 数据")
+        return
+    }
+    val value = morningOn(day)
+    if (value == null) {
+        Missing("这一天没有晨起 Charge")
+        return
+    }
+    val palette = LocalZgPalette.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val verdict = when {
+        value >= 80 -> "优秀" to ink
+        value >= 60 -> "偏低" to palette.warn
+        else -> "偏低" to palette.critical
+    }
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                Fmt.date(day),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            val abnormal = verdict.first != "优秀"
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    value.toString(),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (abnormal) verdict.second else ink
+                )
+                Text(
+                    " /100",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+        }
+    }
+
+    val days = (0..6).map { day.minusDays(6L - it) }
+    val series = days.map { morningOn(it)?.toFloat() }
+    if (series.count { it != null } > 1) {
+        SectionTitle("近 7 天")
+        FlatPanel {
+            TrendLineChart(
+                values = series,
+                labels = days.map { Fmt.weekdayShort(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(170.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+
+    SectionTitle("这个分数")
+    FlatPanel {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "晨起 Charge 是醒来时的能量值（0–100），取起床前后的 Charge 读数；它反映昨晚恢复给今天留下的精力，白天会随活动下降。",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
 }
 
 // ---------------- skin temperature ----------------

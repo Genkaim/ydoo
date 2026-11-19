@@ -332,7 +332,8 @@ fun OverviewScreen(
                                             it >= 60 -> "偏低" to warnTone
                                             else -> "偏低" to criticalTone
                                         }
-                                    }
+                                    },
+                                    onClick = { onOpenDetail(DetailTarget(DetailKind.MORNING_CHARGE, date)) }
                                 )
                                 MetricTile(
                                     label = "静息心率",

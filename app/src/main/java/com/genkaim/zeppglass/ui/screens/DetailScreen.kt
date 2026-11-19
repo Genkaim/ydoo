@@ -522,7 +522,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
             onClick = { onOpen(DetailTarget(DetailKind.SLEEP_RR, night.date)) }
         )
     }
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val apnea = breathing?.apneaIndex
         SleepVitalTile(
@@ -551,7 +551,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
     }
     val spo2 = data?.spo2?.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
     if (!spo2.isNullOrEmpty()) {
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MetricTile(
                 "夜间血氧均值",
@@ -1410,8 +1410,20 @@ private fun Spo2Detail(data: HealthData?, date: LocalDate?) {
         return
     }
     val recent = points.takeLast(40)
+    val latestSpo2 = recent.last().value
+    val spo2Verdict = when {
+        latestSpo2 >= 95 -> "正常" to MaterialTheme.colorScheme.onSurface
+        latestSpo2 >= 90 -> "偏低" to LocalZgPalette.current.warn
+        else -> "低" to LocalZgPalette.current.critical
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("最近", recent.last().value.toString(), "%", Modifier.weight(1f))
+        MetricTile(
+            label = "最近",
+            value = latestSpo2.toString(),
+            unit = "%",
+            verdict = spo2Verdict,
+            modifier = Modifier.weight(1f)
+        )
         MetricTile("平均", recent.map { it.value }.average().roundToInt().toString(), "%", Modifier.weight(1f))
         MetricTile("最低", recent.minOf { it.value }.toString(), "%", Modifier.weight(1f))
     }
@@ -2003,10 +2015,19 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
+            val hrvVerdict = when {
+                day.hrvScore == null -> null
+                day.hrvScore >= 80 -> "优秀" to MaterialTheme.colorScheme.onSurface
+                day.hrvScore >= 60 -> "良好" to MaterialTheme.colorScheme.onSurface
+                day.hrvScore >= 40 -> "一般" to LocalZgPalette.current.warn
+                else -> "偏低" to LocalZgPalette.current.critical
+            }
             Row(verticalAlignment = Alignment.Bottom) {
+                val abnormal = hrvVerdict != null && hrvVerdict.first in setOf("一般", "偏低")
                 Text(
                     value.toString(),
-                    style = MaterialTheme.typography.displayMedium
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (abnormal) hrvVerdict.second else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     " 毫秒",
@@ -2014,12 +2035,15 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
+                if (hrvVerdict != null) {
+                    Text(
+                        hrvVerdict.first,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = hrvVerdict.second,
+                        modifier = Modifier.padding(start = 6.dp, bottom = 9.dp)
+                    )
+                }
             }
-            Text(
-                readinessRating(day.hrvScore),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
             Spacer(Modifier.height(16.dp))
             BaselineRow("基线", day.hrvBaseline, "毫秒", value)
         }
@@ -2175,18 +2199,16 @@ private fun StageBlock(
         // Value and verdict share one line: the rating reads as a gloss on the
         // number instead of adding a second row that makes cards uneven.
         Row(verticalAlignment = Alignment.Bottom) {
+            val abnormal = verdict.first == "偏低" || verdict.first == "偏高"
             Text(
                 value,
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
             )
-            Spacer(Modifier.weight(1f))
             Text(
                 verdict.first,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (verdict.first == "正常") {
-                    MaterialTheme.colorScheme.onSurface
-                } else verdict.second,
+                color = verdict.second,
                 maxLines = 1,
                 modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
             )
@@ -2223,7 +2245,12 @@ private fun SleepVitalTile(
             )
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(value, style = MaterialTheme.typography.headlineSmall, color = tint)
+                val abnormal = verdict != null && verdict.first != "正常"
+                Text(
+                    value,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
+                )
                 Text(
                     " $unit",
                     style = MaterialTheme.typography.labelSmall,
@@ -2231,15 +2258,10 @@ private fun SleepVitalTile(
                     modifier = Modifier.padding(bottom = 3.dp)
                 )
                 if (verdict != null) {
-                    Spacer(Modifier.weight(1f))
                     Text(
                         verdict.first,
                         style = MaterialTheme.typography.labelSmall,
-                        // A normal reading stays in ink; only an abnormal one
-                        // wears its warning colour.
-                        color = if (verdict.first == "正常") {
-                            MaterialTheme.colorScheme.onSurface
-                        } else verdict.second,
+                        color = verdict.second,
                         maxLines = 1,
                         modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
                     )
@@ -2267,13 +2289,17 @@ private fun RhythmBlock(
         )
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+            val abnormal = verdict != null && verdict != "正常"
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (abnormal) tint else MaterialTheme.colorScheme.onSurface
+            )
             if (verdict != null) {
-                Spacer(Modifier.weight(1f))
                 Text(
                     verdict,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (verdict == "正常") MaterialTheme.colorScheme.onSurface else tint,
+                    color = if (abnormal) tint else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
                 )

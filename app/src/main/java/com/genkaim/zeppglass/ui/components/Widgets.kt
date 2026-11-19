@@ -237,9 +237,11 @@ fun MetricTile(
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.Bottom) {
+                val abnormal = verdict != null && verdict.first !in setOf("正常", "放松", "达标")
                 Text(
                     value,
-                    style = MaterialTheme.typography.headlineSmall
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
                 )
                 if (unit != null) {
                     Text(
@@ -250,15 +252,10 @@ fun MetricTile(
                     )
                 }
                 if (verdict != null) {
-                    Spacer(Modifier.weight(1f))
                     Text(
                         verdict.first,
                         style = MaterialTheme.typography.labelSmall,
-                        // Normal reads as part of the number; only an abnormal
-                        // band gets its colour.
-                        color = if (verdict.first == "正常") {
-                            MaterialTheme.colorScheme.onSurface
-                        } else verdict.second,
+                        color = verdict.second,
                         maxLines = 1,
                         modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
                     )

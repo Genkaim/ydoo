@@ -570,7 +570,9 @@ object HealthParser {
                     // shown as a percentage.
                     skeletalMusclePct = summary.anyNumber("muscleRate")
                         ?: summary.anyNumber("skeletalMuscleRate")
-                        ?: summary.anyNumber("muscle")
+                        ?: summary.anyNumber("muscle"),
+                    skeletalMuscleKg = summary.anyNumber("skeletalMuscle")
+                        ?.takeIf { it in 5.0..80.0 }
                 )
             )
         }

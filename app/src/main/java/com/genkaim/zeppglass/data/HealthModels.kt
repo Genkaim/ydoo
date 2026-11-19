@@ -188,7 +188,9 @@ data class WeightPoint(
      * it as the share of skeletal muscle, not total muscle mass. Manual weight
      * entries carry no impedance data, so it stays null there.
      */
-    val skeletalMusclePct: Double? = null
+    val skeletalMusclePct: Double? = null,
+    /** Skeletal muscle mass in kg, straight from the scale's `skeletalMuscle`. */
+    val skeletalMuscleKg: Double? = null
 )
 
 data class Workout(

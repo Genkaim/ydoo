@@ -436,7 +436,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     // numbers from the newest reading that actually carries them.
     val compositionPoint = remember(weightsUpToDay) {
         val withComposition = weightsUpToDay.filter {
-            it.bodyFatPct != null || it.skeletalMusclePct != null
+            it.bodyFatPct != null || it.skeletalMusclePct != null || it.skeletalMuscleKg != null
         }
         // A shared scale can store another person's much lighter reading; keep the
         // composition of a body close to the current weight, then take the newest.
@@ -934,6 +934,7 @@ private fun BodyCompositionCard(
         muscle < (if (male == false) 35.0 else 40.0) -> "偏低" to palette.warn
         else -> "正常" to normalInk
     }
+    val muscleKg = composition?.skeletalMuscleKg
 
     FlatPanel {
         Row(
@@ -960,8 +961,8 @@ private fun BodyCompositionCard(
             )
             BodyStat(
                 "骨骼肌",
-                muscle?.let { Fmt.oneDecimal(it) } ?: "--",
-                "%",
+                muscleKg?.let { Fmt.oneDecimal(it) } ?: "--",
+                "kg",
                 palette.sleepRem,
                 muscleVerdict,
                 Modifier.weight(1f)
@@ -990,7 +991,13 @@ private fun BodyStat(
         )
         Spacer(Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, style = MaterialTheme.typography.titleLarge, color = tint, maxLines = 1)
+            val abnormal = verdict != null && verdict.first != "正常"
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
             Text(
                 unit,
                 style = MaterialTheme.typography.labelSmall,
@@ -998,7 +1005,6 @@ private fun BodyStat(
                 modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
             )
             if (verdict != null) {
-                Spacer(Modifier.weight(1f))
                 Text(
                     verdict.first,
                     style = MaterialTheme.typography.labelSmall,

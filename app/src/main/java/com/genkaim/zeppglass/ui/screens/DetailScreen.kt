@@ -92,7 +92,6 @@ import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SleepStageBar
 import com.genkaim.zeppglass.ui.components.SleepStageChart
 import com.genkaim.zeppglass.ui.components.SleepWindowChart
-import com.genkaim.zeppglass.ui.components.Spo2DayChart
 import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.StressBandChart
 import com.genkaim.zeppglass.ui.components.StressDonut
@@ -2587,16 +2586,6 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
                         unit = "%"
                     )
                 }
-            }
-            // The same night's samples on a 00:00–23:59 clock, one bar each.
-            FlatPanel {
-                Spo2DayChart(
-                    points = points,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                        .height(150.dp)
-                )
             }
         }
     }

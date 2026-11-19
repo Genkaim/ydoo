@@ -55,6 +55,7 @@ import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.AxisBarChart
 import com.genkaim.zeppglass.ui.components.AxisLineChart
 import com.genkaim.zeppglass.ui.components.ChargeDayChart
+import com.genkaim.zeppglass.ui.components.ChargeDayChartIconLift
 import com.genkaim.zeppglass.ui.components.ChargeSpan
 import com.genkaim.zeppglass.ui.components.ChargeSpanKind
 import com.genkaim.zeppglass.ui.components.chargeSpanIcon
@@ -139,7 +140,11 @@ fun ChargeScreen(
                         ChargeHero(todayCharge)
                         SectionTitle("当天曲线")
                         FlatPanel {
-                            Column(Modifier.padding(14.dp)) {
+                            // The canvas is taller than the visible plot by the
+                            // icon lift, and the card's top padding shrinks by
+                            // the same amount: the icons rise, the bands, line
+                            // and hour labels stay exactly where they were.
+                            Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
                                 ChargeDayChart(
                                     date = todayCharge.date,
                                     samples = todayCharge.samples,
@@ -149,7 +154,8 @@ fun ChargeScreen(
                                         java.time.Instant.now().epochSecond else null,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(170.dp)
+                                        .padding(top = 14.dp - ChargeDayChartIconLift)
+                                        .height(170.dp + ChargeDayChartIconLift)
                                 )
                             }
                         }

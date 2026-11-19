@@ -170,8 +170,13 @@ fun ChargeDayChart(
     val spans = chargeSpans(samples, sleep, workouts)
 
     Canvas(modifier) {
+        // The icons sit above the plot, and moving them up must not move the
+        // band, the curve or the axis: the caller hands over a canvas that is
+        // ICON_LIFT taller and a card whose top padding shrank by the same
+        // amount, so every other y here is shifted down by the lift and lands
+        // exactly where it was on screen.
         val axisHeight = 16.dp.toPx()
-        val topPad = 12.dp.toPx()
+        val topPad = ChargeDayChartIconLift.toPx() + 12.dp.toPx()
         val plotHeight = (size.height - axisHeight - topPad).coerceAtLeast(10f)
         fun xOf(epochSec: Float) = ((epochSec - dayStart) / daySpan) * size.width
         fun yOf(value: Float) = topPad + plotHeight - (value / 100f) * plotHeight
@@ -201,7 +206,7 @@ fun ChargeDayChart(
                 val x1 = xOf(to.toFloat())
                 val isWorkout = span.kind == ChargeSpanKind.WORKOUT
                 val tint = if (isWorkout) minusColor else plusColor
-                val bandTop = 17.dp.toPx()
+                val bandTop = ChargeDayChartIconLift.toPx() + 17.dp.toPx()
                 drawRoundRect(
                     color = tint.copy(alpha = 0.12f),
                     topLeft = Offset(x0, bandTop),
@@ -217,7 +222,7 @@ fun ChargeDayChart(
                     val side = 15.dp.toPx()
                     val left = ((x0 + x1) / 2f - side / 2f)
                         .coerceIn(0f, (size.width - side).coerceAtLeast(0f))
-                    translate(left, 1.dp.toPx()) {
+                    translate(left, 0f) {
                         draw(Size(side, side), colorFilter = ColorFilter.tint(tint))
                     }
                 }
@@ -293,6 +298,14 @@ fun ChargeDayChart(
  * look thicker than the rest; this interpolation keeps x monotone and never
  * overshoots, so the stroke stays one even width.
  */
+/**
+ * Space the chart keeps above its plot for the sleep / workout icons. The
+ * caller gives the canvas this much extra height and takes it off the card's
+ * top padding, so widening it lifts the icons and leaves everything else in
+ * the card where it was.
+ */
+val ChargeDayChartIconLift = 6.dp
+
 private fun smoothPath(points: List<Offset>): Path {
     val pts = mutableListOf<Offset>()
     points.sortedBy { it.x }.forEach { point ->

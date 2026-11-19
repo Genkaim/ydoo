@@ -232,118 +232,119 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
         return
     }
     val readiness = data?.readiness?.firstOrNull { it.date == night.date }
-
-    // The score is the headline of this page; everything else follows it.
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Same ring component as Strain and the home rings: big number, then
-        // "名称 / 满分" underneath, so the two detail pages read alike.
-        ScoreRing(
-            progress = (night.score ?: 0) / 100f,
-            value = night.score?.toString() ?: "--",
-            caption = "睡眠分 / 100",
-            color = palette.sleepLight
-        )
-        Spacer(Modifier.height(18.dp))
-    }
-
-    // One card holds the night's shape: when it started, how long it lasted and
-    // how the stages split. It sits above the timeline so the numbers read first
-    // and the picture explains them.
-    // When it started, how long it lasted: three columns, same shape as the
-    // activity page's heart-rate row.
-    FlatPanel {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.Schedule,
-                "时长",
-                Fmt.minutes(night.totalMinutes),
-                MaterialTheme.colorScheme.primary
-            )
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.Bedtime,
-                "入睡",
-                Fmt.timeSec(night.startEpochSec),
-                palette.sleepLight
-            )
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.WbSunny,
-                "醒来",
-                Fmt.timeSec(night.endEpochSec),
-                palette.sleepAwake
-            )
-        }
-    }
-
     var picked by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }
     var pickedNap by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }
-    FlatPanel {
-        Column(Modifier.padding(16.dp)) {
-            // The four stages live at the top of the timeline card: durations
-            // first, the picture underneath.
+
+    // Score, night shape and timeline read as one block: the gap belongs above
+    // the first card, while the two cards stay close to each other.
+    Column(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Same ring component as Strain and the home rings: big number, then
+            // "名称 / 满分" underneath, so the two detail pages read alike.
+            ScoreRing(
+                progress = (night.score ?: 0) / 100f,
+                value = night.score?.toString() ?: "--",
+                caption = "睡眠分 / 100",
+                color = palette.sleepLight
+            )
+        }
+        Spacer(Modifier.height(22.dp))
+
+        // When it started, how long it lasted: three columns, same shape as the
+        // activity page's heart-rate row.
+        FlatPanel {
             Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 StatBlock(
                     Modifier.weight(1f),
-                    Icons.Rounded.DarkMode,
-                    "深睡",
-                    Fmt.hoursMinutes(night.deepMinutes),
-                    palette.sleepDeep
+                    Icons.Rounded.Schedule,
+                    "时长",
+                    Fmt.minutes(night.totalMinutes),
+                    MaterialTheme.colorScheme.primary
                 )
                 StatBlock(
                     Modifier.weight(1f),
-                    Icons.Rounded.LightMode,
-                    "浅睡",
-                    Fmt.hoursMinutes(night.lightMinutes),
+                    Icons.Rounded.Bedtime,
+                    "入睡",
+                    Fmt.timeSec(night.startEpochSec),
                     palette.sleepLight
                 )
                 StatBlock(
                     Modifier.weight(1f),
-                    Icons.Rounded.AutoAwesome,
-                    "REM",
-                    Fmt.hoursMinutes(night.remMinutes),
-                    palette.sleepRem
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Visibility,
-                    "清醒",
-                    Fmt.hoursMinutes(night.awakeMinutes),
+                    Icons.Rounded.WbSunny,
+                    "醒来",
+                    Fmt.timeSec(night.endEpochSec),
                     palette.sleepAwake
                 )
             }
-            Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("分期时间线", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                Text(
-                    "点色块看时段",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        Spacer(Modifier.height(8.dp))
+
+        FlatPanel {
+            Column(Modifier.padding(16.dp)) {
+                // The four stages live at the top of the timeline card: durations
+                // first, the picture underneath.
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.DarkMode,
+                        "深睡",
+                        Fmt.hoursMinutes(night.deepMinutes),
+                        palette.sleepDeep
+                    )
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.LightMode,
+                        "浅睡",
+                        Fmt.hoursMinutes(night.lightMinutes),
+                        palette.sleepLight
+                    )
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.AutoAwesome,
+                        "REM",
+                        Fmt.hoursMinutes(night.remMinutes),
+                        palette.sleepRem
+                    )
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.Visibility,
+                        "清醒",
+                        Fmt.hoursMinutes(night.awakeMinutes),
+                        palette.sleepAwake
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("分期时间线", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(
+                        "点色块看时段",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                SleepStageChart(
+                    night = night,
+                    modifier = Modifier.fillMaxWidth(),
+                    selected = picked,
+                    onSelect = { picked = it }
                 )
+                Spacer(Modifier.height(4.dp))
             }
-            Spacer(Modifier.height(12.dp))
-            SleepStageChart(
-                night = night,
-                modifier = Modifier.fillMaxWidth(),
-                selected = picked,
-                onSelect = { picked = it }
-            )
-            Spacer(Modifier.height(4.dp))
         }
     }
 

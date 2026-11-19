@@ -287,7 +287,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
             )
         }
     }
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(8.dp))
 
     var picked by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }
     var pickedNap by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }

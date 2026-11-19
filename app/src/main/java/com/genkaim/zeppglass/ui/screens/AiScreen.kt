@@ -73,7 +73,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -121,10 +120,6 @@ fun AiScreen(
 
     var showHistory by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // Measured so the "thinking" dots can sit just above the capsule instead of
-    // living inside the message flow, which left them mid-page on short chats.
-    var composerHeight by remember { mutableStateOf(0.dp) }
-    val waiting = sending && messages.lastOrNull()?.let { it.role == "assistant" && it.content.isBlank() } == true
 
     // Attach once, then (re)generate the starter questions whenever the list is
     // empty — the first visit, and right after 新对话 clears them — or when a
@@ -175,7 +170,14 @@ fun AiScreen(
                 top = headerHeight + 8.dp,
                 bottom = composerGap + 84.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = if (messages.isEmpty()) {
+                Arrangement.spacedBy(14.dp)
+            } else {
+                // A short conversation starts at the bottom of the page, like a
+                // chat should: sending a message grows it upward instead of
+                // leaving the newest bubble in the middle of an empty screen.
+                Arrangement.spacedBy(14.dp, Alignment.Bottom)
+            }
         ) {
             if (!configured) {
                 item {
@@ -216,6 +218,7 @@ fun AiScreen(
                             content = message.content,
                             error = message.error,
                             streaming = streamingHere,
+                            phase = if (streamingHere) phase else "",
                             data = data,
                             onRetry = {
                                 AiChatSession.retry(settings, data)
@@ -259,8 +262,7 @@ fun AiScreen(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, bottom = composerGap)
-                .onSizeChanged { composerHeight = with(density) { it.height.toDp() } },
+                .padding(start = 20.dp, end = 20.dp, bottom = composerGap),
             verticalAlignment = Alignment.Bottom
         ) {
             ComposerField(
@@ -271,30 +273,6 @@ fun AiScreen(
                 onStop = { AiChatSession.stop() },
                 modifier = Modifier.weight(1f)
             )
-        }
-
-        // Waiting for the first token: the three dots stay pinned to the bottom
-        // edge of the page, just above the input capsule, instead of sitting in
-        // the message flow (which left them in the middle of a short chat).
-        AnimatedVisibility(
-            visible = waiting,
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(120)),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 22.dp, bottom = composerGap + composerHeight + 6.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TypingDots()
-                if (phase.isNotBlank()) {
-                    Spacer(Modifier.size(10.dp))
-                    Text(
-                        phase,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
         }
     }
 
@@ -586,17 +564,30 @@ private fun AssistantBubble(
     content: String,
     error: Boolean,
     streaming: Boolean,
+    phase: String,
     data: com.genkaim.zeppglass.data.HealthData?,
     onRetry: () -> Unit
 ) {
     // Answers are page text, not a bubble: no surface, no inset box, full width
     // of the list so long paragraphs use the whole line.
     Column(Modifier.fillMaxWidth()) {
-        if (content.isNotBlank()) {
+        if (content.isBlank() && streaming) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TypingDots(Modifier.padding(vertical = 6.dp))
+                if (phase.isNotBlank()) {
+                    Spacer(Modifier.size(10.dp))
+                    Text(
+                        phase,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
             MarkdownView(content, data = data)
-        }
-        if (streaming && content.isNotBlank()) {
-            TypingDots(Modifier.padding(top = 8.dp))
+            if (streaming) {
+                TypingDots(Modifier.padding(top = 8.dp))
+            }
         }
         if (error) {
             Row(verticalAlignment = Alignment.CenterVertically) {

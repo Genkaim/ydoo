@@ -40,7 +40,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -270,7 +269,7 @@ private fun ChargeSpanRow(span: ChargeSpan, dayStartSec: Long) {
         }
         Text(
             deltaText,
-            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.titleMedium,
             color = if (delta == null) MaterialTheme.colorScheme.onSurfaceVariant else tint
         )
     }
@@ -324,7 +323,7 @@ private fun ChargeHero(charge: ChargeDay) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         charge.total?.toString() ?: "--",
-                        style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.displaySmall,
                         color = physicalColor
                     )
                     Text(
@@ -370,7 +369,7 @@ private fun ChargeSideValue(
     Column(modifier, horizontalAlignment = alignment) {
         Text(
             value,
-            style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.headlineSmall,
             color = color,
             maxLines = 1
         )
@@ -447,7 +446,7 @@ private fun SplitBar(label: String, value: Double?, color: Color) {
             Spacer(Modifier.weight(1f))
             Text(
                 value?.roundToInt()?.toString() ?: "--",
-                style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace)
+                style = MaterialTheme.typography.labelLarge
             )
         }
         Spacer(Modifier.height(5.dp))

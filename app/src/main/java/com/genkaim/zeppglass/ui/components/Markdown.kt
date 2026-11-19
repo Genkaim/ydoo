@@ -182,7 +182,7 @@ private fun MetricDataCard(json: JSONObject) {
                 Row {
                     Text(
                         value,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.headlineSmall
                     )
                     val unit = json.optString("unit")
                     if (unit.isNotBlank()) {
@@ -209,7 +209,7 @@ private fun MetricDataCard(json: JSONObject) {
                         )
                         Text(
                             item.optString("value"),
-                            style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace)
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                 }
@@ -253,14 +253,14 @@ private fun SleepDataCard(json: JSONObject, data: HealthData?) {
                 ) {
                     Text(
                         night.score?.toString() ?: "--",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
                         "${Fmt.hoursMinutes(night.totalMinutes)} 小时",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.titleMedium
                     )
                     Text(
                         "深睡 ${Fmt.minutes(night.deepMinutes)} · REM ${Fmt.minutes(night.remMinutes)}",
@@ -305,7 +305,7 @@ private fun ChargeDataCard(json: JSONObject, data: HealthData?) {
                 ) {
                     Text(
                         charge.total?.toString() ?: "--",
-                        style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.titleSmall
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -361,7 +361,7 @@ private fun ActivityDataCard(json: JSONObject, data: HealthData?) {
                 Column {
                     Text(
                         "$steps / $goal 步",
-                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.labelLarge
                     )
                     Text(
                         "${"%.1f".format((day.distanceM ?: 0.0) / 1000)} km · ${kcal.toInt()} kcal · " +

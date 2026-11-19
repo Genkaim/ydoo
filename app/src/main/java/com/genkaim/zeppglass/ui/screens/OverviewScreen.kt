@@ -64,7 +64,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.drawBehind
@@ -924,7 +923,7 @@ private fun RingCell(
         ) {
             Text(
                 value,
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -975,7 +974,7 @@ private fun DietCard(
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     target?.let { (it - intake).coerceAtLeast(0).toString() } ?: "--",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.headlineSmall
                 )
                 Text(
                     "kcal 今日剩余",
@@ -1011,7 +1010,7 @@ private fun ActivityCard(
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         steps?.toString() ?: "--",
-                        style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.displaySmall
                     )
                     Text(
                         " / $goal 步",
@@ -1047,7 +1046,7 @@ private fun ActivityCard(
 @Composable
 private fun ActivityStat(value: String, label: String) {
     Column {
-        Text(value, style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace))
+        Text(value, style = MaterialTheme.typography.labelLarge)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

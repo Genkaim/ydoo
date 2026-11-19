@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -95,13 +94,18 @@ fun PageHeader(
     }
 }
 
-/** Compact "label ---- value" row used by the data browser and detail lists. */
+/**
+ * Compact "label ---- value" row used by the data browser and detail lists.
+ *
+ * Values use the same face as everything else on the page. They used to be
+ * monospaced for a terminal feel; the mixed faces made one card look like two
+ * different apps, so every Number now follows the system face.
+ */
 @Composable
 fun DataRow(
     label: String,
     value: String,
-    modifier: Modifier = Modifier,
-    mono: Boolean = true
+    modifier: Modifier = Modifier
 ) {
     Row(
         modifier
@@ -117,8 +121,7 @@ fun DataRow(
         )
         Text(
             value,
-            style = if (mono) MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace)
-            else MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.weight(1.2f),
             textAlign = androidx.compose.ui.text.style.TextAlign.End
         )
@@ -127,7 +130,7 @@ fun DataRow(
 
 /**
  * One column of the horizontally arranged stat rows (activity's "今日心率" and
- * the sleep cards): small tinted icon + label on top, a monospaced value and an
+ * the sleep cards): small tinted icon + label on top, the value and an
  * optional unit underneath.
  */
 @Composable
@@ -159,7 +162,7 @@ fun StatBlock(
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 value,
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.titleLarge,
                 maxLines = 1
             )
             if (unit != null) {
@@ -235,7 +238,7 @@ fun MetricTile(
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     value,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.headlineSmall
                 )
                 if (unit != null) {
                     Text(

@@ -136,10 +136,6 @@ private fun Typography.codexStyle(): Typography {
     )
 }
 
-/** Numbers get the terminal feel: monospace, tabular, quiet. */
-val MonoNumbers: TextStyle
-    get() = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
-
 @Composable
 fun ZeppGlassTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

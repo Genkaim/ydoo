@@ -61,7 +61,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -331,7 +330,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 remaining?.let { kotlin.math.abs(it).toString() } ?: "--",
-                style = MaterialTheme.typography.displayLarge.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.displayLarge,
                 color = if (remaining != null && remaining < 0) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.onSurface
             )
@@ -395,7 +394,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             }
             Text(
                 (if (weekDeficit > 0) "+" else "") + "$weekDeficit kcal",
-                style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.headlineSmall,
                 color = if (weekDeficit >= 0) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.error
             )
@@ -830,7 +829,7 @@ private fun DietStat(label: String, value: String, unit: String?, modifier: Modi
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 value,
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
+                style = MaterialTheme.typography.titleLarge
             )
             if (unit != null) {
                 Text(
@@ -984,7 +983,7 @@ private fun MealEditorCard(
                         )
                         Text(
                             "$total kcal",
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace)
+                            style = MaterialTheme.typography.titleMedium
                         )
                     }
                     Spacer(Modifier.height(14.dp))

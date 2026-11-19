@@ -43,7 +43,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -591,7 +590,7 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
     ) {
         Text(
             current.second.toString(),
-            style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace)
+            style = MaterialTheme.typography.displayMedium
         )
         Text(
             "${Fmt.date(day.date)} ${Fmt.time(current.first)}",
@@ -668,7 +667,7 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                             )
                             Text(
                                 pair.first?.let { "${it.roundToInt()}%" } ?: "--",
-                                style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace)
+                                style = MaterialTheme.typography.labelMedium
                             )
                         }
                     }
@@ -686,7 +685,7 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             value?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace)
+                            style = MaterialTheme.typography.titleMedium
                         )
                         Text(
                             label,
@@ -735,7 +734,7 @@ private fun ReadinessDetail(data: HealthData?, date: LocalDate?) {
             if (score != null) {
                 Text(
                     score.toString(),
-                    style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.displayMedium
                 )
                 Text(
                     "准备度",
@@ -841,7 +840,7 @@ private fun ReadinessMetricCard(metric: ReadinessMetric, modifier: Modifier = Mo
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     metric.value,
-                    style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.titleLarge
                 )
                 Text(
                     metric.unit,
@@ -872,7 +871,7 @@ private fun KeyIndicator(label: String, value: Int?, unit: String = "分") {    
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Text(
             if (value == null) "--" else "$value $unit",
-            style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.titleSmall,
             color = if (value == null) MaterialTheme.colorScheme.onSurfaceVariant
             else MaterialTheme.colorScheme.onSurface
         )
@@ -1070,10 +1069,7 @@ private fun PaiDetail(data: HealthData?, date: LocalDate?) {
         ) {
             Text(
                 (total ?: 0.0).roundToInt().toString(),
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold
-                ),
+                style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = com.genkaim.zeppglass.ui.components.PaiAmber
             )
             Text(
@@ -1173,7 +1169,7 @@ private fun PaiZoneColumn(
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 value?.let { Fmt.oneDecimal(it) } ?: "--",
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace)
+                style = MaterialTheme.typography.titleMedium
             )
             Text(
                 " PAI",
@@ -1245,7 +1241,7 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
                     )
                     Text(
                         "${Fmt.oneDecimal(point.weightKg)} kg",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
                 if (index != 7) Rule(Modifier.padding(horizontal = 16.dp))
@@ -1491,7 +1487,7 @@ private fun SeriesStat(
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 value,
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
+                style = MaterialTheme.typography.titleLarge
             )
             if (unit != null) {
                 Text(
@@ -1591,7 +1587,7 @@ private fun ScoreRing(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 value,
-                style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Medium
             )
             Text(
@@ -1776,7 +1772,7 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     value.toString(),
-                    style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.displayMedium
                 )
                 Text(
                     " 次/分",
@@ -1866,7 +1862,7 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     value.toString(),
-                    style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.displayMedium
                 )
                 Text(
                     " 毫秒",
@@ -1961,7 +1957,7 @@ private fun BaselineRow(label: String, baseline: Int?, unit: String, value: Int)
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     "$baseline $unit",
-                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace)
+                    style = MaterialTheme.typography.titleSmall
                 )
                 val diff = value - baseline
                 Text(

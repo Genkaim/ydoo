@@ -130,8 +130,7 @@ private fun SyncSection(
             DataRow("上次同步", lastSyncedAt?.let { Fmt.dayAndTime(it) } ?: "--")
             DataRow(
                 "数据状态",
-                if (stale) "超过 3 小时，数值已显示为 --" else if (data != null) "正常" else "还没有数据",
-                mono = false
+                if (stale) "超过 3 小时，数值已显示为 --" else if (data != null) "正常" else "还没有数据"
             )
             DataRow("每日活动", raw?.days?.size?.toString() ?: "--")
             DataRow("睡眠", raw?.nights?.size?.toString() ?: "--")
@@ -144,9 +143,9 @@ private fun SyncSection(
             DataRow("血氧", raw?.spo2?.size?.toString() ?: "--")
             DataRow("运动", raw?.workouts?.size?.toString() ?: "--")
             DataRow("心率采样", raw?.heartRate?.size?.toString() ?: "--")
-            if (error != null) DataRow("同步错误", error, mono = false)
+            if (error != null) DataRow("同步错误", error)
             if (warnings.isNotEmpty()) {
-                DataRow("部分失败", "${warnings.size} 项", mono = false)
+                DataRow("部分失败", "${warnings.size} 项")
                 warnings.forEachIndexed { index, warning ->
                     Text(
                         "${index + 1}. $warning",

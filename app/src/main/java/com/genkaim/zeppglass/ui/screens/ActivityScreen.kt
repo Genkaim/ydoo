@@ -46,7 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
@@ -344,7 +343,7 @@ private fun HeroStat(value: String, label: String, color: Color) {
                     .background(color)
             )
             Spacer(Modifier.width(5.dp))
-            Text(value, style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace))
+            Text(value, style = MaterialTheme.typography.labelMedium)
         }
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -373,7 +372,7 @@ private fun LoadRecoveryCard(
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             load?.weekLoad?.roundToInt()?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
+                            style = MaterialTheme.typography.titleLarge
                         )
                         Text(
                             " EPOC",
@@ -408,7 +407,7 @@ private fun LoadRecoveryCard(
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             vo2?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
+                            style = MaterialTheme.typography.titleLarge
                         )
                         Text(
                             " ml/kg",
@@ -499,7 +498,7 @@ private fun HeartStat(value: String, label: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             value,
-            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.titleMedium,
             color = color
         )
         Text(
@@ -588,7 +587,7 @@ private fun WeekStat(label: String, value: String, unit: String?, modifier: Modi
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 value,
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
+                style = MaterialTheme.typography.titleLarge
             )
             if (unit != null) {
                 Text(

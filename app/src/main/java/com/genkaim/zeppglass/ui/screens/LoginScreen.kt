@@ -59,6 +59,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.ZeppApi
+import com.genkaim.zeppglass.data.ZeppException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -158,24 +159,36 @@ fun LoginScreen(
     var manualToken by remember { mutableStateOf("") }
     var manualUserId by remember { mutableStateOf("") }
     var manualHost by remember { mutableStateOf(AppSettings.DEFAULT_HOST) }
+    // A token that has already been rejected. The page keeps polling the same
+    // cookie every 600 ms, so without this the failure comes straight back and
+    // the status line sits on "正在验证账号…" forever.
+    var deadToken by remember { mutableStateOf<String?>(null) }
 
     fun finish(token: String, userId: String, host: String?) {
         if (busy) return
+        if (token == deadToken) return
         busy = true
         error = null
         status = "正在验证账号…"
+        android.util.Log.d(
+            "ZeppLogin",
+            "finish: tokenLen=${token.length} userId=${userId.ifBlank { "<blank>" }} hostHint=$host"
+        )
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 verifyToken(settings, token, userId, host)
             }
             busy = false
             result.onSuccess { verified ->
+                android.util.Log.d("ZeppLogin", "verified on ${verified.host}")
                 settings.saveSession(token, userId, verified.host, verified.nickname, verified.avatar)
                 // Every store follows the account: its own snapshot, log and
                 // archive are already on disk and get read back here.
                 com.genkaim.zeppglass.data.Account.switch(context, settings, store)
                 onDone()
             }.onFailure {
+                android.util.Log.w("ZeppLogin", "verify failed: ${it.message}", it)
+                deadToken = token
                 error = it.message ?: "验证失败"
                 status = "登录页已读取，但账号验证没通过"
             }
@@ -279,13 +292,39 @@ fun LoginScreen(
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 
-                error?.let {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
-                    )
+                error?.let { message ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 8.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // A failed sign-in usually means the page is holding an
+                        // account the user did not want. Wipe the web session so
+                        // the login form comes back instead of the same broken
+                        // cookie being read again.
+                        TextButton(onClick = {
+                            CookieManager.getInstance().apply {
+                                removeAllCookies(null)
+                                flush()
+                            }
+                            deadToken = null
+                            error = null
+                            status = "请重新登录 Zepp 账号"
+                            webView?.apply {
+                                clearCache(true)
+                                reload()
+                            }
+                        }) {
+                            Text("换个账号")
+                        }
+                    }
                 }
 
                 Box(Modifier.weight(1f)) {
@@ -424,6 +463,9 @@ fun LoginScreen(
                                     if (manualToken.isBlank() || manualUserId.isBlank()) {
                                         error = "apptoken 和 user id 都要填"
                                     } else {
+                                        // Typing a token and submitting is a
+                                        // deliberate retry of that same value.
+                                        deadToken = null
                                         finish(manualToken.trim(), manualUserId.trim(), manualHost.trim())
                                     }
                                 },
@@ -444,7 +486,13 @@ fun LoginScreen(
                     }
                     Spacer(Modifier.weight(1f))
                     if (!manual) {
-                        TextButton(onClick = { webView?.let { extract(it, announce = true) } }) {
+                        TextButton(onClick = {
+                            // Asking again is a deliberate retry: let the
+                            // captured token be checked a second time.
+                            deadToken = null
+                            error = null
+                            webView?.let { extract(it, announce = true) }
+                        }) {
                             Text("重新读取")
                         }
                         TextButton(onClick = { webView?.reload() }) {
@@ -491,8 +539,15 @@ private class Verified(
  * Confirms the token against each candidate regional host and keeps the first
  * host that knows this user id. A rejected token stops the search at once.
  *
+ * A 404 from `/users/{id}` is *not* a rejection. Zepp only creates the profile
+ * row once the account has been used in the Zepp app, so an account registered
+ * on the web gets `-2001 Not found` on every host while its token is perfectly
+ * good — the data endpoints answer 200. When no host has a profile, the token
+ * is therefore confirmed against a data endpoint instead, and the nickname is
+ * simply left empty.
+ *
  * Nothing is written to settings here: the caller saves the session only after
- * a host has answered for this exact user id.
+ * the token has been accepted for this exact user id.
  */
 private suspend fun verifyToken(
     settings: AppSettings,
@@ -507,23 +562,52 @@ private suspend fun verifyToken(
 
     var rejected = 0
     var lastError: Throwable? = null
+    // First host that answered for this token but had no profile row for the
+    // user. Kept so the token can be checked against a data endpoint there.
+    var hostWithoutProfile: String? = null
     for (host in candidates) {
+        android.util.Log.d("ZeppLogin", "trying $host for user $userId")
         try {
             val profile = ZeppApi(settings, overrideToken = token, overrideHost = host).profile(userId)
             val id = profile.optString("userId")
+            android.util.Log.d("ZeppLogin", "$host answered, profile userId=$id")
             if (id.isNotBlank() && id != userId) continue
             val nickname = profile.optString("nickName").ifBlank { null }
             val avatar = profile.optString("iconUrl").ifBlank { null }
             return@withContext Result.success(Verified(host, nickname, avatar))
         } catch (e: Exception) {
+            android.util.Log.w("ZeppLogin", "$host rejected: ${e.javaClass.simpleName} ${e.message}")
             lastError = e
-            if (e is com.genkaim.zeppglass.data.ZeppException && e.code in listOf(401, 403)) {
-                rejected++
-                if (rejected >= (if (hintedHost != null) 2 else 3)) {
-                    return@withContext Result.failure(Exception("Zepp 拒绝了这次登录凭据，请退出后重新登录"))
+            if (e is ZeppException) {
+                when (e.code) {
+                    401, 403 -> {
+                        rejected++
+                        if (rejected >= (if (hintedHost != null) 2 else 3)) {
+                            return@withContext Result.failure(
+                                Exception("Zepp 拒绝了这次登录凭据，请退出后重新登录")
+                            )
+                        }
+                    }
+                    // Route exists, the user row does not: the token itself was
+                    // accepted, so this host can still serve data.
+                    404 -> if (hostWithoutProfile == null) hostWithoutProfile = host
                 }
             }
             delay(120)
+        }
+    }
+
+    val fallbackHost = hostWithoutProfile
+    if (fallbackHost != null) {
+        try {
+            val today = java.time.LocalDate.now().toString()
+            ZeppApi(settings, overrideToken = token, overrideHost = fallbackHost)
+                .bandData(userId, today, today)
+            android.util.Log.d("ZeppLogin", "$fallbackHost accepted the token without a profile")
+            return@withContext Result.success(Verified(fallbackHost, null, null))
+        } catch (e: Exception) {
+            android.util.Log.w("ZeppLogin", "$fallbackHost data probe failed: ${e.javaClass.simpleName} ${e.message}")
+            lastError = e
         }
     }
     Result.failure(lastError ?: Exception("无法确认账号所在区域"))

@@ -1,6 +1,7 @@
 package com.genkaim.zeppglass.data
 
 import android.os.Build
+import android.util.Log
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -60,20 +61,40 @@ class ZeppApi(
             .get()
             .build()
 
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                val code = response.code
-                val message = when (code) {
-                    401, 403 -> "登录已失效，请重新连接 Zepp 账号"
-                    429 -> "请求太频繁，稍后再试"
-                    else -> "Zepp 返回 HTTP $code"
+        val startedAt = System.currentTimeMillis()
+        try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                Log.d(
+                    TAG,
+                    "GET $base$path -> ${response.code} in ${System.currentTimeMillis() - startedAt}ms"
+                )
+                if (!response.isSuccessful) {
+                    val code = response.code
+                    val message = when (code) {
+                        401, 403 -> "登录已失效，请重新连接 Zepp 账号"
+                        429 -> "请求太频繁，稍后再试"
+                        else -> "Zepp 返回 HTTP $code"
+                    }
+                    throw ZeppException(code, message)
                 }
-                throw ZeppException(code, message)
+                if (body.isBlank()) throw ZeppException(response.code, "Zepp 返回了空响应")
+                return JSONObject(body)
             }
-            if (body.isBlank()) throw ZeppException(response.code, "Zepp 返回了空响应")
-            return JSONObject(body)
+        } catch (e: ZeppException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(
+                TAG,
+                "GET $base$path failed after ${System.currentTimeMillis() - startedAt}ms: " +
+                    "${e.javaClass.simpleName}: ${e.message}"
+            )
+            throw e
         }
+    }
+
+    private companion object {
+        const val TAG = "ZeppApi"
     }
 
     fun profile(userId: String): JSONObject = get("/users/$userId")

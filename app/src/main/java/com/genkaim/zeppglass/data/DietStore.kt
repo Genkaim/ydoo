@@ -8,6 +8,7 @@ import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.math.roundToInt
 
@@ -85,16 +86,19 @@ object DietStore {
 
     /**
      * The day's energy budget: Mifflin-St Jeor basal rate from the profile, the
-     * last seven days of watch activity, and the user's goal. Null when weight
-     * is missing, so the card shows -- instead of an invented number.
+     * recent days of watch activity, the user's goal, and — once there is
+     * enough recent data — a maintenance rate measured from actual weight
+     * movement. Null when weight is missing, so the card shows -- instead of an
+     * invented number.
      */
     fun calorieTarget(
         data: HealthData?,
         date: LocalDate,
         goal: DietGoal = DietGoal.CUT
     ): Int? {
-        val body = data?.body ?: return null
-        val weight = data.latestWeight()?.weightKg ?: body.weightKg ?: return null
+        val src = data ?: return null
+        val body = src.body
+        val weight = src.latestWeight()?.weightKg ?: body.weightKg ?: return null
         val height = body.heightCm
         val age = body.birthYear?.let { year ->
             val month = body.birthMonth ?: 1
@@ -108,23 +112,93 @@ object DietStore {
             // caller labels the number as an estimate.
             weight * 22
         }
-        // Activity comes from the seven days before this one. Today's steps are
-        // still being counted, so a budget that grows through the evening would
-        // read as "you may eat more the later it gets". A day with no reading
-        // comes back as 0 from the API and is skipped, not averaged in as a day
-        // of lying in bed.
-        val past = (7 downTo 1).mapNotNull { back ->
-            data.day(date.minusDays(back.toLong()))?.calories?.takeIf { it > 0.0 }
+        val maintenance = maintenanceFor(src, date, bmr)
+        // 减脂 takes 15% off, capped at 450 kcal: a percentage keeps small bodies
+        // from a huge cut, the cap keeps large ones from an absurd one.
+        val target = when (goal) {
+            DietGoal.CUT -> maintenance - minOf(maintenance * 0.15, 450.0)
+            DietGoal.HOLD -> maintenance
+            DietGoal.GAIN -> maintenance * 1.10
         }
-        val activity = if (past.isEmpty()) 0.0 else past.average()
-        val maintenance = bmr + activity
-        val target = maintenance * goal.factor
-        // A deficit that dips under the basal rate is not a plan, so 105% of BMR
-        // is the floor; the sex-based floor keeps a very light person from a
-        // number that is too low to cover ordinary daily living.
-        val floor = maxOf(bmr * 1.05, if (male == true) 1500.0 else 1200.0)
+        // Eating under the basal rate is not a plan; the sex-based floor keeps a
+        // very light person from a number too low to cover ordinary living.
+        val floor = maxOf(bmr, if (male == true) 1500.0 else 1200.0)
         return maxOf(target, floor).roundToInt()
     }
+
+    /** True when the budget uses the measured rate rather than the formula. */
+    fun isCalibrated(data: HealthData?, date: LocalDate): Boolean {
+        val src = data ?: return false
+        return measuredMaintenance(src, date) != null
+    }
+
+    /**
+     * Maintenance calories. The formula is basal rate + recent watch activity;
+     * once ten recent days have both weightings and food logs, the rate the
+     * body actually ran at replaces it.
+     */
+    private fun maintenanceFor(data: HealthData, date: LocalDate, bmr: Double): Double {
+        val formula = bmr + activityBaseline(data, date)
+        val measured = measuredMaintenance(data, date) ?: return formula
+        // A week of water weight must not swing the budget; stay close to the
+        // formula and fall back to it when the measurement is implausible.
+        return if (measured in formula * 0.70..formula * 1.30) measured else formula
+    }
+
+    /**
+     * Median of the seven days before [date]: a day the band never recorded
+     * comes back as 0 and is skipped. Median, not mean, because one missed sync
+     * (78 kcal for 2,000 steps) pulled the mean far enough to move the budget.
+     * Today is excluded: its steps are still being counted.
+     */
+    private fun activityBaseline(data: HealthData, date: LocalDate): Double {
+        val past = (7 downTo 1).mapNotNull { back ->
+            data.day(date.minusDays(back.toLong()))?.calories?.takeIf { it > 0.0 }
+        }.sorted()
+        if (past.isEmpty()) return 0.0
+        val mid = past.size / 2
+        return if (past.size % 2 == 1) past[mid] else (past[mid - 1] + past[mid]) / 2
+    }
+
+    /**
+     * Maintenance from the last ten days only: average intake minus the energy
+     * the body stored or released as weight moved (7,700 kcal per kg).
+     *
+     * The window is deliberately short and exclusive of anything older. A
+     * weighing from two months ago, or logs from before a break, describe a
+     * different body and a different routine; they would drag the number away
+     * from what is happening now. Both ends need a real weighing inside the
+     * window, and food has to be logged on most days for the average to mean
+     * anything.
+     */
+    private fun measuredMaintenance(data: HealthData, date: LocalDate): Double? {
+        val zone = ZoneId.systemDefault()
+        val end = date.minusDays(1)
+        val start = end.minusDays(9)
+        fun dayOf(epochMs: Long): LocalDate =
+            Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+
+        val weightings = data.weights.filter { point ->
+            point.weightKg != null && dayOf(point.epochMs) in start..end
+        }
+        val first = weightings.minByOrNull { it.epochMs } ?: return null
+        val last = weightings.maxByOrNull { it.epochMs } ?: return null
+        val spanDays = ChronoUnit.DAYS.between(dayOf(first.epochMs), dayOf(last.epochMs))
+        // Two weighings a day apart say nothing about a trend.
+        if (spanDays < 7) return null
+
+        val intakeDays = (0..9).mapNotNull { offset ->
+            val day = start.plusDays(offset.toLong())
+            val logged = meals.filter { it.date() == day }
+            if (logged.isEmpty()) null else logged.sumOf { it.calories }.toDouble()
+        }
+        // Missing days are usually unlogged eating, so a thin average reads low.
+        if (intakeDays.size < 8) return null
+
+        val changeKg = last.weightKg!! - first.weightKg!!
+        return intakeDays.average() - changeKg * 7700.0 / spanDays
+    }
+
 
     fun newPhotoFile(): File {
         val root = File(appContext?.filesDir ?: File("."), "diet")

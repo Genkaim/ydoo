@@ -428,12 +428,26 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                (if (weekDeficit > 0) "+" else "") + "$weekDeficit kcal",
-                style = MaterialTheme.typography.headlineSmall,
-                color = if (weekDeficit >= 0) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.error
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    (if (weekDeficit > 0) "+" else "") + "$weekDeficit kcal",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (weekDeficit >= 0) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error
+                )
+                // 7,700 kcal per kg of body fat: the weekly number in the unit
+                // people actually picture when they ask how it is going.
+                Text(
+                    when {
+                        settledDays == 0 -> ""
+                        weekDeficit == 0 -> "≈ 0 kg 脂肪"
+                        weekDeficit > 0 -> "≈ %.2f kg 脂肪".format(weekDeficit / 7700.0)
+                        else -> "≈ %.2f kg 脂肪（增加）".format(-weekDeficit / 7700.0)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 
@@ -643,9 +657,15 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     FlatPanel {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "今日可用按当前目标算：基础代谢（按身高、生日、性别和体重估）加上最近七天的活动消耗。当天不算在内，免得目标随着白天步数越走越高；没有记录的日子不计入。",
+                "今日可用按当前目标算：基础代谢（按身高、生日、性别和体重估）加上最近一周的活动消耗。当天不算在内，免得目标随着白天步数越走越高；没有记录的日子不计入，也不会被个别没戴表的日子拉偏。",
                 style = MaterialTheme.typography.bodySmall
             )
+            if (DietStore.isCalibrated(data, day)) {
+                Text(
+                    "这个数已经按最近十天的体重变化和实际摄入校准过，比公式更贴近你现在的消耗；这十天里记录不够时会退回公式估算。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             Text(
                 "换目标会让这个数一起变：减脂在消耗上留出余量，维持按消耗吃，增肌多吃一点。",
                 style = MaterialTheme.typography.bodySmall

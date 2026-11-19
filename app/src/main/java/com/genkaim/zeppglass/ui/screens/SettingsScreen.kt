@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -242,13 +243,11 @@ fun SettingsScreen(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Rounded.Widgets, contentDescription = null)
                     Spacer(Modifier.size(10.dp))
-                    // One line, one button: the widget's name and a plus. Where to
-                    // find it if the launcher hides the request lives in the toast.
                     Text(
                         "今日概览",
                         style = MaterialTheme.typography.titleSmall,
@@ -271,7 +270,7 @@ fun SettingsScreen(
                                 }
                                 Toast.makeText(
                                     context,
-                                    "若没看见，可在桌面小部件 → 安卓小部件里手动添加",
+                                    "已经添加，若没看见可手动在桌面小部件 → 安卓小部件添加",
                                     Toast.LENGTH_LONG
                                 ).show()
                             },

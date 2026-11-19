@@ -436,13 +436,13 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                     else MaterialTheme.colorScheme.error
                 )
                 // 7,700 kcal per kg of body fat: the weekly number in the unit
-                // people actually picture when they ask how it is going.
+                // people actually picture when they ask how it is going. Shown
+                // even at zero, so the row never jumps in height.
                 Text(
                     when {
-                        settledDays == 0 -> ""
-                        weekDeficit == 0 -> "≈ 0 kg 脂肪"
                         weekDeficit > 0 -> "≈ %.2f kg 脂肪".format(weekDeficit / 7700.0)
-                        else -> "≈ %.2f kg 脂肪（增加）".format(-weekDeficit / 7700.0)
+                        weekDeficit < 0 -> "≈ %.2f kg 脂肪（增加）".format(-weekDeficit / 7700.0)
+                        else -> "≈ 0 kg 脂肪"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

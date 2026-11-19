@@ -74,6 +74,7 @@ import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.BodyProfile
 import com.genkaim.zeppglass.data.ChatMessage
+import com.genkaim.zeppglass.data.DietGoal
 import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.Meal
@@ -409,6 +410,9 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     }
     val activeCalories = data?.day(today)?.calories
 
+    // Only 减脂 has anything to "save": with 维持 the target is maintenance and
+    // with 增肌 it is above it, so a weekly surplus is the plan, not a slip.
+    if (goal == DietGoal.CUT) {
     FlatPanel(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
         Row(
             Modifier
@@ -449,6 +453,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                 )
             }
         }
+    }
     }
 
     FlatPanel {

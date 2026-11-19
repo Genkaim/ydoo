@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Sized for Xiaomi's 4×2 (the phone grid only offers 2×2, 4×2 and 4×4; 2×1 is
-  desktop-only). Xiaomi's own recommended numbers for that grid are 300×110dp,
-  which is what the launcher uses to decide how many cells to occupy — the final
-  pixels still follow the device grid, so the rings scale with the options
-  bundle at runtime.
+  4×2. The numbers follow the classic Android formula (one cell ≈ 70×70dp,
+  minus 30dp of margin): 4 columns → 250dp, 2 rows → 110dp. Xiaomi's own table
+  quotes 300dp for its widget platform, but that lands on five cells in grids
+  whose cell is ~70dp wide, so 250dp is the value that resolves to 4×2 on MIUI,
+  HyperOS, ColorOS, OriginOS and One UI alike.
+
+  Note: Xiaomi's App Vault (负一屏) does not accept standard Android widgets at
+  all — its picker only lists 小米小部件 published through Xiaomi's platform.
+  No manifest attribute changes that; the card is meant for the desktop, and
+  every other OEM's widget host can place it.
 
   previewLayout is what Android 12+ pickers draw; previewImage is the fallback
   for older launchers and OEM pickers that ignore previewLayout.
@@ -15,9 +20,9 @@
     android:description="@string/widget_rings_description"
     android:initialLayout="@layout/widget_rings"
     android:minHeight="110dp"
-    android:minResizeHeight="96dp"
-    android:minResizeWidth="240dp"
-    android:minWidth="300dp"
+    android:minResizeHeight="90dp"
+    android:minResizeWidth="200dp"
+    android:minWidth="250dp"
     android:previewImage="@drawable/widget_preview"
     android:previewLayout="@layout/widget_rings"
     android:resizeMode="horizontal|vertical"

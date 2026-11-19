@@ -344,12 +344,22 @@ fun OverviewScreen(
                                     modifier = Modifier.weight(1f),
                                     verdict = readiness?.let { day ->
                                         val value = day.sleepRhr
-                                        val base = day.rhrBaseline
-                                        if (value == null || base == null) null
-                                        else when {
-                                            value < base -> "低于平均" to ink
-                                            value > base -> "高于平均" to warnTone
-                                            else -> "平均" to ink
+                                        val base = day.rhrBaseline?.takeIf { it in 30..120 }
+                                        when {
+                                            value != null && base != null -> when {
+                                                value < base -> "低于平均" to ink
+                                                value > base -> "高于平均" to warnTone
+                                                else -> "平均" to ink
+                                            }
+                                            // The app's own baseline is often the 255
+                                            // sentinel; fall back to its score bands so
+                                            // the rating never disappears.
+                                            day.rhrScore != null -> when {
+                                                day.rhrScore >= 75 -> "正常" to ink
+                                                day.rhrScore >= 50 -> "一般" to warnTone
+                                                else -> "偏低" to criticalTone
+                                            }
+                                            else -> null
                                         }
                                     },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.RHR, date)) }

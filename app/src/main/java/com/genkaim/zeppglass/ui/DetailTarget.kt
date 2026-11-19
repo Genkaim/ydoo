@@ -12,7 +12,10 @@ enum class DetailKind {
     SKIN_TEMP,
 
     /** Morning Charge (energy at wake), with a 7-day line. */
-    MORNING_CHARGE
+    MORNING_CHARGE,
+
+    /** Nightly average blood oxygen, with a 7-day line. */
+    NIGHT_SPO2
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */

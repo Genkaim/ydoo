@@ -144,7 +144,7 @@ fun DetailScreen(
                 DetailKind.LOAD -> LoadDetail(data, target.date)
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date)
-                DetailKind.SPO2 -> Spo2Detail(data, target.date)
+                DetailKind.SPO2 -> NightSpo2Detail(data, target.date)
                 DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store)
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
                 DetailKind.VO2 -> Vo2Detail(data)
@@ -156,6 +156,7 @@ fun DetailScreen(
                 DetailKind.SLEEP_APNEA -> SleepMetricDetail(data, target.date, SleepMetric.APNEA)
                 DetailKind.SKIN_TEMP -> SkinTempDetail(data, target.date)
                 DetailKind.MORNING_CHARGE -> MorningChargeDetail(data, target.date)
+                DetailKind.NIGHT_SPO2 -> NightSpo2Detail(data, target.date)
             }
         }
 
@@ -212,6 +213,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.SLEEP_APNEA -> "低通气"
     DetailKind.SKIN_TEMP -> "皮肤温度"
     DetailKind.MORNING_CHARGE -> "晨起 Charge"
+    DetailKind.NIGHT_SPO2 -> "夜间血氧"
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -235,6 +237,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.SLEEP_APNEA -> target.date?.let(Fmt::date) ?: "夜间低通气指数，近 7 天趋势"
     DetailKind.SKIN_TEMP -> target.date?.let(Fmt::date) ?: "手表评分，近 7 天趋势"
     DetailKind.MORNING_CHARGE -> target.date?.let(Fmt::date) ?: "起床时的能量，近 7 天趋势"
+    DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
 }
 
 // ---------------- sleep ----------------
@@ -559,7 +562,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         else -> "低" to palette.critical
                     },
                     modifier = Modifier.weight(1f),
-                    onClick = { onOpen(DetailTarget(DetailKind.SPO2, night.date)) }
+                    onClick = { onOpen(DetailTarget(DetailKind.NIGHT_SPO2, night.date)) }
                 )
             }
         }
@@ -2452,12 +2455,6 @@ private fun MorningChargeDetail(data: HealthData?, date: LocalDate?) {
                     style = MaterialTheme.typography.displayMedium,
                     color = if (abnormal) verdict.second else ink
                 )
-                Text(
-                    " /100",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
             }
             Spacer(Modifier.height(4.dp))
             Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
@@ -2486,6 +2483,96 @@ private fun MorningChargeDetail(data: HealthData?, date: LocalDate?) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 "晨起 Charge 是醒来时的能量值（0–100），取起床前后的 Charge 读数；它反映昨晚恢复给今天留下的精力，白天会随活动下降。",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+// ---------------- night blood oxygen ----------------
+
+@Composable
+private fun NightSpo2Detail(data: HealthData?, date: LocalDate?) {
+    val source = data ?: run {
+        Missing("还没有血氧数据")
+        return
+    }
+    fun averageOn(target: LocalDate): Int? {
+        val night = source.nightOn(target) ?: return null
+        val points = source.spo2.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
+        return if (points.isEmpty()) null else points.map { it.value }.average().roundToInt()
+    }
+    val day = date ?: source.nights.maxByOrNull { it.date }?.date
+    if (day == null) {
+        Missing("还没有血氧数据")
+        return
+    }
+    val value = averageOn(day)
+    if (value == null) {
+        Missing("这一晚没有血氧记录")
+        return
+    }
+    val palette = LocalZgPalette.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val verdict = when {
+        value >= 95 -> "正常" to ink
+        value >= 90 -> "偏低" to palette.warn
+        else -> "低" to palette.critical
+    }
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                Fmt.date(day),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            val abnormal = verdict.first != "正常"
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    value.toString(),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (abnormal) verdict.second else ink
+                )
+                Text(
+                    " %",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+        }
+    }
+
+    val days = (0..6).map { day.minusDays(6L - it) }
+    val series = days.map { averageOn(it)?.toFloat() }
+    if (series.count { it != null } > 1) {
+        SectionTitle("近 7 天")
+        FlatPanel {
+            TrendLineChart(
+                values = series,
+                labels = days.map { Fmt.weekdayShort(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(170.dp),
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
+    }
+
+    SectionTitle("这个数值")
+    FlatPanel {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "每夜血氧取整晚读数的平均值，不把白天和夜间混在一起。手表没有记录的一晚留空，不按 0 计算。",
                 style = MaterialTheme.typography.bodySmall
             )
         }

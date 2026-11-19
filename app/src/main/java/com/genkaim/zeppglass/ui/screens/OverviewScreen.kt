@@ -154,6 +154,12 @@ fun OverviewScreen(
     val weight = data?.weights?.filter { dateOf(it.epochMs) <= date }?.maxByOrNull { it.epochMs }
     val spo2 = data?.spo2?.lastOrNull { dateOf(it.epochMs) == date }
     val morningCharge = charge?.morningScore(night?.endEpochSec)
+    // Same number the detail page leads with: average over the sleep window, not
+    // the last single sample.
+    val nightSpo2 = night?.let { n ->
+        val points = data?.spo2.orEmpty().filter { it.epochMs / 1000 in n.startEpochSec..n.endEpochSec }
+        if (points.isEmpty()) null else points.map { it.value }.average().roundToInt()
+    }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -422,19 +428,19 @@ fun OverviewScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 MetricTile(
                                     label = "准备度",
-                                    value = readiness?.score?.toString() ?: "--",
+                                    value = readiness?.officialScore?.toString() ?: "--",
                                     unit = null,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),
-                                    verdict = scoreVerdict(readiness?.score),
+                                    verdict = scoreVerdict(readiness?.officialScore),
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.READINESS, date)) }
                                 )
                                 MetricTile(
                                     label = "血氧",
-                                    value = spo2?.value?.toString() ?: "--",
+                                    value = (nightSpo2 ?: spo2?.value)?.toString() ?: "--",
                                     unit = "%",
                                     modifier = Modifier.weight(1f),
-                                    verdict = spo2?.value?.let {
+                                    verdict = (nightSpo2 ?: spo2?.value)?.let {
                                         when {
                                             it >= 95 -> "正常" to ink
                                             it >= 90 -> "偏低" to warnTone

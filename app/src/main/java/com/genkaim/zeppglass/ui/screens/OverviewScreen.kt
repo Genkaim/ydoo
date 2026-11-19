@@ -439,21 +439,14 @@ fun OverviewScreen(
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                val bmi = weight?.bmi
                                 MetricTile(
-                                    label = "体重",
-                                    value = weight?.weightKg?.let { Fmt.oneDecimal(it) } ?: "--",
-                                    unit = "kg",
+                                    label = "准备度",
+                                    value = readiness?.score?.toString() ?: "--",
+                                    unit = null,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),
-                                    verdict = bmi?.let {
-                                        when {
-                                            it < 18.5 -> "偏轻" to warnTone
-                                            it < 24.0 -> "正常" to ink
-                                            it < 28.0 -> "偏高" to warnTone
-                                            else -> "肥胖" to criticalTone
-                                        }
-                                    },
-                                    onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
+                                    verdict = scoreVerdict(readiness?.score),
+                                    onClick = { onOpenDetail(DetailTarget(DetailKind.READINESS, date)) }
                                 )
                                 MetricTile(
                                     label = "血氧",

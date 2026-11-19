@@ -47,9 +47,13 @@ object DailySummary {
     fun attach(settings: AppSettings) {
         if (attachedTo === settings) return
         attachedTo = settings
-        text = settings.dailySummaryText
-        day = settings.dailySummaryDay
-        generatedAt = settings.dailySummaryAt
+        // A summary saved by a build that turned JSON null into "null" is
+        // nothing but that run; treat it as not generated so the card rebuilds
+        // it instead of showing the junk again.
+        val stored = settings.dailySummaryText.withoutNullChunks()
+        text = stored
+        day = if (stored.isBlank()) "" else settings.dailySummaryDay
+        generatedAt = if (stored.isBlank()) 0L else settings.dailySummaryAt
     }
 
     /** A day rolls over at 05:00, not at midnight. */
@@ -105,7 +109,7 @@ object DailySummary {
                 client.stream(messages).collect { chunk ->
                     text += chunk
                 }
-                val cleaned = text.trim().trim('"').trim()
+                val cleaned = text.withoutNullChunks().trim().trim('"').trim()
                 if (cleaned.isBlank()) throw IllegalStateException("模型没有返回内容")
                 text = cleaned
                 day = key

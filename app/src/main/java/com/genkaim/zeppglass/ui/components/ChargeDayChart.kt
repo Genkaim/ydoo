@@ -93,6 +93,28 @@ fun ChargeDayChart(
             }
         }
 
+        /**
+         * How much a workout took, measured between the readings that bracket
+         * the band instead of the nearest one: a short session often falls
+         * between two samples, and nearest-to-both-ends is then the same
+         * reading, which measured 0 and left the tag as a bare "运动".
+         */
+        fun dropText(start: Long, end: Long): String {
+            val before = points.lastOrNull { it.epochMs / 1000 <= start }
+                ?.curveValue?.toFloat() ?: valueNear(start) ?: return ""
+            val after = points.firstOrNull { it.epochMs / 1000 >= end }
+                ?.curveValue?.toFloat() ?: valueNear(end) ?: return ""
+            val drop = (before - after).roundToInt()
+            return if (drop > 0) " −$drop" else ""
+        }
+
+        // Nothing may be drawn past the last reading: a band that runs on after
+        // the line ends reads as if it happened in the future ("运动" sticking
+        // out to the right of 现在). Bands are clipped to that instant.
+        val lastSampleSec = points.lastOrNull { it.epochMs / 1000 <= limitEpoch }
+            ?.let { it.epochMs / 1000 }
+        fun measuredEnd(end: Long) = lastSampleSec?.let { minOf(end, it) } ?: end
+
         // Grid
         for (i in 0..2) {
             val y = topPad + plotHeight * i / 2f
@@ -103,7 +125,7 @@ fun ChargeDayChart(
         // the tinted block, and the tint stays light enough to read the curve.
         sleep?.let { night ->
             val from = maxOf(night.startEpochSec, dayStart.toLong())
-            val to = minOf(night.endEpochSec, dayStart.toLong() + 86400L)
+            val to = minOf(night.endEpochSec, measuredEnd(dayStart + 86400L))
             if (to > from) {
                 val x0 = xOf(from.toFloat())
                 val x1 = xOf(to.toFloat())
@@ -135,7 +157,7 @@ fun ChargeDayChart(
         val napTo = sleep?.napEndEpochSec
         if (napFrom != null && napTo != null && napTo > napFrom) {
             val from = maxOf(napFrom, dayStart)
-            val to = minOf(napTo, dayStart + 86400L)
+            val to = minOf(napTo, measuredEnd(dayStart + 86400L))
             if (to > from) {
                 val x0 = xOf(from.toFloat())
                 val x1 = xOf(to.toFloat())
@@ -164,10 +186,14 @@ fun ChargeDayChart(
 
         // Workouts of the day: the same full-height band as sleep, in its own
         // colour, so the two kinds of time never read as the same block. The
-        // tag goes at the bottom of the block because 睡眠 already owns the top.
+        // tag sits above the block exactly like 睡眠, and always carries the
+        // amount of Charge it cost ("运动 −4").
         workouts.forEach { workout ->
             val from = maxOf(workout.startEpochSec, dayStart.toLong())
-            val to = minOf(workout.endEpochSec, dayStart.toLong() + 86400L)
+            val realTo = minOf(workout.endEpochSec, dayStart.toLong() + 86400L)
+            // The block stops where the data does; the number still describes
+            // the whole session, since the drop shows up in the next reading.
+            val to = measuredEnd(realTo)
             if (to > from) {
                 val x0 = xOf(from.toFloat())
                 val x1 = xOf(to.toFloat())
@@ -179,7 +205,7 @@ fun ChargeDayChart(
                     size = Size((x1 - x0).coerceAtLeast(2f), bandHeight),
                     cornerRadius = CornerRadius(4.dp.toPx())
                 )
-                val text = "运动${deltaText(from, to)}"
+                val text = "运动${dropText(from, realTo)}"
                 val layout = measurer.measure(text, tagStyle)
                 drawLabel(
                     measurer,
@@ -187,7 +213,7 @@ fun ChargeDayChart(
                     tagStyle,
                     ((x0 + x1) / 2f - layout.size.width / 2f)
                         .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
-                    (bandTop + bandHeight - layout.size.height - 2.dp.toPx()).coerceAtLeast(0f)
+                    1.dp.toPx()
                 )
             }
         }

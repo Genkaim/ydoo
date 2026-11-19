@@ -148,10 +148,15 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                     val message = items.optJSONObject(j) ?: continue
                     val role = message.optString("role")
                     if (role != "user" && role != "assistant") continue
+                    // Builds before 0.2.10 saved the literal string "null" for
+                    // every chunk that carried only reasoning, leaving bubbles
+                    // of nullnullnull in the history. Drop those on load.
+                    val body = message.text("content").withoutNullChunks().trim()
+                    if (body.isBlank()) continue
                     list.add(
                         Message(
                             role = role,
-                            content = message.optString("content"),
+                            content = body,
                             error = message.optBoolean("error", false)
                         )
                     )
@@ -432,6 +437,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 val conversation = mutableListOf(system)
                 history.forEach { conversation.add(ChatMessage(it.role, it.content)) }
                 val question = history.lastOrNull { it.role == "user" }?.content.orEmpty()
+                val smallTalk = isAcknowledgement(question)
 
                 // The digest above already holds the last seven days, so a
                 // planning round trip used to add a second of dead air to every
@@ -467,11 +473,21 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 conversation.add(
                     ChatMessage(
                         "user",
-                        "请基于上面的数据摘要和查询结果，直接给出最终回答，使用 Markdown。" +
-                            "问题涉及的指标都要核对，但正文只写关键或异常的那几个数值，其余用一句概括；" +
-                            "不要把整周每天的指标逐条罗列，也不要把同一组数字在正文和 card 里重复一遍；全在正常范围就直接说正常。" +
-                            "只有摘要和查询里确实没有的指标才说没有，不要笼统地说看不到数据。" +
-                            "需要图形卡片时用 card 块。"
+                        if (smallTalk) {
+                            // An acknowledgement is not a new analysis request.
+                            // The instruction below used to be appended to every
+                            // turn, so "好的" was answered with the whole report
+                            // again, card included.
+                            "用户这句话只是应答或寒暄，不是新的数据分析请求。用一两句话自然回应即可：" +
+                                "不要重新分析数据、不要重复已经给过的结论、不要再罗列数字、不要输出 card 块。" +
+                                "如果是在确认刚才的建议，就简短确认；只有用户提出新问题才展开。"
+                        } else {
+                            "请基于上面的数据摘要和查询结果，直接给出最终回答，使用 Markdown。" +
+                                "问题涉及的指标都要核对，但正文只写关键或异常的那几个数值，其余用一句概括；" +
+                                "不要把整周每天的指标逐条罗列，也不要把同一组数字在正文和 card 里重复一遍；全在正常范围就直接说正常。" +
+                                "只有摘要和查询里确实没有的指标才说没有，不要笼统地说看不到数据。" +
+                                "需要图形卡片时用 card 块。"
+                        }
                     )
                 )
                 // Always stream the final answer. The old plan turn was capped
@@ -596,6 +612,27 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
      * True when the question names a period outside the seven-day digest, which
      * is the only case where a lookup before answering pays for itself.
      */
+    /**
+     * "好的"、"谢谢"、"嗯" — an acknowledgement, not a new question. It only
+     * matches a short message that is nothing but those words: anything with a
+     * number, a question mark or real content is a request and gets the full
+     * answer path.
+     */
+    internal fun isAcknowledgement(question: String): Boolean {
+        val text = question.trim().trim('。', '，', '！', '!', '~', '～', '.', '，', ' ')
+        if (text.isEmpty() || text.length > 6) return false
+        if (text.any { it.isDigit() }) return false
+        if (text.any { it == '?' || it == '？' || it == '吗' }) return false
+        val lower = text.lowercase()
+        val words = listOf(
+            "好", "行", "可以", "嗯", "哦", "噢", "收到", "谢谢", "多谢",
+            "明白", "明白啦", "明白了", "懂了", "知道", "知道了", "了解",
+            "ok", "okay", "thanks", "thx", "got it", "好的", "好滴", "好呀",
+            "好吧", "就这样", "不用了", "辛苦了"
+        )
+        return words.any { lower == it || lower == it + "的" || lower == it + "呀" }
+    }
+
     private fun asksForOlderData(question: String): Boolean {
         val keys = listOf(
             "上个月", "上月", "去年", "前年", "更早", "之前", "历史",

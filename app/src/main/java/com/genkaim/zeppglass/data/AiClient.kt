@@ -20,6 +20,55 @@ data class ChatMessage(val role: String, val content: String)
 class AiException(val code: Int, message: String) : Exception(message)
 
 /**
+ * Reads a text field the way a caller expects, which `optString` does not do:
+ * for a key whose value is JSON `null` it answers the *four characters*
+ * "null". Reasoning models stream `{"delta":{"content":null,
+ * "reasoning_content":"…"}}` for every thought token, so the old code appended
+ * "null" per chunk and the summary card filled with nullnullnull….
+ *
+ * Missing key and explicit null both read as empty; everything else is
+ * stringified as before.
+ */
+internal fun JSONObject.text(key: String): String {
+    val value = opt(key)
+    return when (value) {
+        null, JSONObject.NULL -> ""
+        is String -> value
+        else -> value.toString()
+    }
+}
+
+/**
+ * One SSE chat chunk, already null-safe: `content` is the answer, `reasoning`
+ * is the model's private thinking (shown by nobody). Either may be empty.
+ */
+internal fun JSONObject.sseDelta(): Pair<String, String> {
+    val delta = optJSONArray("choices")
+        ?.optJSONObject(0)
+        ?.optJSONObject("delta")
+        ?: return "" to ""
+    return delta.text("content") to delta.text("reasoning_content")
+}
+
+/**
+ * Strips the run of "null" that builds before this one appended for every
+ * reasoning-only chunk (thinking is streamed before the answer, so the run is
+ * always a prefix). Text that was nothing but that run becomes empty, which
+ * lets stored summaries and archived chats be treated as absent instead of
+ * being shown again.
+ *
+ * One "null" in front of real words is left alone: "nullable" is a word, while
+ * the bug always produced a run (thinking emits many chunks).
+ */
+internal fun String.withoutNullChunks(): String {
+    var start = 0
+    while (startsWith("null", start)) start += 4
+    if (start == 0) return this
+    if (start == length) return ""
+    return if (start >= 8) substring(start) else this
+}
+
+/**
  * OpenAI-compatible chat client. Works with the official API as well as any
  * compatible gateway (DeepSeek, Moonshot, Ollama, one-api, ...), because the
  * user supplies the base URL and model.
@@ -109,10 +158,10 @@ class AiClient(private val settings: AppSettings) {
             val contentType = response.header("Content-Type").orEmpty()
             if (contentType.contains("application/json", ignoreCase = true)) {
                 // Some gateways ignore `stream` and answer in one piece.
-                val text = body.string()
+                val bodyText = body.string()
                 val content = runCatching {
-                    JSONObject(text).getJSONArray("choices").getJSONObject(0)
-                        .getJSONObject("message").optString("content")
+                    JSONObject(bodyText).getJSONArray("choices").getJSONObject(0)
+                        .getJSONObject("message").text("content")
                 }.getOrNull()
                 if (content.isNullOrEmpty()) throw AiException(0, "无法解析返回内容")
                 emit(content)
@@ -120,20 +169,26 @@ class AiClient(private val settings: AppSettings) {
             }
 
             val source = body.source()
+            var emitted = 0
+            var reasoned = false
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
                 if (line.isBlank() || line.startsWith(":")) continue
                 if (!line.startsWith("data:")) continue
                 val data = line.removePrefix("data:").trim()
                 if (data == "[DONE]") break
-                val chunk = runCatching {
-                    JSONObject(data).optJSONArray("choices")
-                        ?.optJSONObject(0)
-                        ?.optJSONObject("delta")
-                        ?.optString("content")
-                        .orEmpty()
-                }.getOrDefault("")
-                if (chunk.isNotEmpty()) emit(chunk)
+                val (chunk, thinking) = runCatching { JSONObject(data).sseDelta() }
+                    .getOrDefault("" to "")
+                if (thinking.isNotEmpty()) reasoned = true
+                if (chunk.isNotEmpty()) {
+                    emitted += chunk.length
+                    emit(chunk)
+                }
+            }
+            // Reasoning-only answers would otherwise end as a blank card: say
+            // so instead of leaving the reader with nothing.
+            if (emitted == 0 && reasoned) {
+                throw AiException(0, "模型只输出了思考过程，没有给出回答")
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -255,9 +310,9 @@ class AiClient(private val settings: AppSettings) {
                 val choice = json.optJSONArray("choices")?.optJSONObject(0)
                     ?: throw AiException(0, "返回里没有 choices：${text.take(160)}")
                 val message = choice.optJSONObject("message")
-                val content = message?.optString("content").orEmpty().trim()
+                val content = message?.text("content").orEmpty().trim()
                 val finish = choice.optString("finish_reason")
-                val reasoned = !message?.optString("reasoning_content").isNullOrBlank()
+                val reasoned = message?.text("reasoning_content").orEmpty().isNotBlank()
                 return Triple(content, finish, reasoned)
             }
         }
@@ -341,10 +396,16 @@ class AiClient(private val settings: AppSettings) {
                 }
                 throw AiException(response.code, "$hint：${text.take(180)}")
             }
-            return runCatching {
+            val parsed = runCatching {
                 JSONObject(text).getJSONArray("choices").getJSONObject(0)
-                    .getJSONObject("message").optString("content").trim()
+                    .getJSONObject("message")
             }.getOrElse { throw AiException(0, "无法解析返回内容") }
+            val content = parsed.text("content").trim()
+            if (content.isNotEmpty()) return content
+            if (parsed.text("reasoning_content").isNotBlank()) {
+                throw AiException(0, "模型只输出了思考过程，没有给出回答")
+            }
+            throw AiException(0, "模型没有返回内容")
         }
     }
 }

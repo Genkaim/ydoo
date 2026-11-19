@@ -216,9 +216,9 @@ class YdooRingsWidget : AppWidgetProvider() {
 
             // Ring diameter follows the cell span the launcher reported.
             val scale = ringScale(context, appWidgetId)
-            val sleepDp = (62 * scale).toInt()
-            val chargeDp = (72 * scale).toInt()
-            val loadDp = (62 * scale).toInt()
+            val sleepDp = (56 * scale).toInt()
+            val chargeDp = (66 * scale).toInt()
+            val loadDp = (56 * scale).toInt()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // Only Android 12+ can resize a RemoteViews child directly; on
                 // older launchers the layout's own dp sizes are used.

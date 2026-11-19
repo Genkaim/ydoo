@@ -20,7 +20,7 @@
     android:description="@string/widget_rings_description"
     android:initialLayout="@layout/widget_rings"
     android:minHeight="110dp"
-    android:minResizeHeight="90dp"
+    android:minResizeHeight="84dp"
     android:minResizeWidth="200dp"
     android:minWidth="250dp"
     android:previewImage="@drawable/widget_preview"

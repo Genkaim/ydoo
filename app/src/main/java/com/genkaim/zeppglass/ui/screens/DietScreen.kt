@@ -295,15 +295,15 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     val intake = meals.sumOf { it.calories }
     val target = DietStore.calorieTarget(data, day)
     val remaining = target?.minus(intake)
+    // Two verdicts only: eating less than the budget is not a problem to flag,
+    // so 过少 is gone; 过多 appears exactly when the intake passes the budget.
     val status = when {
         target == null || intake <= 0 -> "未记录"
-        intake > target * 1.10 -> "过量"
-        intake < target * 0.80 -> "过少"
+        intake > target -> "过多"
         else -> "适量"
     }
     val statusColor = when (status) {
-        "过量" -> MaterialTheme.colorScheme.error
-        "过少" -> MaterialTheme.colorScheme.tertiary
+        "过多" -> MaterialTheme.colorScheme.error
         "适量" -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -336,54 +336,62 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             )
         }
         Text(
-            when {
-                target == null -> "缺少体重资料，无法估算"
-                remaining != null && remaining < 0 -> "已超出 · $status"
-                else -> status
-            },
+            if (target == null) "缺少体重资料，无法估算" else status,
             style = MaterialTheme.typography.titleSmall,
             color = statusColor
         )
     }
 
-    // Energy balance over the last seven *closed* days. A day only counts once
-    // its 05:00 boundary has passed, so today's number does not move while the
-    // user is still eating; days without a record are skipped, not read as a
-    // full deficit.
+    // This week's saving, not a rolling seven days: it runs from Monday up to
+    // the last day that has settled (a day counts once its 05:00 boundary has
+    // passed, so today's figure does not drift while the user is still eating).
+    // The card is always on screen — 常驻 — so the week's number is there even
+    // before the first day of the week has closed.
     val now = remember { java.time.LocalTime.now() }
     val currentLogicalDay = if (now.hour < 5) today.minusDays(1) else today
-    val closedDays = remember(currentLogicalDay, meals, data) {
-        (1..7).mapNotNull { offset ->
-            val day = currentLogicalDay.minusDays(offset.toLong())
-            val logged = DietStore.mealsOn(day)
-            if (logged.isEmpty()) null
-            else DietStore.calorieTarget(data, day)?.minus(logged.sumOf { it.calories })
+    val weekStart = currentLogicalDay.with(
+        java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)
+    )
+    var settledDays = 0
+    var weekDeficit = 0
+    var cursor = weekStart
+    while (cursor < currentLogicalDay) {
+        val logged = DietStore.mealsOn(cursor)
+        val budget = DietStore.calorieTarget(data, cursor)
+        // A day with no record is skipped, not read as a full deficit.
+        if (logged.isNotEmpty() && budget != null) {
+            weekDeficit += budget - logged.sumOf { it.calories }
+            settledDays++
         }
+        cursor = cursor.plusDays(1)
     }
-    val cumulativeDeficit = closedDays.sumOf { it }
     val activeCalories = data?.day(today)?.calories
 
-    if (closedDays.isNotEmpty()) {
-        FlatPanel(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+    FlatPanel(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    if (cumulativeDeficit >= 0) "近 7 天累计缺口" else "近 7 天累计盈余",
+                    if (weekDeficit >= 0) "本周节省" else "本周超出",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    (if (cumulativeDeficit >= 0) "+" else "") + cumulativeDeficit,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = if (cumulativeDeficit >= 0) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.error
+                    if (settledDays == 0) "本周还没有已结算的记录" else "本周已结算 $settledDays 天",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Text(
+                (if (weekDeficit > 0) "+" else "") + "$weekDeficit kcal",
+                style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace),
+                color = if (weekDeficit >= 0) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.error
+            )
         }
     }
 
@@ -459,12 +467,6 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             horizontalPadding = 8.dp
         )
     }
-    Text(
-        "拍一张、从相册选，或者用一句话写下来，都由 AI 估算；确认之后才写进记录。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
     if (!configured) {
         FlatPanel {
             Row(
@@ -576,11 +578,11 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "剩余 = 今日可用 − 已摄入；超过 10% 记为过量，低于 80% 记为过少。",
+                "剩余 = 今日可用 − 已摄入；只有摄入超过今日可用时才记为过多。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "热量缺口按天累计：每天（可用 − 已摄入）相加；一天要等次日 05:00 之后才结算，所以当天不会随时变动；没记录的天不当作缺口。",
+                "本周节省从周一起算：每天（可用 − 已摄入）相加；一天要等次日 05:00 之后才结算，所以当天不会随时变动；没记录的天不当作缺口。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

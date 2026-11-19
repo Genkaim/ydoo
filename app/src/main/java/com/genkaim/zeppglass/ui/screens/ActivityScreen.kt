@@ -65,6 +65,7 @@ import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SignedBarChart
+import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.TrackRings
 import com.genkaim.zeppglass.ui.components.TrendLineChart
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
@@ -328,48 +329,6 @@ private fun ActivityStatsCard(
                 Fmt.int(calories),
                 kcalColor
             )
-        }
-    }
-}
-
-@Composable
-private fun StatBlock(
-    modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String,
-    tint: Color,
-    unit: String? = null
-) {
-    Column(modifier, horizontalAlignment = Alignment.Start) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(5.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                value,
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
-            )
-            if (unit != null) {
-                Text(
-                    unit,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
-                )
-            }
         }
     }
 }

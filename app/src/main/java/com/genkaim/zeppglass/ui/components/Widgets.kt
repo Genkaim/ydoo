@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -121,6 +122,55 @@ fun DataRow(
             modifier = Modifier.weight(1.2f),
             textAlign = androidx.compose.ui.text.style.TextAlign.End
         )
+    }
+}
+
+/**
+ * One column of the horizontally arranged stat rows (activity's "今日心率" and
+ * the sleep cards): small tinted icon + label on top, a monospaced value and an
+ * optional unit underneath.
+ */
+@Composable
+fun StatBlock(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    label: String,
+    value: String,
+    tint: Color,
+    unit: String? = null
+) {
+    Column(modifier, horizontalAlignment = Alignment.Start) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace),
+                maxLines = 1
+            )
+            if (unit != null) {
+                Text(
+                    unit,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
+                )
+            }
+        }
     }
 }
 

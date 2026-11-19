@@ -23,7 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,6 +90,7 @@ import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SleepStageBar
 import com.genkaim.zeppglass.ui.components.SleepStageChart
 import com.genkaim.zeppglass.ui.components.SleepWindowChart
+import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.StressBandChart
 import com.genkaim.zeppglass.ui.components.StressDonut
 import com.genkaim.zeppglass.ui.components.StressHigh
@@ -247,21 +254,37 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
     // One card holds the night's shape: when it started, how long it lasted and
     // how the stages split. It sits above the timeline so the numbers read first
     // and the picture explains them.
-    fun stageShare(minutes: Int?, total: Int? = night.totalMinutes): String {
-        if (minutes == null) return "--"
-        if (total == null || total <= 0) return Fmt.hoursMinutes(minutes)
-        return "${Fmt.hoursMinutes(minutes)} · ${(minutes * 100.0 / total).roundToInt()}%"
-    }
+    // When it started, how long it lasted: three columns, same shape as the
+    // activity page's heart-rate row.
     FlatPanel {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            DataRow("时长", Fmt.hoursMinutes(night.totalMinutes))
-            DataRow("入睡", Fmt.timeSec(night.startEpochSec))
-            DataRow("醒来", Fmt.timeSec(night.endEpochSec))
-            Spacer(Modifier.height(6.dp))
-            DataRow("深睡", stageShare(night.deepMinutes))
-            DataRow("浅睡", stageShare(night.lightMinutes))
-            DataRow("REM", stageShare(night.remMinutes))
-            DataRow("清醒", stageShare(night.awakeMinutes))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.Schedule,
+                "时长",
+                Fmt.minutes(night.totalMinutes),
+                MaterialTheme.colorScheme.primary
+            )
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.Bedtime,
+                "入睡",
+                Fmt.timeSec(night.startEpochSec),
+                palette.sleepLight
+            )
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.WbSunny,
+                "醒来",
+                Fmt.timeSec(night.endEpochSec),
+                palette.sleepAwake
+            )
         }
     }
     Spacer(Modifier.height(12.dp))
@@ -270,6 +293,42 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
     var pickedNap by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }
     FlatPanel {
         Column(Modifier.padding(16.dp)) {
+            // The four stages live at the top of the timeline card: durations
+            // first, the picture underneath.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.DarkMode,
+                    "深睡",
+                    Fmt.hoursMinutes(night.deepMinutes),
+                    palette.sleepDeep
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.LightMode,
+                    "浅睡",
+                    Fmt.hoursMinutes(night.lightMinutes),
+                    palette.sleepLight
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.AutoAwesome,
+                    "REM",
+                    Fmt.hoursMinutes(night.remMinutes),
+                    palette.sleepRem
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Visibility,
+                    "清醒",
+                    Fmt.hoursMinutes(night.awakeMinutes),
+                    palette.sleepAwake
+                )
+            }
+            Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("分期时间线", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(
@@ -337,12 +396,39 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
                         restingHr = null,
                         stages = night.napStages
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        DataRow("深睡", stageShare(napDeep, napMinutes))
-                        DataRow("浅睡", stageShare(napLight, napMinutes))
-                        DataRow("REM", stageShare(napRem, napMinutes))
-                        DataRow("清醒", stageShare(napAwake, napMinutes))
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.DarkMode,
+                            "深睡",
+                            Fmt.hoursMinutes(napDeep),
+                            palette.sleepDeep
+                        )
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.LightMode,
+                            "浅睡",
+                            Fmt.hoursMinutes(napLight),
+                            palette.sleepLight
+                        )
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.AutoAwesome,
+                            "REM",
+                            Fmt.hoursMinutes(napRem),
+                            palette.sleepRem
+                        )
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.Visibility,
+                            "清醒",
+                            Fmt.hoursMinutes(napAwake),
+                            palette.sleepAwake
+                        )
                     }
                     Spacer(Modifier.height(12.dp))
                     SleepStageChart(

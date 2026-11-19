@@ -1436,44 +1436,6 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
             modifier = Modifier.weight(1f)
         )
     }
-    if (points.size > 1) {
-        SectionTitle("趋势", trailing = "${points.size} 次记录")
-        FlatPanel {
-            Column(Modifier.padding(16.dp)) {
-                LineChart(
-                    points.takeLast(30).map { it.weightKg?.toFloat() },
-                    Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-    }
-    SectionTitle("最近记录")
-    FlatPanel {
-        Column(Modifier.padding(vertical = 4.dp)) {
-            points.sortedByDescending { it.epochMs }.take(8).forEachIndexed { index, point ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        Fmt.dayAndTime(point.epochMs),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        "${Fmt.oneDecimal(point.weightKg)} kg",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                if (index != 7) Rule(Modifier.padding(horizontal = 16.dp))
-            }
-        }
-    }
 }
 
 // ---------------- SpO2 ----------------

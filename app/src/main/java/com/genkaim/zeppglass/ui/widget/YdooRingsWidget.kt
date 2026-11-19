@@ -198,7 +198,7 @@ class YdooRingsWidget : AppWidgetProvider() {
             val compact = heightDp(context, appWidgetId) < 96
             val views = RemoteViews(
                 context.packageName,
-                if (compact) R.layout.widget_rings_compact else R.layout.widget_rings_v2
+                if (compact) R.layout.widget_rings_compact_v2 else R.layout.widget_rings_v2
             )
             if (!compact) {
                 // Spacing is pushed as actions, not baked into the XML: a launcher
@@ -225,9 +225,9 @@ class YdooRingsWidget : AppWidgetProvider() {
 
             // Ring diameter follows the cell span the launcher reported.
             val scale = if (compact) 1f else ringScale(context, appWidgetId)
-            val sleepDp = if (compact) 44 else (50 * scale).toInt()
-            val chargeDp = if (compact) 44 else (58 * scale).toInt()
-            val loadDp = if (compact) 44 else (50 * scale).toInt()
+            val sleepDp = if (compact) 50 else (50 * scale).toInt()
+            val chargeDp = if (compact) 50 else (58 * scale).toInt()
+            val loadDp = if (compact) 50 else (50 * scale).toInt()
             if (!compact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // Only Android 12+ can resize a RemoteViews child directly; on
                 // older launchers the layout's own dp sizes are used.

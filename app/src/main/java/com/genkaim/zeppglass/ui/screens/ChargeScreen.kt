@@ -240,7 +240,7 @@ private fun ChargeSpanRow(span: ChargeSpan, dayStartSec: Long) {
     ) {
         Box(
             Modifier
-                .size(32.dp)
+                .size(36.dp)
                 .background(tint.copy(alpha = 0.14f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -248,7 +248,7 @@ private fun ChargeSpanRow(span: ChargeSpan, dayStartSec: Long) {
                 chargeSpanIcon(span.kind),
                 contentDescription = span.label,
                 tint = tint,
-                modifier = Modifier.size(17.dp)
+                modifier = Modifier.size(21.dp)
             )
         }
         Spacer(Modifier.width(12.dp))

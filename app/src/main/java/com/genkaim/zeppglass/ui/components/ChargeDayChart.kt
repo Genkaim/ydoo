@@ -3,7 +3,7 @@ package com.genkaim.zeppglass.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -38,7 +38,7 @@ import kotlin.math.roundToInt
  * The line alone does not say why it moved, so the night's sleep window and the
  * day's workouts are drawn as bands: the rise lines up with 睡眠, the drop with
  * 运动. Each band is marked with a small icon instead of a text tag — a moon for
- * sleep, a dumbbell for a workout — and the figures (start, end, how much Charge
+ * sleep, a running figure for a workout — and the figures (start, end, how much Charge
  * moved) are listed in the card under the chart, where there is room to read
  * them. The axis is labelled 0/8/16/24 so a flat morning is not mistaken for a
  * missing afternoon.
@@ -124,12 +124,12 @@ fun chargeSpans(
 }
 
 /**
- * Pulls the icon for a stretch. Sleep and naps share the moon, workouts the
- * dumbbell: the colour already separates the two, the shape says which is which
- * without relying on colour alone.
+ * Pulls the icon for a stretch. Sleep and naps share the moon, workouts a runner:
+ * the colour already separates the two, the shape says which is which without
+ * relying on colour alone.
  */
 fun chargeSpanIcon(kind: ChargeSpanKind): ImageVector =
-    if (kind == ChargeSpanKind.WORKOUT) Icons.Rounded.FitnessCenter else Icons.Rounded.Bedtime
+    if (kind == ChargeSpanKind.WORKOUT) Icons.Rounded.DirectionsRun else Icons.Rounded.Bedtime
 
 @Composable
 fun ChargeDayChart(
@@ -190,7 +190,7 @@ fun ChargeDayChart(
         }
 
         // Sleep, naps and workouts: one band each, full height, in one of two
-        // colours. A moon marks the sleep stretches and a dumbbell the workouts;
+        // colours. A moon marks the sleep stretches, a running figure the workouts;
         // the numbers that used to ride on the tag now live in the card under
         // the chart, where a short session has room to spell out its times.
         spans.forEach { span ->
@@ -201,7 +201,7 @@ fun ChargeDayChart(
                 val x1 = xOf(to.toFloat())
                 val isWorkout = span.kind == ChargeSpanKind.WORKOUT
                 val tint = if (isWorkout) minusColor else plusColor
-                val bandTop = 14.dp.toPx()
+                val bandTop = 17.dp.toPx()
                 drawRoundRect(
                     color = tint.copy(alpha = 0.12f),
                     topLeft = Offset(x0, bandTop),
@@ -214,7 +214,7 @@ fun ChargeDayChart(
                 // A very short session is only a few pixels wide; the icon is
                 // kept whole and centred on it rather than shrunk to nothing.
                 with(if (isWorkout) workoutIcon else sleepIcon) {
-                    val side = 11.dp.toPx()
+                    val side = 15.dp.toPx()
                     val left = ((x0 + x1) / 2f - side / 2f)
                         .coerceIn(0f, (size.width - side).coerceAtLeast(0f))
                     translate(left, 1.dp.toPx()) {

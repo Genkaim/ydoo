@@ -290,6 +290,31 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         write()
     }
 
+    /**
+     * Signing out: the whole archive is user data, so the live lists and the
+     * file on disk both go. Nothing here is reachable without the account.
+     */
+    fun clearAll() {
+        stop()
+        job?.cancel()
+        job = null
+        suggestionsJob?.cancel()
+        suggestionsJob = null
+        writeJob?.cancel()
+        writeJob = null
+        sending = false
+        suggestionsLoading = false
+        phase = ""
+        contextSent = false
+        currentId = null
+        messages.clear()
+        sessions.clear()
+        suggestions.clear()
+        stored.clear()
+        draft = ""
+        runCatching { archiveFile()?.delete() }
+    }
+
     // ---------------- data agent ----------------
 
     fun send(settings: AppSettings, prompt: String, data: HealthData?) {
@@ -472,8 +497,13 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 ChatMessage(
                     "system",
                     "你在帮用户想接下来可以问健康助手的问题。只输出 4 行中文问题，每行一个，不带编号、符号或解释，" +
-                        "每条 8–18 个字。要求：至少 2 条紧扣下面数据里的具体数字或变化（点名指标、日期或某次运动），" +
-                        "其余可以问整体趋势、长期影响或下一步怎么安排；两类都要有，不要四条都在问同一个指标。" +
+                        "每条 8–16 个字，要短，像用户随口说的一句话。" +
+                        // Chips are a prompt to type, not a report: naming exact
+                        // numbers made every starter question a paragraph.
+                        "硬性要求：不要写出任何具体数字、日期或数值，也不要点名某个指标的读数；" +
+                        "用「最近」「这段时间」「上周」这类模糊说法代替，" +
+                        "例如写「最近睡眠是不是有点浅」而不是「昨晚只睡 5 小时怎么办」。" +
+                        "四条分别覆盖睡眠、恢复或准备度、训练负荷、饮食里最值得关注的一两件事，不要四条都问同一个指标。" +
                         "不要写“今天怎么样”“需要注意什么”“如何改善健康”这类放在谁身上都成立的空问题，" +
                         "也不要做疾病诊断。"
                 ),
@@ -504,7 +534,10 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 }
                 // A chatty model sometimes answers with a whole document
                 // instead of four questions; heading lines are not questions.
-                .filter { it.length in 6..30 && !it.startsWith("#") && !it.contains("**") }
+                .filter { it.length in 5..20 && !it.startsWith("#") && !it.contains("**") }
+                // Chips never quote numbers: the model drifts back to "睡 5
+                // 小时" no matter what the prompt says, so those lines go.
+                .filter { line -> line.none { it.isDigit() } }
                 .distinct()
                 .take(4)
             suggestions.clear()

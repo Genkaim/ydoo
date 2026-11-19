@@ -42,6 +42,9 @@ class HealthStore private constructor(
     private val zone: ZoneId = ZoneId.systemDefault()
     private val api = ZeppApi(settings)
 
+    /** Bumped by [reset] so a request that started before the logout is dropped. */
+    private var generation = 0
+
     var state by mutableStateOf(loadInitialState())
         private set
 
@@ -152,6 +155,7 @@ class HealthStore private constructor(
 
     private suspend fun doRefresh() {
         val userId = settings.userId ?: return
+        val gen = generation
         val previous = state.data
         state = state.copy(loading = previous == null, refreshing = true, error = null)
 
@@ -358,6 +362,11 @@ class HealthStore private constructor(
             warnings = warnings.distinct()
         ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, zone)) }
 
+        // Signed out while this request was in flight: its answer belongs to a
+        // session that no longer exists, so neither the page nor the file keeps
+        // it. [reset] bumped the generation.
+        if (gen != generation) return
+
         state = state.copy(
             loading = false,
             refreshing = false,
@@ -403,8 +412,20 @@ class HealthStore private constructor(
         carrySection("dailyHealth", dailyHealth)
 
         withContext(Dispatchers.IO) {
-            runCatching { cacheFile.writeText(snapshot.toString()) }
+            if (gen == generation) runCatching { cacheFile.writeText(snapshot.toString()) }
         }
+    }
+
+    /**
+     * Signing out removes the account, so every number it produced goes too:
+     * the snapshot file, the parsed state, workout details and anything a
+     * request in flight would have written back.
+     */
+    fun reset() {
+        generation++
+        workoutCache.clear()
+        runCatching { cacheFile.delete() }
+        state = HealthUiState(loading = false, refreshing = false, data = null)
     }
 
     private class Cached(val data: HealthData, val fetchedAt: Long)

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,11 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.components.FlatBottomBar
+import com.genkaim.zeppglass.ui.components.LocalTabBarSpace
 import com.genkaim.zeppglass.ui.screens.AiScreen
 import com.genkaim.zeppglass.ui.screens.ChargeScreen
 import com.genkaim.zeppglass.ui.screens.OverviewScreen
@@ -72,6 +76,11 @@ fun ZgApp() {
         label = "contentAlpha"
     )
 
+    // The bar's real footprint, so the AI composer clears it on every device
+    // instead of relying on a hand-tuned constant.
+    val density = LocalDensity.current
+    var barSpace by remember { mutableStateOf(86.dp) }
+
     fun openDetail(target: DetailTarget) {
         context.startActivity(DetailActivity.intent(context, target))
     }
@@ -89,57 +98,62 @@ fun ZgApp() {
         contentColor = MaterialTheme.colorScheme.onBackground
     ) {
         Box(Modifier.fillMaxSize()) {
-            AnimatedContent(
-                targetState = selected,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(contentAlpha),
-                transitionSpec = { fadeIn(tween(150)).togetherWith(fadeOut(tween(110))) },
-                label = "tab"
-            ) { tab ->
-                val contentModifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-                when (tab) {
-                    AppTab.OVERVIEW -> OverviewScreen(
-                        settings = settings,
-                        store = store,
-                        modifier = contentModifier,
-                        onOpenSettings = ::openSettings,
-                        onLogin = { showLoginSheet = true },
-                        onOpenTab = { tab -> if (tab in tabs) selected = tab },
-                        onOpenDetail = ::openDetail
-                    )
-                    AppTab.CHARGE -> ChargeScreen(
-                        settings = settings,
-                        store = store,
-                        modifier = contentModifier
-                    )
-                    AppTab.ACTIVITY -> ActivityScreen(
-                        settings = settings,
-                        store = store,
-                        modifier = contentModifier,
-                        onOpenDetail = ::openDetail
-                    )
-                    AppTab.AI -> AiScreen(
-                        settings = settings,
-                        store = store,
-                        modifier = contentModifier,
-                        onOpenSettings = ::openSettings
-                    )
+            CompositionLocalProvider(LocalTabBarSpace provides barSpace) {
+                AnimatedContent(
+                    targetState = selected,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(contentAlpha),
+                    transitionSpec = { fadeIn(tween(150)).togetherWith(fadeOut(tween(110))) },
+                    label = "tab"
+                ) { tab ->
+                    val contentModifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                    when (tab) {
+                        AppTab.OVERVIEW -> OverviewScreen(
+                            settings = settings,
+                            store = store,
+                            modifier = contentModifier,
+                            onOpenSettings = ::openSettings,
+                            onLogin = { showLoginSheet = true },
+                            onOpenTab = { tab -> if (tab in tabs) selected = tab },
+                            onOpenDetail = ::openDetail
+                        )
+                        AppTab.CHARGE -> ChargeScreen(
+                            settings = settings,
+                            store = store,
+                            modifier = contentModifier
+                        )
+                        AppTab.ACTIVITY -> ActivityScreen(
+                            settings = settings,
+                            store = store,
+                            modifier = contentModifier,
+                            onOpenDetail = ::openDetail
+                        )
+                        AppTab.AI -> AiScreen(
+                            settings = settings,
+                            store = store,
+                            modifier = contentModifier,
+                            onOpenSettings = ::openSettings
+                        )
+                    }
                 }
-            }
 
-            FlatBottomBar(
-                tabs = tabs,
-                selected = selected,
-                onSelect = { selected = it },
-                onLongPress = { showCustomize = true },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 10.dp)
-            )
+                FlatBottomBar(
+                    tabs = tabs,
+                    selected = selected,
+                    onSelect = { selected = it },
+                    onLongPress = { showCustomize = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        // Measured on the outside, before the bar's own padding,
+                        // so it is the space the bar takes from the window.
+                        .onSizeChanged { barSpace = with(density) { it.height.toDp() } }
+                        .navigationBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                )
+            }
         }
     }
 

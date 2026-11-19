@@ -24,14 +24,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.ui.tabs.AppTab
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
+
+/**
+ * How much room the floating bar takes from the bottom of the window, margins
+ * and navigation-bar padding included. The shell measures itself into this so a
+ * page can park a control just above the bar instead of guessing a constant.
+ */
+val LocalTabBarSpace = staticCompositionLocalOf<Dp> { 86.dp }
 
 /**
  * Floating capsule navigation. Solid surface with a soft shadow so it reads as

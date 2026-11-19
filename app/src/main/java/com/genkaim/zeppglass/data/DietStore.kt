@@ -112,6 +112,17 @@ object DietStore {
         save()
     }
 
+    /**
+     * Signing out: the log and its photos only exist on this phone, so both go.
+     * The AI endpoint, theme and tab layout are configuration, not data, and
+     * stay where they are.
+     */
+    fun wipe() {
+        meals.clear()
+        val root = File(appContext?.filesDir ?: File("."), "diet")
+        runCatching { root.deleteRecursively() }
+    }
+
     private fun archive(): File {
         val root = File(appContext?.filesDir ?: File("."), "diet")
         root.mkdirs()

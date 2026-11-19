@@ -5,12 +5,16 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +23,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -63,7 +65,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,21 +75,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import com.genkaim.zeppglass.data.AiChatSession
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.EmptyCard
+import com.genkaim.zeppglass.ui.components.LocalTabBarSpace
 import com.genkaim.zeppglass.ui.components.MarkdownView
 import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.RoundIconButton
@@ -94,10 +103,17 @@ import com.genkaim.zeppglass.ui.components.TypingDots
 import kotlinx.coroutines.launch
 
 /**
- * Floating tab bar (76 dp) plus its own outer margin and a little air. The old
- * 74 dp left the last two dp of the composer tucked under the bar.
+ * Floating tab bar footprint, used when the shell has not measured itself yet.
+ * The real value comes from [LocalTabBarSpace].
  */
-private val TabBarClearance = 86.dp
+private val FallbackBarSpace = 86.dp
+
+/**
+ * Air between the composer and whatever is below it: the floating bar when the
+ * keyboard is down, the top edge of the keyboard when it is up.
+ */
+private val ComposerAir = 8.dp
+
 
 /**
  * Chat page, laid out like a mainstream assistant client: a fixed title bar on
@@ -191,23 +207,48 @@ fun AiScreen(
         Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
     }
 
-    // The keyboard replaces the tab-bar gap: while typing the composer sits just
-    // above the IME, and the floating tab bar is out of the way.
+    // ---- bottom spacing ---------------------------------------------------
+    // The composer has to clear two different things: the floating tab bar
+    // while the keyboard is down, and the keyboard itself while it is up. Both
+    // are driven by one fraction we own instead of by the raw IME inset, so the
+    // field travels along a single line. Reading the inset directly made it
+    // drop to the bar first and only then climb back: the inset collapses in
+    // one frame while the old spacing animation was still running.
+    val density = LocalDensity.current
     val imeVisible = WindowInsets.isImeVisible
-    // Union, never a sum: the IME inset already covers the navigation bar, so
-    // padding both leaves a gap under the composer and makes it jump when the
-    // keyboard goes away. One value serves both states.
-    val bottomInsets = WindowInsets.navigationBars.union(WindowInsets.ime)
-    val bottomClearance by animateDpAsState(
-        targetValue = if (imeVisible) 8.dp else TabBarClearance,
-        animationSpec = tween(180),
-        label = "composerGap"
+    val imeNowPx = with(density) { WindowInsets.ime.getBottom(this) }
+    // The keyboard keeps its height for the whole session; remembering the
+    // tallest value keeps the travel distance stable when the inset itself is
+    // already back at zero.
+    var tallestImePx by remember { mutableIntStateOf(0) }
+    SideEffect { if (imeNowPx > tallestImePx) tallestImePx = imeNowPx }
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    // Two sources, because either one can be missing: the platform's IME
+    // visibility flag, and an IME inset taller than the navigation bar (some
+    // ROMs report the bar height even while the keyboard is closed).
+    val navBarPx = with(density) { WindowInsets.navigationBars.getBottom(this) }
+    val keyboardUp = imeVisible || imeNowPx > navBarPx
+    // A few builds report no IME inset at all (the window resizes instead).
+    // A rough keyboard height beats hiding the field behind the keyboard.
+    val keyboardPx = tallestImePx.takeIf { it > 0 }
+        ?: with(density) { (screenHeightDp * 0.40f).dp.roundToPx() }
+    val typing by animateFloatAsState(
+        targetValue = if (keyboardUp) 1f else 0f,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "typing"
+    )
+    // Measured by the shell, so the field clears the bar on every device no
+    // matter which system-bar insets it reports.
+    val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace
+    val bottomSpace = lerp(
+        start = barSpace + ComposerAir,
+        stop = with(density) { keyboardPx.toDp() } + ComposerAir,
+        fraction = typing
     )
 
     Column(
         modifier
             .fillMaxSize()
-            .windowInsetsPadding(bottomInsets)
     ) {
         PageHeader(
             title = "AI 教练",
@@ -285,8 +326,14 @@ fun AiScreen(
         }
 
         // Starter questions belong next to the composer: they are shortcuts for
-        // what to type, not page content to scroll past.
-        if (messages.isEmpty() && configured) {
+        // what to type, not page content to scroll past. They grow out of the
+        // composer and fold back into it, so the field glides instead of
+        // jumping the moment the first message is sent.
+        AnimatedVisibility(
+            visible = messages.isEmpty() && configured,
+            enter = fadeIn(tween(160)) + expandVertically(tween(220), expandFrom = Alignment.Bottom),
+            exit = fadeOut(tween(110)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Bottom)
+        ) {
             SuggestionStrip(
                 suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
                 loading = AiChatSession.suggestionsLoading,
@@ -303,7 +350,7 @@ fun AiScreen(
             onStop = { AiChatSession.stop() },
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
         )
-        Spacer(Modifier.height(bottomClearance))
+        Spacer(Modifier.height(bottomSpace))
     }
 
     if (showHistory) {
@@ -376,8 +423,18 @@ private fun Composer(
     modifier: Modifier = Modifier
 ) {
     val canSend = value.isNotBlank() && !sending
+    // Sending empties the field and drops the whole capsule back to one line;
+    // both the height and the returning placeholder are eased so the composer
+    // settles instead of snapping.
+    val hintAlpha by animateFloatAsState(
+        targetValue = if (value.isEmpty()) 1f else 0f,
+        animationSpec = tween(140),
+        label = "composerHint"
+    )
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = tween(160)),
         shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -403,9 +460,10 @@ private fun Composer(
                 keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 decorationBox = { inner ->
                     Box {
-                        if (value.isEmpty()) {
+                        if (hintAlpha > 0.01f) {
                             Text(
                                 if (enabled) "问问训练、恢复或饮食…" else "先填写 AI 接入点",
+                                modifier = Modifier.alpha(hintAlpha),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -549,8 +607,9 @@ private fun MessageAction(label: String, icon: ImageVector, onClick: () -> Unit)
 }
 
 /**
- * Nothing said yet: the greeting sits in the middle of the empty transcript,
- * not pinned to the top of the page.
+ * Nothing said yet: just the greeting, dead centre of the empty transcript. The
+ * line explaining what the assistant reads was removed — the chips below say it
+ * better, and one short line reads calmer.
  */
 @Composable
 private fun EmptyTranscript(
@@ -568,30 +627,20 @@ private fun EmptyTranscript(
                 onAction = onOpenSettings
             )
         } else {
-            Column(
-                Modifier.padding(horizontal = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "今天想聊点什么？",
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "回答会直接引用本机的睡眠、负荷与饮食记录；点下面的问题开始，或者自己输入。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
+            Text(
+                "今天想聊点什么？",
+                modifier = Modifier.padding(horizontal = 28.dp),
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
 
 /**
  * Starter questions as one horizontally scrolling row of chips, parked right
- * above the composer where the next tap goes.
+ * above the composer where the next tap goes. The "still writing them" line
+ * sits above the chips: it describes what is about to appear underneath.
  */
 @Composable
 private fun SuggestionStrip(
@@ -600,6 +649,14 @@ private fun SuggestionStrip(
     onPick: (String) -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+        if (loading) {
+            Text(
+                "正在根据最近的数据准备问题…",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp)
+            )
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -624,14 +681,6 @@ private fun SuggestionStrip(
                     )
                 }
             }
-        }
-        if (loading) {
-            Text(
-                "正在根据最近的数据准备问题…",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 20.dp, top = 6.dp)
-            )
         }
     }
 }

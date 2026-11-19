@@ -153,6 +153,22 @@ class AppSettings private constructor(context: Context) {
             .apply()
     }
 
+    /**
+     * Everything the app derived from the account rather than from the user's
+     * own setup: today's AI summary is a reading of their health data, so it
+     * must not survive a sign-out.
+     */
+    fun clearDerivedData() {
+        dailySummaryText = ""
+        dailySummaryDay = ""
+        dailySummaryAt = 0L
+        prefs.edit()
+            .remove(KEY_SUMMARY_TEXT)
+            .remove(KEY_SUMMARY_DAY)
+            .remove(KEY_SUMMARY_AT)
+            .apply()
+    }
+
     fun updateTheme(mode: String) {
         if (mode !in setOf("system", "light", "dark")) return
         themeMode = mode

@@ -30,9 +30,11 @@ import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.Image
@@ -54,6 +57,8 @@ import com.genkaim.zeppglass.R
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.HealthStore
+import com.genkaim.zeppglass.data.SignOut
 import com.genkaim.zeppglass.ui.components.CapsuleField
 import com.genkaim.zeppglass.ui.components.FlatButton
 import com.genkaim.zeppglass.ui.components.FlatPanel
@@ -75,7 +80,10 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val store = remember { HealthStore.get(context, settings) }
     var showCustomize by remember { mutableStateOf(false) }
+    var confirmSignOut by remember { mutableStateOf(false) }
     var headerHeight by remember { mutableStateOf(0.dp) }
 
     var baseUrl by remember { mutableStateOf(settings.aiBaseUrl) }
@@ -138,11 +146,9 @@ fun SettingsScreen(
                                 text = "断开",
                                 icon = Icons.Rounded.Logout,
                                 primary = false,
-                                onClick = {
-                                    settings.clearSession()
-                                    testResult = "已断开，本机缓存的数据仍在"
-                                    testOk = false
-                                }
+                                // Signing out also clears what the account left
+                                // on the phone, so it asks first.
+                                onClick = { confirmSignOut = true }
                             )
                         }
                     }
@@ -388,6 +394,34 @@ fun SettingsScreen(
 
     if (showCustomize) {
         CustomizeTabsSheet(settings = settings, onDismiss = { showCustomize = false })
+    }
+
+    if (confirmSignOut) {
+        AlertDialog(
+            onDismissRequest = { confirmSignOut = false },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text("断开并清除本机数据？") },
+            text = {
+                Text(
+                    "会把网页登录状态一并删掉，并清空本机的健康快照、AI 对话记录、饮食记录与照片。" +
+                        "AI 接入点、主题与底栏设置会保留，重新登录后数据会重新同步。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    SignOut.run(context, settings, store)
+                    confirmSignOut = false
+                    testOk = true
+                    testResult = "已断开，本机数据已清除"
+                }) { Text("断开并清除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSignOut = false }) { Text("取消") }
+            }
+        )
     }
 }
 

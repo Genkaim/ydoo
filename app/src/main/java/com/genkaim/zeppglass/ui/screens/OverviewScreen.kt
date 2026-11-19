@@ -308,7 +308,7 @@ fun OverviewScreen(
 
                             DietCard(
                                 title = if (isToday) "今日饮食" else "${Fmt.date(date)} 饮食",
-                                target = DietStore.calorieTarget(raw, date),
+                                target = DietStore.calorieTarget(raw, date, settings.dietGoalOrCut),
                                 intake = dietKcal,
                                 meals = dietMeals.size,
                                 onClick = { onOpenDetail(DetailTarget(DetailKind.DIET, date)) }

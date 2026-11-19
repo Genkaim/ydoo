@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -85,6 +86,7 @@ import com.genkaim.zeppglass.ui.components.FlatButton
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.RoundIconButton
 import com.genkaim.zeppglass.ui.components.SectionTitle
+import com.genkaim.zeppglass.ui.sheets.DietGoalSheet
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -163,6 +165,14 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     // question without moving the page.
     var setupPrompt by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
+    var goalOpen by remember { mutableStateOf(false) }
+
+    // No saved goal yet (new install, or an upgrade from a build that had no
+    // such setting): ask on today's page instead of quietly assuming 减脂.
+    LaunchedEffect(Unit) {
+        if (settings.dietGoal == null && day == today) goalOpen = true
+    }
+    val goal = settings.dietGoalOrCut
 
     fun analyze(file: File) {
         flow = PhotoFlow.Loading(file)
@@ -302,7 +312,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
 
     val meals = DietStore.mealsOn(day)
     val intake = meals.sumOf { it.calories }
-    val target = DietStore.calorieTarget(data, day)
+    val target = DietStore.calorieTarget(data, day, goal)
     val remaining = target?.minus(intake)
     // Two verdicts only: eating less than the budget is not a problem to flag,
     // so 过少 is gone; 过多 appears exactly when the intake passes the budget.
@@ -351,6 +361,27 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             style = MaterialTheme.typography.titleSmall,
             color = statusColor
         )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                .clickable { goalOpen = true }
+                .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${goal.label}目标",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = "调整饮食目标",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+        }
     }
 
     // This week's saving, not a rolling seven days: it runs from Monday up to
@@ -368,7 +399,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     var cursor = weekStart
     while (cursor < currentLogicalDay) {
         val logged = DietStore.mealsOn(cursor)
-        val budget = DietStore.calorieTarget(data, cursor)
+        val budget = DietStore.calorieTarget(data, cursor, goal)
         // A day with no record is skipped, not read as a full deficit.
         if (logged.isNotEmpty() && budget != null) {
             weekDeficit += budget - logged.sumOf { it.calories }
@@ -612,11 +643,15 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     FlatPanel {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "今日可用 = 基础代谢（按身高、生日、性别与体重算）+ 手表当天的活动消耗。",
+                "今日可用按当前目标算：基础代谢（按身高、生日、性别和体重估）加上最近七天的活动消耗。当天不算在内，免得目标随着白天步数越走越高；没有记录的日子不计入。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "剩余 = 今日可用 − 已摄入；只有摄入超过今日可用时才记为过多。",
+                "换目标会让这个数一起变：减脂在消耗上留出余量，维持按消耗吃，增肌多吃一点。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "剩余就是把已摄入从今日可用里减掉；只有吃超过今日可用时才记为过多。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
@@ -771,6 +806,19 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             onTextChange = { description = it },
             onDismiss = { describeOpen = false },
             onSubmit = { analyzeText(it) }
+        )
+    }
+
+    // Asked once, on today's page: a fresh install and an install upgraded from
+    // a build without this setting both arrive with no saved goal.
+    if (goalOpen) {
+        DietGoalSheet(
+            current = settings.dietGoal,
+            onPick = { goal ->
+                settings.updateDietGoal(goal)
+                goalOpen = false
+            },
+            onDismiss = { goalOpen = false }
         )
     }
 }

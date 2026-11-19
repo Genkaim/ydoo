@@ -98,7 +98,7 @@ object DailySummary {
             ChatMessage("system", SYSTEM_PROMPT),
             ChatMessage(
                 "user",
-                AiContext.digest(data, 7) + "\n\n请基于上面的数据写今天的摘要。"
+                AiContext.digest(data, 7, settings.dietGoalOrCut) + "\n\n请基于上面的数据写今天的摘要。"
             )
         )
 

@@ -40,7 +40,7 @@ object AiTools {
     }
 
     /** Executes one `{"table":..., "from":..., "to":...}` query. */
-    fun execute(query: String, data: HealthData?): String {
+    fun execute(query: String, data: HealthData?, goal: DietGoal = DietGoal.CUT): String {
         if (data == null) return "{\"error\":\"本机没有数据\"}"
         val json = runCatching { JSONObject(query) }.getOrNull()
             ?: return "{\"error\":\"查询不是合法 JSON\"}"
@@ -212,7 +212,7 @@ object AiTools {
                         JSONObject().apply {
                             put("date", date.toString())
                             put("intake_kcal", intake)
-                            DietStore.calorieTarget(data, date)?.let { target ->
+                            DietStore.calorieTarget(data, date, goal)?.let { target ->
                                 put("target_kcal", target)
                                 put("remaining_kcal", target - intake)
                             }

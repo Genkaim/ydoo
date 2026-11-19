@@ -415,7 +415,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 // every table itself. The agent round used to stop after the
                 // first couple of tables, so answers claimed that steps, sleep
                 // and other rows were unavailable.
-                val digest = AiContext.digest(data)
+                val digest = AiContext.digest(data, goal = settings.dietGoalOrCut)
                 // First turn of the conversation carries the full briefing; later
                 // turns only carry the role prompt, so a short question is not
                 // buried under a wall of data.
@@ -463,7 +463,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                         )
                     }
                     extractQuery(plan)?.let { query ->
-                        val result = withContext(Dispatchers.IO) { AiTools.execute(query, data) }
+                        val result = withContext(Dispatchers.IO) { AiTools.execute(query, data, settings.dietGoalOrCut) }
                         conversation.add(ChatMessage("assistant", "（查询本机数据：$query）"))
                         conversation.add(ChatMessage("user", "查询结果：\n$result"))
                     }
@@ -506,7 +506,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                     val pending = onlyQuery(messages.getOrNull(assistantIndex)?.content.orEmpty())
                     if (pending == null || round > 0) break
                     phase = "正在读取本机数据…"
-                    val result = withContext(Dispatchers.IO) { AiTools.execute(pending, data) }
+                    val result = withContext(Dispatchers.IO) { AiTools.execute(pending, data, settings.dietGoalOrCut) }
                     conversation.add(ChatMessage("assistant", "（查询本机数据：$pending）"))
                     conversation.add(ChatMessage("user", "查询结果：\n$result\n请据此给出最终回答。"))
                     messages[assistantIndex] = Message("assistant", "")
@@ -569,7 +569,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         // asked on, even if midnight or the 05:00 rollover happens meanwhile.
         val day = DailySummary.dayKey()
         suggestionsJob = scope.launch {
-            val digest = AiContext.digest(data)
+            val digest = AiContext.digest(data, goal = settings.dietGoalOrCut)
             // Everything the user has already seen today, plus what the chips
             // are showing right now. "换一批" that hands back the same idea in
             // different words is the one outcome the button must not produce,

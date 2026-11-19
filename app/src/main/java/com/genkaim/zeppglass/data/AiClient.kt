@@ -427,7 +427,7 @@ object AiContext {
         }
     }
 
-    fun digest(data: HealthData?, days: Int = 7): String {
+    fun digest(data: HealthData?, days: Int = 7, goal: DietGoal = DietGoal.CUT): String {
         if (data == null) return "（本机还没有健康数据）"
         val builder = StringBuilder()
         val today = data.days.lastOrNull()?.date
@@ -546,7 +546,7 @@ object AiContext {
             builder.appendLine("\n饮食（本机记录，热量为识别估算，用户可改）：")
             dietDays.forEach { (date, meals) ->
                 val intake = meals.sumOf { it.calories }
-                val target = DietStore.calorieTarget(data, date)
+                val target = DietStore.calorieTarget(data, date, goal)
                 builder.appendLine(
                     "- $date: " + buildList {
                         add("摄入 $intake kcal")

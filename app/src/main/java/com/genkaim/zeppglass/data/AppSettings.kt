@@ -69,6 +69,26 @@ class AppSettings private constructor(context: Context) {
     var themeMode: String by mutableStateOf(prefs.getString(KEY_THEME, "system") ?: "system")
         private set
 
+    /**
+     * What the diet budget aims at. Null means the user has never picked one,
+     * which is also the state every install upgraded from a build without this
+     * setting arrives in — the diet page asks once instead of guessing.
+     */
+    var dietGoal: DietGoal? by mutableStateOf(
+        prefs.getString(KEY_DIET_GOAL, null)?.let { saved ->
+            runCatching { DietGoal.valueOf(saved) }.getOrNull()
+        }
+    )
+        private set
+
+    fun updateDietGoal(goal: DietGoal) {
+        dietGoal = goal
+        prefs.edit().putString(KEY_DIET_GOAL, goal.name).apply()
+    }
+
+    /** Budget mode the numbers use before the first pick: 减脂. */
+    val dietGoalOrCut: DietGoal get() = dietGoal ?: DietGoal.CUT
+
     /** Stable per-install id for gateways that route by session header. */
     val aiSessionId: String by lazy {
         prefs.getString(KEY_AI_SESSION, null) ?: java.util.UUID.randomUUID().toString().also {
@@ -312,6 +332,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_AI_VISION = "ai_vision_model"
         private const val KEY_AI_SESSION = "ai_session"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_DIET_GOAL = "diet_goal"
         private const val KEY_SUMMARY_TEXT = "daily_summary_text"
         private const val KEY_SUMMARY_DAY = "daily_summary_day"
         private const val KEY_SUMMARY_AT = "daily_summary_at"

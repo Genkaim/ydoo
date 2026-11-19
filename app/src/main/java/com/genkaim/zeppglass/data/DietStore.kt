@@ -37,6 +37,17 @@ data class Meal(
 }
 
 /**
+ * What the daily budget is aiming at. The factor is applied to the day's
+ * estimated expenditure (basal rate + the watch's recent activity); 减脂 is the
+ * default, but it is a choice the user makes once, not a silent assumption.
+ */
+enum class DietGoal(val label: String, val factor: Double, val blurb: String) {
+    CUT("减脂", 0.85, "在消耗上留出余量，体重缓慢下降"),
+    HOLD("维持", 1.00, "吃回消耗的量，体重保持稳定"),
+    GAIN("增肌", 1.10, "比消耗多吃一点，配合训练长肌肉")
+}
+
+/**
  * The diet log lives only on this phone: photos in `diet/`, entries in
  * `diet/meals.json`. Nothing is uploaded except the photo the user chooses to
  * analyse, which goes to their own AI endpoint.
@@ -73,11 +84,15 @@ object DietStore {
     fun intakeOn(date: LocalDate): Int = mealsOn(date).sumOf { it.calories }
 
     /**
-     * Today's energy budget: Mifflin-St Jeor basal rate from the profile plus
-     * the watch's active calories. Null when weight or height is missing, so the
-     * card shows -- instead of an invented number.
+     * The day's energy budget: Mifflin-St Jeor basal rate from the profile, the
+     * last seven days of watch activity, and the user's goal. Null when weight
+     * is missing, so the card shows -- instead of an invented number.
      */
-    fun calorieTarget(data: HealthData?, date: LocalDate): Int? {
+    fun calorieTarget(
+        data: HealthData?,
+        date: LocalDate,
+        goal: DietGoal = DietGoal.CUT
+    ): Int? {
         val body = data?.body ?: return null
         val weight = data.latestWeight()?.weightKg ?: body.weightKg ?: return null
         val height = body.heightCm
@@ -93,8 +108,22 @@ object DietStore {
             // caller labels the number as an estimate.
             weight * 22
         }
-        val active = data.day(date)?.calories ?: 0.0
-        return (bmr + active).roundToInt()
+        // Activity comes from the seven days before this one. Today's steps are
+        // still being counted, so a budget that grows through the evening would
+        // read as "you may eat more the later it gets". A day with no reading
+        // comes back as 0 from the API and is skipped, not averaged in as a day
+        // of lying in bed.
+        val past = (7 downTo 1).mapNotNull { back ->
+            data.day(date.minusDays(back.toLong()))?.calories?.takeIf { it > 0.0 }
+        }
+        val activity = if (past.isEmpty()) 0.0 else past.average()
+        val maintenance = bmr + activity
+        val target = maintenance * goal.factor
+        // A deficit that dips under the basal rate is not a plan, so 105% of BMR
+        // is the floor; the sex-based floor keeps a very light person from a
+        // number that is too low to cover ordinary daily living.
+        val floor = maxOf(bmr * 1.05, if (male == true) 1500.0 else 1200.0)
+        return maxOf(target, floor).roundToInt()
     }
 
     fun newPhotoFile(): File {

@@ -3,6 +3,7 @@ package com.genkaim.zeppglass.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -10,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -239,37 +242,45 @@ fun SettingsScreen(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Rounded.Widgets, contentDescription = null)
                     Spacer(Modifier.size(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("今日概览", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            if (canPinWidget) {
-                                "睡眠 / Charge / 负荷三个圆环，和首页同一套数"
-                            } else {
-                                "桌面双指捏合 → 小部件 → 安卓小部件"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (canPinWidget) {
-                        FlatButton(
-                            text = "添加",
-                            onClick = {
-                                runCatching {
-                                    widgetManager?.requestPinAppWidget(
-                                        ComponentName(context, YdooRingsWidget::class.java),
-                                        null,
-                                        null
-                                    )
+                    // One line, one button: the widget's name and a plus. Where to
+                    // find it if the launcher hides the request lives in the toast.
+                    Text(
+                        "今日概览",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .clickable {
+                                if (canPinWidget) {
+                                    runCatching {
+                                        widgetManager?.requestPinAppWidget(
+                                            ComponentName(context, YdooRingsWidget::class.java),
+                                            null,
+                                            null
+                                        )
+                                    }
                                 }
+                                Toast.makeText(
+                                    context,
+                                    "若没看见，可在桌面小部件 → 安卓小部件里手动添加",
+                                    Toast.LENGTH_LONG
+                                ).show()
                             },
-                            primary = false,
-                            horizontalPadding = 12.dp
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Add,
+                            contentDescription = "添加到桌面",
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

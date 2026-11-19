@@ -191,6 +191,13 @@ class YdooRingsWidget : AppWidgetProvider() {
 
         private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_rings)
+            val density = context.resources.displayMetrics.density
+            fun px(dp: Int): Int = (dp * density).toInt()
+            // Spacing is pushed as actions, not baked into the XML: a launcher
+            // that keeps the previously inflated views only reapplies actions,
+            // so attribute-only changes would never reach an existing widget.
+            views.setViewPadding(R.id.widget_root, px(12), px(12), px(12), px(12))
+            views.setViewPadding(R.id.widget_rings_row, 0, px(4), 0, 0)
             val settings = AppSettings.get(context)
             val data = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
             val zone = ZoneId.systemDefault()
@@ -201,7 +208,6 @@ class YdooRingsWidget : AppWidgetProvider() {
             val chargeScore = if (fresh) data?.chargeOn(today)?.total else null
             val strain = if (fresh) data?.strainOn(today)?.strain else null
 
-            val density = context.resources.displayMetrics.density
             val primary = context.getColor(R.color.widget_primary)
             val critical = context.getColor(R.color.widget_critical)
             val warn = context.getColor(R.color.widget_warn)

@@ -19,6 +19,9 @@ class MainActivity : ComponentActivity() {
         // The snapshot is read once, before the first frame, so opening the app
         // draws the last data instead of flashing a "syncing" card.
         HealthStore.get(this, settings)
+        // Push a fresh RemoteViews set on every cold start: a launcher may still
+        // be showing views inflated from an older build's layout.
+        Thread { com.genkaim.zeppglass.ui.widget.YdooRingsWidget.updateAll(this) }.start()
         // Edge-to-edge has to be in place before the view is attached. Running
         // it from a LaunchedEffect (after the first frame) left every window
         // inset at 0 — the status bar, the navigation bar and the keyboard

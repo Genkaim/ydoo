@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,10 @@ import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.AxisBarChart
 import com.genkaim.zeppglass.ui.components.AxisLineChart
 import com.genkaim.zeppglass.ui.components.ChargeDayChart
+import com.genkaim.zeppglass.ui.components.ChargeSpan
+import com.genkaim.zeppglass.ui.components.ChargeSpanKind
+import com.genkaim.zeppglass.ui.components.chargeSpanIcon
+import com.genkaim.zeppglass.ui.components.chargeSpans
 import com.genkaim.zeppglass.ui.components.EmptyCard
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.PageHeader
@@ -113,6 +118,24 @@ fun ChargeScreen(
                         onAction = { store.refresh() }
                     )
                     else -> {
+                        // The chart marks each stretch with an icon; the card
+                        // below spells out the same stretches. Both read from
+                        // one list so the two can never disagree.
+                        val daySleep = data?.nightOn(todayCharge.date)
+                        val dayWorkouts = data?.workouts.orEmpty().filter { workout ->
+                            java.time.Instant.ofEpochSecond(workout.endEpochSec)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDate() == todayCharge.date
+                        }
+                        val spans = chargeSpans(
+                            samples = todayCharge.samples,
+                            sleep = daySleep,
+                            workouts = dayWorkouts
+                        )
+                        val dayStartSec = todayCharge.date
+                            .atStartOfDay(java.time.ZoneId.systemDefault())
+                            .toEpochSecond()
+
                         ChargeHero(todayCharge)
                         SectionTitle("当天曲线")
                         FlatPanel {
@@ -120,18 +143,39 @@ fun ChargeScreen(
                                 ChargeDayChart(
                                     date = todayCharge.date,
                                     samples = todayCharge.samples,
-                                    sleep = data?.nightOn(todayCharge.date),
-                                    workouts = data?.workouts.orEmpty().filter { workout ->
-                                        java.time.Instant.ofEpochSecond(workout.endEpochSec)
-                                            .atZone(java.time.ZoneId.systemDefault())
-                                            .toLocalDate() == todayCharge.date
-                                    },
+                                    sleep = daySleep,
+                                    workouts = dayWorkouts,
                                     untilEpochSec = if (todayCharge.date == today)
                                         java.time.Instant.now().epochSecond else null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(170.dp)
                                 )
+                            }
+                        }
+                        SectionTitle("今日活动")
+                        FlatPanel {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                                if (spans.isEmpty()) {
+                                    Text(
+                                        "今天还没有记录到睡眠或运动。",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 12.dp)
+                                    )
+                                } else {
+                                    spans.forEachIndexed { index, span ->
+                                        if (index > 0) {
+                                            Box(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .height(1.dp)
+                                                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                            )
+                                        }
+                                        ChargeSpanRow(span, dayStartSec)
+                                    }
+                                }
                             }
                         }
                         SectionTitle("近两周晨起数据")
@@ -161,6 +205,66 @@ fun ChargeScreen(
         PinnedPageHeader(onHeight = { headerHeight = it }) {
             PageHeader(title = "Hybrid Charge", subtitle = "体力与精神的当日能量")
         }
+    }
+}
+
+/**
+ * One line in the 今日活动 card: what the stretch was, from when to when, how
+ * long it lasted, and how much Charge it moved. The delta is the same number the
+ * chart's icon stands for — sleep adds, a workout spends.
+ */
+@Composable
+private fun ChargeSpanRow(span: ChargeSpan, dayStartSec: Long) {
+    val palette = LocalZgPalette.current
+    val tint = if (span.kind == ChargeSpanKind.WORKOUT) palette.workout else palette.sleepLight
+    val from = if (span.startEpochSec < dayStartSec) {
+        "昨 ${Fmt.timeSec(span.startEpochSec)}"
+    } else {
+        Fmt.timeSec(span.startEpochSec)
+    }
+    val to = Fmt.timeSec(span.endEpochSec)
+    val minutes = ((span.endEpochSec - span.startEpochSec) / 60).toInt()
+    val delta = span.delta
+    val deltaText = when {
+        delta == null -> "—"
+        delta > 0 -> "+$delta"
+        delta < 0 -> "−${-delta}"
+        else -> "0"
+    }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .background(tint.copy(alpha = 0.14f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                chargeSpanIcon(span.kind),
+                contentDescription = span.label,
+                tint = tint,
+                modifier = Modifier.size(17.dp)
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(span.label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "$from – $to · ${Fmt.minutes(minutes)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            deltaText,
+            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+            color = if (delta == null) MaterialTheme.colorScheme.onSurfaceVariant else tint
+        )
     }
 }
 

@@ -1,6 +1,9 @@
 package com.genkaim.zeppglass.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -8,9 +11,13 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -23,7 +30,6 @@ import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -31,9 +37,100 @@ import kotlin.math.roundToInt
  *
  * The line alone does not say why it moved, so the night's sleep window and the
  * day's workouts are drawn as bands: the rise lines up with 睡眠, the drop with
- * 运动. The axis is labelled 0/8/16/24 so a flat morning is not mistaken for a
+ * 运动. Each band is marked with a small icon instead of a text tag — a moon for
+ * sleep, a dumbbell for a workout — and the figures (start, end, how much Charge
+ * moved) are listed in the card under the chart, where there is room to read
+ * them. The axis is labelled 0/8/16/24 so a flat morning is not mistaken for a
  * missing afternoon.
  */
+enum class ChargeSpanKind { SLEEP, NAP, WORKOUT }
+
+/**
+ * One stretch of a day with a start, an end and how much Charge it moved.
+ *
+ * Both the chart band and the list under it read from this, so the icon on the
+ * axis and the line in the card can never disagree.
+ */
+data class ChargeSpan(
+    val kind: ChargeSpanKind,
+    val label: String,
+    val startEpochSec: Long,
+    val endEpochSec: Long,
+    /**
+     * Charge gained (`+`) or spent (`−`) across the stretch, measured between
+     * the readings that bracket it. Null when the band has no reading on one
+     * side — a number is then not invented.
+     */
+    val delta: Int?
+)
+
+/**
+ * Builds the day's sleep, nap and workout stretches, in time order.
+ *
+ * The delta is measured from the last reading at or before the start to the
+ * first reading at or after the end: a short session often falls between two
+ * samples, and nearest-to-both-ends is then the same reading, which measures 0.
+ */
+fun chargeSpans(
+    samples: List<ChargeSample>,
+    sleep: SleepNight?,
+    workouts: List<Workout>
+): List<ChargeSpan> {
+    val points = samples.filter { it.curveValue != null }.sortedBy { it.epochMs }
+    fun deltaOf(start: Long, end: Long): Int? {
+        if (points.isEmpty()) return null
+        val before = (points.lastOrNull { it.epochMs / 1000 <= start } ?: points.first())
+            .curveValue ?: return null
+        val after = (points.firstOrNull { it.epochMs / 1000 >= end } ?: points.last())
+            .curveValue ?: return null
+        return (after - before).roundToInt()
+    }
+
+    val spans = mutableListOf<ChargeSpan>()
+    sleep?.let { night ->
+        if (night.endEpochSec > night.startEpochSec) {
+            spans += ChargeSpan(
+                kind = ChargeSpanKind.SLEEP,
+                label = "睡眠",
+                startEpochSec = night.startEpochSec,
+                endEpochSec = night.endEpochSec,
+                delta = deltaOf(night.startEpochSec, night.endEpochSec)
+            )
+        }
+        val napFrom = night.napStartEpochSec
+        val napTo = night.napEndEpochSec
+        if (napFrom != null && napTo != null && napTo > napFrom) {
+            spans += ChargeSpan(
+                kind = ChargeSpanKind.NAP,
+                label = "小睡",
+                startEpochSec = napFrom,
+                endEpochSec = napTo,
+                delta = deltaOf(napFrom, napTo)
+            )
+        }
+    }
+    workouts.forEach { workout ->
+        if (workout.endEpochSec > workout.startEpochSec) {
+            spans += ChargeSpan(
+                kind = ChargeSpanKind.WORKOUT,
+                label = workout.name,
+                startEpochSec = workout.startEpochSec,
+                endEpochSec = workout.endEpochSec,
+                delta = deltaOf(workout.startEpochSec, workout.endEpochSec)
+            )
+        }
+    }
+    return spans.sortedBy { it.startEpochSec }
+}
+
+/**
+ * Pulls the icon for a stretch. Sleep and naps share the moon, workouts the
+ * dumbbell: the colour already separates the two, the shape says which is which
+ * without relying on colour alone.
+ */
+fun chargeSpanIcon(kind: ChargeSpanKind): ImageVector =
+    if (kind == ChargeSpanKind.WORKOUT) Icons.Rounded.FitnessCenter else Icons.Rounded.Bedtime
+
 @Composable
 fun ChargeDayChart(
     date: LocalDate,
@@ -49,7 +146,6 @@ fun ChargeDayChart(
     val palette = LocalZgPalette.current
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val tagStyle = TextStyle(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val grid = palette.grid
     // Two band colors only: one for the time that added Charge (sleep, nap),
     // one for the time that spent it (workouts). They have to be told apart at
@@ -61,6 +157,9 @@ fun ChargeDayChart(
     val valueStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
 
+    val sleepIcon = rememberVectorPainter(chargeSpanIcon(ChargeSpanKind.SLEEP))
+    val workoutIcon = rememberVectorPainter(chargeSpanIcon(ChargeSpanKind.WORKOUT))
+
     val dayStart = date.atStartOfDay(zone).toEpochSecond()
     val dayEnd = dayStart + 86_400L
     val limitEpoch = (untilEpochSec ?: dayEnd).coerceIn(dayStart, dayEnd)
@@ -68,6 +167,7 @@ fun ChargeDayChart(
     // Use the unrounded component average: the integer total steps down one
     // point at a time and would be drawn as a staircase.
     val points = samples.filter { it.curveValue != null }.sortedBy { it.epochMs }
+    val spans = chargeSpans(samples, sleep, workouts)
 
     Canvas(modifier) {
         val axisHeight = 16.dp.toPx()
@@ -75,38 +175,6 @@ fun ChargeDayChart(
         val plotHeight = (size.height - axisHeight - topPad).coerceAtLeast(10f)
         fun xOf(epochSec: Float) = ((epochSec - dayStart) / daySpan) * size.width
         fun yOf(value: Float) = topPad + plotHeight - (value / 100f) * plotHeight
-
-        // Change across a sleep / workout band, e.g. "运动 -4": the bands say
-        // when it happened, the number says how much Charge it took.
-        fun valueNear(epochSec: Long): Float? = points
-            .minByOrNull { kotlin.math.abs(it.epochMs / 1000 - epochSec) }
-            ?.curveValue
-            ?.toFloat()
-        fun deltaText(start: Long, end: Long): String {
-            val before = valueNear(start) ?: return ""
-            val after = valueNear(end) ?: return ""
-            val delta = (after - before).roundToInt()
-            return when {
-                delta > 0 -> " +$delta"
-                delta < 0 -> " −${-delta}"
-                else -> ""
-            }
-        }
-
-        /**
-         * How much a workout took, measured between the readings that bracket
-         * the band instead of the nearest one: a short session often falls
-         * between two samples, and nearest-to-both-ends is then the same
-         * reading, which measured 0 and left the tag as a bare "运动".
-         */
-        fun dropText(start: Long, end: Long): String {
-            val before = points.lastOrNull { it.epochMs / 1000 <= start }
-                ?.curveValue?.toFloat() ?: valueNear(start) ?: return ""
-            val after = points.firstOrNull { it.epochMs / 1000 >= end }
-                ?.curveValue?.toFloat() ?: valueNear(end) ?: return ""
-            val drop = (before - after).roundToInt()
-            return if (drop > 0) " −$drop" else ""
-        }
 
         // Nothing may be drawn past the last reading: a band that runs on after
         // the line ends reads as if it happened in the future ("运动" sticking
@@ -121,17 +189,21 @@ fun ChargeDayChart(
             drawLine(grid, Offset(0f, y), Offset(size.width, y), 1f)
         }
 
-        // Sleep window (may start on the previous evening). The label sits above
-        // the tinted block, and the tint stays light enough to read the curve.
-        sleep?.let { night ->
-            val from = maxOf(night.startEpochSec, dayStart.toLong())
-            val to = minOf(night.endEpochSec, measuredEnd(dayStart + 86400L))
+        // Sleep, naps and workouts: one band each, full height, in one of two
+        // colours. A moon marks the sleep stretches and a dumbbell the workouts;
+        // the numbers that used to ride on the tag now live in the card under
+        // the chart, where a short session has room to spell out its times.
+        spans.forEach { span ->
+            val from = maxOf(span.startEpochSec, dayStart)
+            val to = measuredEnd(minOf(span.endEpochSec, dayStart + 86400L))
             if (to > from) {
                 val x0 = xOf(from.toFloat())
                 val x1 = xOf(to.toFloat())
+                val isWorkout = span.kind == ChargeSpanKind.WORKOUT
+                val tint = if (isWorkout) minusColor else plusColor
                 val bandTop = 14.dp.toPx()
                 drawRoundRect(
-                    color = plusColor.copy(alpha = 0.12f),
+                    color = tint.copy(alpha = 0.12f),
                     topLeft = Offset(x0, bandTop),
                     size = Size(
                         (x1 - x0).coerceAtLeast(2f),
@@ -139,82 +211,16 @@ fun ChargeDayChart(
                     ),
                     cornerRadius = CornerRadius(4.dp.toPx())
                 )
-                val text = "睡眠${deltaText(from, to)}"
-                val layout = measurer.measure(text, tagStyle)
-                drawLabel(
-                    measurer,
-                    text,
-                    tagStyle,
-                    ((x0 + x1) / 2f - layout.size.width / 2f)
-                        .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
-                    1.dp.toPx()
-                )
-            }
-        }
-
-        // Daytime nap: same band idea as the night, in its own slot on the axis.
-        val napFrom = sleep?.napStartEpochSec
-        val napTo = sleep?.napEndEpochSec
-        if (napFrom != null && napTo != null && napTo > napFrom) {
-            val from = maxOf(napFrom, dayStart)
-            val to = minOf(napTo, measuredEnd(dayStart + 86400L))
-            if (to > from) {
-                val x0 = xOf(from.toFloat())
-                val x1 = xOf(to.toFloat())
-                val bandTop = 14.dp.toPx()
-                drawRoundRect(
-                    color = plusColor.copy(alpha = 0.12f),
-                    topLeft = Offset(x0, bandTop),
-                    size = Size(
-                        (x1 - x0).coerceAtLeast(2f),
-                        (size.height - axisHeight - bandTop).coerceAtLeast(2f)
-                    ),
-                    cornerRadius = CornerRadius(4.dp.toPx())
-                )
-                val text = "小睡${deltaText(from, to)}"
-                val layout = measurer.measure(text, tagStyle)
-                drawLabel(
-                    measurer,
-                    text,
-                    tagStyle,
-                    ((x0 + x1) / 2f - layout.size.width / 2f)
-                        .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
-                    1.dp.toPx()
-                )
-            }
-        }
-
-        // Workouts of the day: the same full-height band as sleep, in its own
-        // colour, so the two kinds of time never read as the same block. The
-        // tag sits above the block exactly like 睡眠, and always carries the
-        // amount of Charge it cost ("运动 −4").
-        workouts.forEach { workout ->
-            val from = maxOf(workout.startEpochSec, dayStart.toLong())
-            val realTo = minOf(workout.endEpochSec, dayStart.toLong() + 86400L)
-            // The block stops where the data does; the number still describes
-            // the whole session, since the drop shows up in the next reading.
-            val to = measuredEnd(realTo)
-            if (to > from) {
-                val x0 = xOf(from.toFloat())
-                val x1 = xOf(to.toFloat())
-                val bandTop = 14.dp.toPx()
-                val bandHeight = (size.height - axisHeight - bandTop).coerceAtLeast(2f)
-                drawRoundRect(
-                    color = minusColor.copy(alpha = 0.12f),
-                    topLeft = Offset(x0, bandTop),
-                    size = Size((x1 - x0).coerceAtLeast(2f), bandHeight),
-                    cornerRadius = CornerRadius(4.dp.toPx())
-                )
-                val text = "运动${dropText(from, realTo)}"
-                val layout = measurer.measure(text, tagStyle)
-                drawLabel(
-                    measurer,
-                    text,
-                    tagStyle,
-                    ((x0 + x1) / 2f - layout.size.width / 2f)
-                        .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
-                    1.dp.toPx()
-                )
+                // A very short session is only a few pixels wide; the icon is
+                // kept whole and centred on it rather than shrunk to nothing.
+                with(if (isWorkout) workoutIcon else sleepIcon) {
+                    val side = 11.dp.toPx()
+                    val left = ((x0 + x1) / 2f - side / 2f)
+                        .coerceIn(0f, (size.width - side).coerceAtLeast(0f))
+                    translate(left, 1.dp.toPx()) {
+                        draw(Size(side, side), colorFilter = ColorFilter.tint(tint))
+                    }
+                }
             }
         }
 
@@ -340,23 +346,3 @@ private fun smoothPath(points: List<Offset>): Path {
     }
     return path
 }
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawLabel(
-    measurer: androidx.compose.ui.text.TextMeasurer,
-    text: String,
-    style: TextStyle,
-    x: Float,
-    y: Float
-) {
-    val layout = measurer.measure(text, style)
-    drawText(
-        layout,
-        topLeft = Offset(
-            x.coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
-            y
-        )
-    )
-}
-
-
-

@@ -16,6 +16,9 @@ import android.util.Log
 import android.widget.RemoteViews
 import com.genkaim.zeppglass.MainActivity
 import com.genkaim.zeppglass.R
+import com.genkaim.zeppglass.ui.DetailActivity
+import com.genkaim.zeppglass.ui.DetailKind
+import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
@@ -198,7 +201,7 @@ class YdooRingsWidget : AppWidgetProvider() {
             val compact = heightDp(context, appWidgetId) < 96
             val views = RemoteViews(
                 context.packageName,
-                if (compact) R.layout.widget_rings_compact_v2 else R.layout.widget_rings_v2
+                if (compact) R.layout.widget_rings_compact_v4 else R.layout.widget_rings_v4
             )
             if (!compact) {
                 // Spacing is pushed as actions, not baked into the XML: a launcher
@@ -217,11 +220,36 @@ class YdooRingsWidget : AppWidgetProvider() {
             val chargeScore = if (fresh) data?.chargeOn(today)?.total else null
             val strain = if (fresh) data?.strainOn(today)?.strain else null
 
-            val primary = context.getColor(R.color.widget_primary)
-            val critical = context.getColor(R.color.widget_critical)
-            val warn = context.getColor(R.color.widget_warn)
-            val sleepBase = context.getColor(R.color.widget_sleep)
-            val loadBase = context.getColor(R.color.widget_tertiary)
+            // The card follows the app's own 深色/浅色 setting, not the system
+            // one: 跟随系统 defers to the system configuration, the other two are
+            // explicit. Colours are therefore picked here instead of relying on
+            // values-night, which only knows about the system.
+            val dark = when (settings.themeMode) {
+                "dark" -> true
+                "light" -> false
+                else -> (context.resources.configuration.uiMode and
+                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+            }
+            fun col(light: Int, night: Int): Int = context.getColor(if (dark) night else light)
+            val onSurface = col(R.color.widget_on_surface, R.color.widget_on_surface_dark)
+            val muted = col(R.color.widget_muted, R.color.widget_muted_dark)
+            val primary = col(R.color.widget_primary, R.color.widget_primary_dark)
+            val critical = col(R.color.widget_critical, R.color.widget_critical_dark)
+            val warn = col(R.color.widget_warn, R.color.widget_warn_dark)
+            val sleepBase = col(R.color.widget_sleep, R.color.widget_sleep_dark)
+            val loadBase = col(R.color.widget_tertiary, R.color.widget_tertiary_dark)
+            views.setInt(
+                R.id.widget_root,
+                "setBackgroundResource",
+                if (dark) R.drawable.widget_rings_bg_dark else R.drawable.widget_rings_bg
+            )
+            views.setInt(
+                R.id.widget_diet_button,
+                "setBackgroundResource",
+                if (dark) R.drawable.widget_diet_button_bg_dark else R.drawable.widget_diet_button_bg
+            )
+            views.setOnClickPendingIntent(R.id.widget_diet_button, openDiet(context))
 
             // Ring diameter follows the cell span the launcher reported.
             val scale = if (compact) 1f else ringScale(context, appWidgetId)
@@ -238,6 +266,13 @@ class YdooRingsWidget : AppWidgetProvider() {
                 views.setViewLayoutWidth(R.id.widget_load_frame, loadDp.toFloat(), android.util.TypedValue.COMPLEX_UNIT_DIP)
                 views.setViewLayoutHeight(R.id.widget_load_frame, loadDp.toFloat(), android.util.TypedValue.COMPLEX_UNIT_DIP)
             }
+
+            // Tinted here rather than through android:tint, so the mark follows
+            // the app theme and not the system's.
+            views.setImageViewBitmap(
+                R.id.widget_logo,
+                logoBitmap(context, px(if (compact) 20 else 22), onSurface)
+            )
 
             views.setImageViewBitmap(
                 R.id.widget_sleep_ring,
@@ -269,11 +304,19 @@ class YdooRingsWidget : AppWidgetProvider() {
             )
 
             views.setTextViewText(R.id.widget_sleep_value, sleepScore?.toString() ?: "--")
+            views.setTextColor(R.id.widget_sleep_value, onSurface)
             views.setTextViewText(R.id.widget_charge_value, chargeScore?.toString() ?: "--")
+            views.setTextColor(R.id.widget_charge_value, onSurface)
             views.setTextViewText(
                 R.id.widget_load_value,
                 strain?.let { String.format(Locale.CHINA, "%.1f", it) } ?: "--"
             )
+            views.setTextColor(R.id.widget_load_value, onSurface)
+            if (!compact) {
+                views.setTextColor(R.id.widget_sleep_label, muted)
+                views.setTextColor(R.id.widget_charge_label, muted)
+                views.setTextColor(R.id.widget_load_label, muted)
+            }
             // The logo replaced the title; only an exception gets a word here.
             views.setTextViewText(
                 R.id.widget_status,
@@ -283,9 +326,23 @@ class YdooRingsWidget : AppWidgetProvider() {
                     else -> ""
                 }
             )
+            views.setTextColor(R.id.widget_status, muted)
 
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context))
             return views
+        }
+
+        /** The brand mark drawn in the current text colour, at the given height. */
+        private fun logoBitmap(context: Context, heightPx: Int, tint: Int): Bitmap {
+            val mark = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.brand_mark)
+                ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            val ratio = mark.intrinsicWidth.toFloat() / mark.intrinsicHeight.toFloat()
+            val width = (heightPx * ratio).toInt().coerceAtLeast(1)
+            val bitmap = Bitmap.createBitmap(width, heightPx, Bitmap.Config.ARGB_8888)
+            mark.setBounds(0, 0, width, heightPx)
+            mark.setTint(tint)
+            mark.draw(Canvas(bitmap))
+            return bitmap
         }
 
         /** Height the launcher reports for this placement, in dp. */
@@ -309,6 +366,15 @@ class YdooRingsWidget : AppWidgetProvider() {
             val scale = min(width / 250f, height / 120f)
             return scale.coerceIn(0.85f, 1.35f)
         }
+
+        /** The 🍗 button opens the diet page itself, not the home tab. */
+        private fun openDiet(context: Context): PendingIntent =
+            PendingIntent.getActivity(
+                context,
+                1,
+                DetailActivity.intent(context, DetailTarget(DetailKind.DIET, LocalDate.now())),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
         private fun openApp(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {

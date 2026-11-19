@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget card in the app's dark theme: same shape, dark surface. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_surface_dark" />
+    <corners android:radius="24dp" />
+</shape>

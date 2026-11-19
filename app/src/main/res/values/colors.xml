@@ -12,4 +12,18 @@
     <color name="widget_sleep">#6F8DF5</color>
     <color name="widget_warn">#E08A2B</color>
     <color name="widget_critical">#C93C3C</color>
+
+    <!--
+      The same tokens for the dark palette. They are spelled out rather than
+      left to values-night because the widget follows the app's own 深色/浅色
+      setting, which is independent of the system configuration.
+    -->
+    <color name="widget_surface_dark">#17181C</color>
+    <color name="widget_on_surface_dark">#ECECEE</color>
+    <color name="widget_muted_dark">#A0A2AA</color>
+    <color name="widget_primary_dark">#48D69B</color>
+    <color name="widget_tertiary_dark">#8FA6FF</color>
+    <color name="widget_sleep_dark">#9DB3FF</color>
+    <color name="widget_warn_dark">#F0A94E</color>
+    <color name="widget_critical_dark">#FF8A8A</color>
 </resources>

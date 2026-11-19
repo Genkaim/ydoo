@@ -494,83 +494,87 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
     val breathing = data?.breathingOn(night.date)
     val respiration = data?.respirationOn(night.date)
     val sleepHr = readiness?.sleepRhr ?: night.restingHr
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SleepVitalTile(
-            label = "睡眠心率",
-            value = sleepHr?.toString() ?: "--",
-            unit = "bpm",
-            tint = palette.sleepRem,
-            verdict = when {
-                sleepHr == null -> null
-                sleepHr < 45 || sleepHr > 70 -> "偏离" to palette.warn
-                else -> "正常" to MaterialTheme.colorScheme.primary
-            },
-            modifier = Modifier.weight(1f),
-            onClick = { onOpen(DetailTarget(DetailKind.SLEEP_HR, night.date)) }
-        )
-        SleepVitalTile(
-            label = "呼吸率",
-            value = respiration?.let { Fmt.oneDecimal(it) } ?: "--",
-            unit = "次/分",
-            tint = palette.sleepLight,
-            verdict = when {
-                respiration == null -> null
-                respiration < 12.0 || respiration > 20.0 -> "偏离" to palette.warn
-                else -> "正常" to MaterialTheme.colorScheme.primary
-            },
-            modifier = Modifier.weight(1f),
-            onClick = { onOpen(DetailTarget(DetailKind.SLEEP_RR, night.date)) }
-        )
-    }
-    Spacer(Modifier.height(16.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val apnea = breathing?.apneaIndex
-        SleepVitalTile(
-            label = "低通气",
-            value = apnea?.let { Fmt.oneDecimal(it) } ?: "--",
-            unit = "次/时",
-            tint = palette.sleepAwake,
-            verdict = when {
-                apnea == null -> null
-                apnea < 5.0 -> "正常" to MaterialTheme.colorScheme.primary
-                apnea < 15.0 -> "偏高" to palette.warn
-                else -> "偏高" to palette.critical
-            },
-            modifier = Modifier.weight(1f),
-            onClick = { onOpen(DetailTarget(DetailKind.SLEEP_APNEA, night.date)) }
-        )
-        SleepVitalTile(
-            label = "睡眠 HRV",
-            value = readiness?.sleepHrv?.toString() ?: "--",
-            unit = "ms",
-            tint = palette.sleepDeep,
-            verdict = readiness?.hrvScore?.let {
-                when {
-                    it >= 75 -> "正常" to MaterialTheme.colorScheme.onSurface
-                    it >= 50 -> "一般" to palette.warn
-                    else -> "偏低" to palette.critical
-                }
-            },
-            modifier = Modifier.weight(1f),
-            onClick = null
-        )
-    }
     val spo2 = data?.spo2?.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
-    if (!spo2.isNullOrEmpty()) {
-        Spacer(Modifier.height(16.dp))
+    // The rows sit in their own column: the page's 14dp arrangement only applies
+    // before the group, so the cards inside keep a clean 16dp (the activity
+    // page's spacing) instead of 14 + spacer = 30dp.
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            val average = spo2.map { it.value }.average().roundToInt()
-            MetricTile(
-                label = "夜间血氧均值",
-                value = average.toString(),
-                unit = "%",
+            SleepVitalTile(
+                label = "睡眠心率",
+                value = sleepHr?.toString() ?: "--",
+                unit = "bpm",
+                tint = palette.sleepRem,
                 verdict = when {
-                    average >= 95 -> "正常" to MaterialTheme.colorScheme.onSurface
-                    average >= 90 -> "偏低" to palette.warn
-                    else -> "低" to palette.critical
+                    sleepHr == null -> null
+                    sleepHr < 45 || sleepHr > 70 -> "偏离" to palette.warn
+                    else -> "正常" to MaterialTheme.colorScheme.primary
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onClick = { onOpen(DetailTarget(DetailKind.SLEEP_HR, night.date)) }
             )
+            SleepVitalTile(
+                label = "呼吸率",
+                value = respiration?.let { Fmt.oneDecimal(it) } ?: "--",
+                unit = "次/分",
+                tint = palette.sleepLight,
+                verdict = when {
+                    respiration == null -> null
+                    respiration < 12.0 || respiration > 20.0 -> "偏离" to palette.warn
+                    else -> "正常" to MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier.weight(1f),
+                onClick = { onOpen(DetailTarget(DetailKind.SLEEP_RR, night.date)) }
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val apnea = breathing?.apneaIndex
+            SleepVitalTile(
+                label = "低通气",
+                value = apnea?.let { Fmt.oneDecimal(it) } ?: "--",
+                unit = "次/时",
+                tint = palette.sleepAwake,
+                verdict = when {
+                    apnea == null -> null
+                    apnea < 5.0 -> "正常" to MaterialTheme.colorScheme.primary
+                    apnea < 15.0 -> "偏高" to palette.warn
+                    else -> "偏高" to palette.critical
+                },
+                modifier = Modifier.weight(1f),
+                onClick = { onOpen(DetailTarget(DetailKind.SLEEP_APNEA, night.date)) }
+            )
+            SleepVitalTile(
+                label = "睡眠 HRV",
+                value = readiness?.sleepHrv?.toString() ?: "--",
+                unit = "ms",
+                tint = palette.sleepDeep,
+                verdict = readiness?.hrvScore?.let {
+                    when {
+                        it >= 75 -> "正常" to MaterialTheme.colorScheme.onSurface
+                        it >= 50 -> "一般" to palette.warn
+                        else -> "偏低" to palette.critical
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                onClick = { onOpen(DetailTarget(DetailKind.HRV, night.date)) }
+            )
+        }
+        if (!spo2.isNullOrEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val average = spo2.map { it.value }.average().roundToInt()
+                MetricTile(
+                    label = "夜间血氧均值",
+                    value = average.toString(),
+                    unit = "%",
+                    verdict = when {
+                        average >= 95 -> "正常" to MaterialTheme.colorScheme.onSurface
+                        average >= 90 -> "偏低" to palette.warn
+                        else -> "低" to palette.critical
+                    },
+                    modifier = Modifier.weight(1f),
+                    onClick = { onOpen(DetailTarget(DetailKind.SPO2, night.date)) }
+                )
+            }
         }
     }
 
@@ -746,14 +750,28 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                 .padding(vertical = 18.dp, horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val stressVerdict = when {
+                current.second < 40 -> "放松" to MaterialTheme.colorScheme.onSurface
+                current.second < 60 -> "正常" to MaterialTheme.colorScheme.onSurface
+                current.second < 80 -> "偏高" to LocalZgPalette.current.warn
+                else -> "很高" to LocalZgPalette.current.critical
+            }
+            val abnormal = stressVerdict.first in setOf("偏高", "很高")
             Text(
                 current.second.toString(),
-                style = MaterialTheme.typography.displayMedium
+                style = MaterialTheme.typography.displayMedium,
+                color = if (abnormal) stressVerdict.second else MaterialTheme.colorScheme.onSurface
             )
             Text(
                 "${Fmt.date(day.date)} ${Fmt.time(current.first)}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stressVerdict.first,
+                style = MaterialTheme.typography.titleSmall,
+                color = stressVerdict.second
             )
         }
     }
@@ -2288,7 +2306,9 @@ private fun SleepVitalTile(
                     Text(
                         verdict.first,
                         style = MaterialTheme.typography.labelSmall,
-                        color = verdict.second,
+                        color = if (verdict.first == "正常") {
+                            MaterialTheme.colorScheme.onSurface
+                        } else verdict.second,
                         maxLines = 1,
                         modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
                     )

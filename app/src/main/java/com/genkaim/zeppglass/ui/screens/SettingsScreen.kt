@@ -1,6 +1,8 @@
 package com.genkaim.zeppglass.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
@@ -70,6 +73,7 @@ import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.sheets.CustomizeTabsSheet
+import com.genkaim.zeppglass.ui.widget.YdooRingsWidget
 import kotlinx.coroutines.launch
 
 /**
@@ -100,6 +104,12 @@ fun SettingsScreen(
     var testResult by remember { mutableStateOf<String?>(null) }
     var testOk by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
+
+    // Xiaomi's own widget centre only lists widgets published through its
+    // developer platform; a standard Android widget stays in the "安卓小部件"
+    // section. The one-tap path that works on every launcher is the pin request.
+    val widgetManager = remember { AppWidgetManager.getInstance(context) }
+    val canPinWidget = remember { widgetManager?.isRequestPinAppWidgetSupported() == true }
 
     val headerBackground = MaterialTheme.colorScheme.background
     Box(
@@ -221,6 +231,47 @@ fun SettingsScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.rotate(-90f)
                     )
+                }
+            }
+
+            SectionTitle("桌面小组件")
+            FlatPanel {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.Widgets, contentDescription = null)
+                    Spacer(Modifier.size(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("今日概览", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (canPinWidget) {
+                                "睡眠 / Charge / 负荷三个圆环，和首页同一套数"
+                            } else {
+                                "桌面双指捏合 → 小部件 → 安卓小部件"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (canPinWidget) {
+                        FlatButton(
+                            text = "添加",
+                            onClick = {
+                                runCatching {
+                                    widgetManager?.requestPinAppWidget(
+                                        ComponentName(context, YdooRingsWidget::class.java),
+                                        null,
+                                        null
+                                    )
+                                }
+                            },
+                            primary = false,
+                            horizontalPadding = 12.dp
+                        )
+                    }
                 }
             }
 

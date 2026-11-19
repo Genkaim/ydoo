@@ -825,7 +825,7 @@ private fun AiSummaryCard(
     onOpenSettings: () -> Unit
 ) {
     FlatPanel(Modifier.fillMaxWidth().animateContentSize()) {
-        Column(Modifier.padding(18.dp)) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Rounded.AutoAwesome,
@@ -1133,7 +1133,7 @@ private fun DietCard(
         onClick = onClick
     ) {
         Row(
-            Modifier.padding(16.dp),
+            Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -1191,10 +1191,10 @@ private fun ActivityCard(
         shape = RoundedCornerShape(26.dp),
         onClick = onClick
     ) {
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         steps?.toString() ?: "--",
@@ -1207,7 +1207,7 @@ private fun ActivityCard(
                         modifier = Modifier.padding(bottom = 5.dp, start = 4.dp)
                     )
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     ActivityStat("${Fmt.km(distance)} km", "距离")
                     ActivityStat("${Fmt.int(calories)} kcal", "消耗")
@@ -1225,7 +1225,7 @@ private fun ActivityCard(
                 caloriesProgress = ((calories ?: 0.0) / 500.0).toFloat(),
                 activeProgress = ((activeMinutes ?: 0).toFloat() /
                     (activeGoal?.takeIf { it > 0 } ?: 60).toFloat()),
-                modifier = Modifier.size(92.dp)
+                modifier = Modifier.size(84.dp)
             )
         }
     }
@@ -1292,7 +1292,7 @@ private fun ActivityRings(
 private fun LastNightCard(night: SleepNight?, onClick: () -> Unit) {
     if (night == null) return
     FlatPanel(onClick = onClick) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Rounded.Bedtime,
@@ -1314,7 +1314,7 @@ private fun LastNightCard(night: SleepNight?, onClick: () -> Unit) {
                     modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(9.dp))
             SleepStageBar(
                 night,
                 Modifier
@@ -1356,7 +1356,7 @@ private fun ChargeCurveCard(charge: com.genkaim.zeppglass.data.ChargeDay?, onCli
     val samples = charge.samples.filter { it.curveValue != null }
     if (samples.size < 2) return
     FlatPanel(onClick = onClick) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("身体电量", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(
@@ -1371,12 +1371,12 @@ private fun ChargeCurveCard(charge: com.genkaim.zeppglass.data.ChargeDay?, onCli
                     modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             LineChart(
                 samples.map { it.curveValue!!.toFloat() },
                 Modifier
                     .fillMaxWidth()
-                    .height(72.dp),
+                    .height(64.dp),
                 color = MaterialTheme.colorScheme.primary,
                 minValue = 0f,
                 maxValue = 100f,

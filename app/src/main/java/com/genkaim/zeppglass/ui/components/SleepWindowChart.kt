@@ -66,7 +66,7 @@ fun SleepWindowChart(
     Canvas(modifier) {
         val labelWidth = 40.dp.toPx()
         val axisHeight = 18.dp.toPx()
-        val topPad = 6.dp.toPx()
+        val topPad = 14.dp.toPx()
         val rightPad = 4.dp.toPx()
         val plotWidth = (size.width - labelWidth - rightPad).coerceAtLeast(1f)
         val plotHeight = (size.height - axisHeight - topPad).coerceAtLeast(1f)
@@ -96,10 +96,18 @@ fun SleepWindowChart(
             tick += 120
         }
 
-        // One bar per night, evenly spaced across the day slots.
+        // One bar per night, evenly spaced across the day slots. Every bar
+        // carries both ends as plain clock times: the time above it is when
+        // sleep started, the time below it is when the night ended. No words,
+        // so the times stay the only thing to read.
         val slot = plotWidth / windows.size
         val barWidth = (slot * 0.38f).coerceIn(5.dp.toPx(), 16.dp.toPx())
         val dateStyle = axisStyle
+        val timeStyle = TextStyle(fontSize = 9.sp, color = blueText)
+        fun timeText(minute: Int): String {
+            val clock = ((minute + 720) % 1440 + 1440) % 1440
+            return "%02d:%02d".format(clock / 60, clock % 60)
+        }
         windows.forEachIndexed { index, window ->
             val centerX = labelWidth + slot * (index + 0.5f)
             val yStart = yOf(window.second)
@@ -111,6 +119,26 @@ fun SleepWindowChart(
                 cornerRadius = CornerRadius(2.dp.toPx())
             )
 
+            val startLayout = measurer.measure(timeText(window.second), timeStyle)
+            drawText(
+                startLayout,
+                topLeft = Offset(
+                    (centerX - startLayout.size.width / 2f)
+                        .coerceIn(labelWidth, size.width - rightPad - startLayout.size.width),
+                    (yStart - startLayout.size.height - 2.dp.toPx()).coerceAtLeast(0f)
+                )
+            )
+            val endLayout = measurer.measure(timeText(window.third), timeStyle)
+            drawText(
+                endLayout,
+                topLeft = Offset(
+                    (centerX - endLayout.size.width / 2f)
+                        .coerceIn(labelWidth, size.width - rightPad - endLayout.size.width),
+                    (yEnd + 2.dp.toPx())
+                        .coerceAtMost(size.height - axisHeight - endLayout.size.height)
+                )
+            )
+
             val layout = measurer.measure(Fmt.weekdayShort(window.first), dateStyle)
             val left = (centerX - layout.size.width / 2f)
                 .coerceIn(labelWidth, size.width - rightPad - layout.size.width)
@@ -118,32 +146,6 @@ fun SleepWindowChart(
                 layout,
                 topLeft = Offset(left, size.height - layout.size.height)
             )
-        }
-
-        // The most recent night is the one being read, so its two ends are
-        // spelled out: above the bar when sleep started, below it when it
-        // ended. Blue marks "clock time", the same colour as the axis times.
-        val latest = windows.lastOrNull() ?: return@Canvas
-        val latestIndex = windows.lastIndex
-        val latestX = labelWidth + slot * (latestIndex + 0.5f)
-        val timeStyle = TextStyle(fontSize = 9.sp, color = blueText)
-        fun timeText(minute: Int): String {
-            val clock = ((minute + 720) % 1440 + 1440) % 1440
-            return "%02d:%02d".format(clock / 60, clock % 60)
-        }
-        val startLayout = measurer.measure("睡 " + timeText(latest.second), timeStyle)
-        val endLayout = measurer.measure("醒 " + timeText(latest.third), timeStyle)
-        val startY = (yOf(latest.second) - startLayout.size.height - 2.dp.toPx())
-            .coerceAtLeast(0f)
-        val endY = (yOf(latest.third) + 2.dp.toPx())
-            .coerceAtMost(size.height - axisHeight - endLayout.size.height)
-        listOf(
-            startLayout to startY,
-            endLayout to endY
-        ).forEach { (layout, y) ->
-            val x = (latestX - layout.size.width / 2f)
-                .coerceIn(labelWidth, size.width - rightPad - layout.size.width)
-            drawText(layout, topLeft = Offset(x, y))
         }
     }
 }

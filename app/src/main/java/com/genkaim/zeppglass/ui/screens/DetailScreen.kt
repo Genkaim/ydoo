@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.DarkMode
@@ -90,6 +92,7 @@ import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SleepStageBar
 import com.genkaim.zeppglass.ui.components.SleepStageChart
 import com.genkaim.zeppglass.ui.components.SleepWindowChart
+import com.genkaim.zeppglass.ui.components.Spo2DayChart
 import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.StressBandChart
 import com.genkaim.zeppglass.ui.components.StressDonut
@@ -614,18 +617,18 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
             }
             FlatPanel {
                 Column(Modifier.padding(16.dp)) {
-                    // The bars answer "when did each night start and end"; the blue
-                    // times on the newest bar spell out its two ends.
+                    // Seven nights so both clock times fit under every bar;
+                    // the averages above still cover the last 14 nights.
                     SleepWindowChart(
-                        nights = nights,
+                        nights = nights.takeLast(7),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(210.dp)
+                            .height(220.dp)
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
-                            Fmt.date(nights.first().date),
+                            Fmt.date(nights.takeLast(7).first().date),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2034,11 +2037,6 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
                 "静息心率是清醒、身体完全放松、平躺休息时测得的每分钟心跳次数（bpm）。数值越低，通常说明心肺适应越好；熬夜、酒精、生病或高负荷会让它升高。",
                 style = MaterialTheme.typography.bodySmall
             )
-            Text(
-                "数值与基线来自手表的准备度记录；手表没给出基线时这里不会用固定阈值代替。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
@@ -2159,11 +2157,6 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
             Text(
                 "HRV（rMSSD）是相邻心跳间隔的细微差异，单位毫秒。数值高通常说明恢复好、压力低；持续偏低往往意味着疲劳、睡眠不足或生病。",
                 style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "这里的数值是手表给出的睡眠 HRV（夜间 rMSSD 平均），和白天随手测的全天 HRV 不是同一个口径。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -2491,28 +2484,6 @@ private fun MorningChargeDetail(data: HealthData?, date: LocalDate?) {
 
 // ---------------- night blood oxygen ----------------
 
-/** One line of the day-statistics card: label on the left, value on the right. */
-@Composable
-private fun Spo2StatRow(label: String, value: String) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
 @Composable
 private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: Boolean = false) {
     val source = data ?: run {
@@ -2521,15 +2492,13 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
     }
     // The samples inside one night's sleep window; the day's stats and the
     // headline average both come from this same set, so they always agree.
-    fun pointsOn(target: LocalDate): List<Int> {
+    fun pointsOn(target: LocalDate): List<Spo2Point> {
         val night = source.nightOn(target) ?: return emptyList()
-        return source.spo2
-            .filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
-            .map { it.value }
+        return source.spo2.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
     }
     fun averageOn(target: LocalDate): Int? {
         val points = pointsOn(target)
-        return if (points.isEmpty()) null else points.average().roundToInt()
+        return if (points.isEmpty()) null else points.map { it.value }.average().roundToInt()
     }
     val day = date ?: source.nights.maxByOrNull { it.date }?.date
     if (day == null) {
@@ -2583,15 +2552,51 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
     if (withDayStats) {
         val points = pointsOn(day)
         if (points.isNotEmpty()) {
+            val values = points.map { it.value }
             SectionTitle("日统计")
             FlatPanel {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    Spo2StatRow("日平均值", "${points.average().roundToInt()}%")
-                    Rule(Modifier.padding(horizontal = 16.dp))
-                    Spo2StatRow("日最高值", "${points.max()}%")
-                    Rule(Modifier.padding(horizontal = 16.dp))
-                    Spo2StatRow("日最低值", "${points.min()}%")
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 14.dp, horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.Schedule,
+                        "日平均值",
+                        values.average().roundToInt().toString(),
+                        MaterialTheme.colorScheme.primary,
+                        unit = "%"
+                    )
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.ArrowUpward,
+                        "日最高值",
+                        values.max().toString(),
+                        MaterialTheme.colorScheme.tertiary,
+                        unit = "%"
+                    )
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.ArrowDownward,
+                        "日最低值",
+                        values.min().toString(),
+                        palette.sleepRem,
+                        unit = "%"
+                    )
                 }
+            }
+            // The same night's samples on a 00:00–23:59 clock, one bar each.
+            FlatPanel {
+                Spo2DayChart(
+                    points = points,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                        .height(150.dp)
+                )
             }
         }
     }
@@ -2609,16 +2614,6 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
                     .padding(horizontal = 10.dp, vertical = 12.dp)
                     .height(170.dp),
                 color = MaterialTheme.colorScheme.tertiary
-            )
-        }
-    }
-
-    SectionTitle("这个数值")
-    FlatPanel {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                "每夜血氧取整晚读数的平均值，不把白天和夜间混在一起。手表没有记录的一晚留空，不按 0 计算。",
-                style = MaterialTheme.typography.bodySmall
             )
         }
     }
@@ -2704,11 +2699,6 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                 "皮肤温度分是手表把夜间手腕温度和自己的基线比较后给出的 0–100 分：越接近满分，说明当晚越贴近个人基线；" +
                     "明显偏高或偏低时分数会下降。它是相对评分，不是绝对体温。",
                 style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "手表没有记录时显示 --，不会用 0 顶替。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

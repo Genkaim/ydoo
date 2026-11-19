@@ -55,6 +55,9 @@ class YdooRingsWidget : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         val app = context.applicationContext
+        // Keep the midnight wake-up alive even on OEMs that never re-send
+        // onEnabled after the first placement.
+        scheduleDaily(app)
         // A widget provider's onUpdate runs on the main thread; parsing the
         // snapshot and drawing bitmaps must not happen there.
         val pending = goAsync()
@@ -91,18 +94,42 @@ class YdooRingsWidget : AppWidgetProvider() {
         }, "ydoo-widget-resize").start()
     }
 
+    /** First widget placed: start the once-a-day refresh. */
+    override fun onEnabled(context: Context) {
+        scheduleDaily(context)
+    }
+
+    /** Last widget removed: nothing left to wake up for. */
+    override fun onDisabled(context: Context) {
+        val manager = context.getSystemService(android.app.AlarmManager::class.java)
+        runCatching { manager?.cancel(dailyIntent(context)) }
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         // After a reboot or an upgrade the snapshot on disk is still good, but
         // a widget that was never re-bound would sit on its old picture.
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_MY_PACKAGE_REPLACED -> updateAll(context)
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                scheduleDaily(context)
+                updateAll(context)
+            }
+            ACTION_DAILY -> updateAll(context)
         }
     }
 
     companion object {
         private const val TAG = "YdooRingsWidget"
+
+        /**
+         * The provider's own action for the daily alarm. `updatePeriodMillis`
+         * is capped at 30 minutes and then throttled further by several OEM
+         * power managers (MIUI/HyperOS especially), so the day rollover is
+         * driven by an alarm instead of being left to the heartbeat.
+         */
+        private const val ACTION_DAILY = "com.genkaim.zeppglass.widget.DAILY_REFRESH"
+        private const val REQUEST_DAILY = 7301
 
         /** Same rule as the home page: older than three hours reads as `--`. */
         private const val STALE_WINDOW_MS = 3 * 60 * 60 * 1000L
@@ -125,6 +152,42 @@ class YdooRingsWidget : AppWidgetProvider() {
                 Log.w(TAG, "update failed", t)
             }
         }
+
+        /**
+         * One wake-up just after midnight, repeated daily. OEM power managers
+         * routinely drop `updatePeriodMillis` while the app is idle; an alarm
+         * on the provider itself survives that, and midnight is the only moment
+         * the card's meaning changes without a new sync.
+         */
+        fun scheduleDaily(context: Context) {
+            val app = context.applicationContext
+            val manager = app.getSystemService(android.app.AlarmManager::class.java) ?: return
+            val next = java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 5)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            // Inexact on purpose: exact alarms need a permission the widget does
+            // not justify, and five minutes either way changes nothing here.
+            runCatching {
+                manager.setInexactRepeating(
+                    android.app.AlarmManager.RTC,
+                    next.timeInMillis,
+                    android.app.AlarmManager.INTERVAL_DAY,
+                    dailyIntent(app)
+                )
+            }
+        }
+
+        private fun dailyIntent(context: Context): PendingIntent =
+            PendingIntent.getBroadcast(
+                context,
+                REQUEST_DAILY,
+                Intent(context, YdooRingsWidget::class.java).setAction(ACTION_DAILY),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
         private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_rings)

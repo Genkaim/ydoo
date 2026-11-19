@@ -60,6 +60,8 @@ fun SleepWindowChart(
     val minMinute = floor((windows.minOf { it.second } - 20) / 60f) * 60
     val maxMinute = ceil((windows.maxOf { it.third } + 20) / 60f) * 60
     val gridColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+    // 蓝色只用于"几点"这类时钟读数，和柱子的睡眠蓝区分开。
+    val blueText = MaterialTheme.colorScheme.tertiary
 
     Canvas(modifier) {
         val labelWidth = 40.dp.toPx()
@@ -116,6 +118,32 @@ fun SleepWindowChart(
                 layout,
                 topLeft = Offset(left, size.height - layout.size.height)
             )
+        }
+
+        // The most recent night is the one being read, so its two ends are
+        // spelled out: above the bar when sleep started, below it when it
+        // ended. Blue marks "clock time", the same colour as the axis times.
+        val latest = windows.lastOrNull() ?: return@Canvas
+        val latestIndex = windows.lastIndex
+        val latestX = labelWidth + slot * (latestIndex + 0.5f)
+        val timeStyle = TextStyle(fontSize = 9.sp, color = blueText)
+        fun timeText(minute: Int): String {
+            val clock = ((minute + 720) % 1440 + 1440) % 1440
+            return "%02d:%02d".format(clock / 60, clock % 60)
+        }
+        val startLayout = measurer.measure("睡 " + timeText(latest.second), timeStyle)
+        val endLayout = measurer.measure("醒 " + timeText(latest.third), timeStyle)
+        val startY = (yOf(latest.second) - startLayout.size.height - 2.dp.toPx())
+            .coerceAtLeast(0f)
+        val endY = (yOf(latest.third) + 2.dp.toPx())
+            .coerceAtMost(size.height - axisHeight - endLayout.size.height)
+        listOf(
+            startLayout to startY,
+            endLayout to endY
+        ).forEach { (layout, y) ->
+            val x = (latestX - layout.size.width / 2f)
+                .coerceIn(labelWidth, size.width - rightPad - layout.size.width)
+            drawText(layout, topLeft = Offset(x, y))
         }
     }
 }

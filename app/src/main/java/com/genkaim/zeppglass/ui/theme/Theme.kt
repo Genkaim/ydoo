@@ -87,7 +87,11 @@ data class ZgPalette(
      * sleep blue: one band is time that restored Charge, the other is time that
      * spent it, and the two must not read as the same thing.
      */
-    val workout: Color
+    val workout: Color,
+    /** 不良 / 偏高: the middle warning step, warmer than the accent, softer than red. */
+    val warn: Color,
+    /** 太低 / 严重: the one colour that means "this reading needs attention". */
+    val critical: Color
 )
 
 val LocalZgPalette = staticCompositionLocalOf {
@@ -103,7 +107,9 @@ val LocalZgPalette = staticCompositionLocalOf {
         sleepLight = Color(0xFF7C9BFF),
         sleepRem = Color(0xFF3FBFAE),
         sleepAwake = Color(0xFFD99A4E),
-        workout = Color(0xFFE07A3F)
+        workout = Color(0xFFE07A3F),
+        warn = Color(0xFFE08A2B),
+        critical = Color(0xFFC93C3C)
     )
 }
 
@@ -153,7 +159,9 @@ fun ZeppGlassTheme(
         sleepLight = if (darkTheme) Color(0xFF9DB3FF) else Color(0xFF6F8DF5),
         sleepRem = if (darkTheme) Color(0xFF5BD6C4) else Color(0xFF2FA895),
         sleepAwake = if (darkTheme) Color(0xFFE9B872) else Color(0xFFC98A3E),
-        workout = if (darkTheme) Color(0xFFF2A06A) else Color(0xFFDD7A3C)
+        workout = if (darkTheme) Color(0xFFF2A06A) else Color(0xFFDD7A3C),
+        warn = if (darkTheme) Color(0xFFF0A94E) else Color(0xFFE08A2B),
+        critical = if (darkTheme) Color(0xFFFF8A8A) else Color(0xFFC93C3C)
     )
     CompositionLocalProvider(LocalZgPalette provides palette) {
         MaterialTheme(

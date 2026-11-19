@@ -203,6 +203,23 @@ class ZeppApi(
     fun hrv(fromMs: Long, toMs: Long, limit: Int = 200): JSONObject =
         v2Events("HRVRMSSD", "real_data", fromMs, toMs, limit)
 
+    /**
+     * Per-minute respiratory rate. One item per day, 1440 base64 bytes.
+     */
+    fun respiration(fromMs: Long, toMs: Long, limit: Int = 200): JSONObject =
+        v2Events("RespiratoryRate", "real_data", fromMs, toMs, limit)
+
+    /**
+     * Nightly breathing summary (`odi` subtype of the blood-oxygen stream:
+     * hypopnea/desaturation index, event count, night score, measured minutes).
+     */
+    fun nightBreathing(
+        userId: String,
+        fromMs: Long,
+        toMs: Long,
+        limit: Int = 200
+    ): JSONObject = events(userId, "blood_oxygen", "odi", fromMs, toMs, limit)
+
     fun weights(userId: String, fromSeconds: Long, toSeconds: Long): JSONObject = get(
         "/users/$userId/members/-1/weightRecords",
         mapOf(

@@ -247,6 +247,27 @@ data class LoadDay(
 /** One all-day HRV (rMSSD) sample from the v2 events stream. */
 data class HrvSample(val epochMs: Long, val value: Double)
 
+/**
+ * A single number attributed to a calendar day. Used by the streams the watch
+ * reports once per night (呼吸率) rather than as a point on a clock.
+ */
+data class DailyValue(val date: LocalDate, val value: Double)
+
+/**
+ * The night's breathing summary from the watch's blood-oxygen stream.
+ *
+ * [apneaIndex] is 低通气/呼吸暂停指数 in events per hour, [apneaEvents] the
+ * count behind it. Both stay `null` when the watch did not report them: a zero
+ * would read as "measured, nothing found", which is a different claim.
+ */
+data class NightBreathing(
+    val date: LocalDate,
+    val apneaIndex: Double? = null,
+    val apneaEvents: Int? = null,
+    val oxygenScore: Int? = null,
+    val measuredMinutes: Int? = null
+)
+
 data class HealthData(
     val fetchedAt: Long,
     val nickname: String?,
@@ -264,6 +285,10 @@ data class HealthData(
     val heartRate: List<Pair<Long, Int>>,
     val strain: List<StrainDay> = emptyList(),
     val hrv: List<HrvSample> = emptyList(),
+    /** 每夜呼吸率（次/分），由手表的逐分钟呼吸率折算成一天一个值。 */
+    val respiration: List<DailyValue> = emptyList(),
+    /** 夜间呼吸暂停/低通气汇总，来自血氧流的 `odi` 子类型。 */
+    val nightBreathing: List<NightBreathing> = emptyList(),
     /** Watch's latest VO2 max, independent of the 34-day page window. */
     val vo2Max: Int? = null,
     val body: BodyProfile = BodyProfile(),
@@ -281,6 +306,10 @@ data class HealthData(
     fun chargeOn(date: LocalDate): ChargeDay? = chargeDays.lastOrNull { it.date == date }
 
     fun nightOn(date: LocalDate): SleepNight? = nights.lastOrNull { it.date == date }
+
+    fun respirationOn(date: LocalDate): Double? = respiration.lastOrNull { it.date == date }?.value
+
+    fun breathingOn(date: LocalDate): NightBreathing? = nightBreathing.lastOrNull { it.date == date }
 }
 
 /**
@@ -336,5 +365,7 @@ fun HealthData.withoutValues(): HealthData = copy(
     },
     heartRate = emptyList(),
     strain = emptyList(),
-    hrv = emptyList()
+    hrv = emptyList(),
+    respiration = emptyList(),
+    nightBreathing = emptyList()
 )

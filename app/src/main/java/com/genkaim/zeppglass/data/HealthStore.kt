@@ -1,6 +1,7 @@
 package com.genkaim.zeppglass.data
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -244,6 +245,8 @@ class HealthStore private constructor(
         var workouts: JSONObject? = null
         var hrv: JSONObject? = null
         var dailyHealth: JSONObject? = null
+        var respiration: JSONObject? = null
+        var nightBreathing: JSONObject? = null
 
         val today = LocalDate.now(zone)
         val start = today.minusDays(34)
@@ -347,6 +350,15 @@ class HealthStore private constructor(
                     .onSuccess { dailyHealth = it }
                     .onFailure { warnings.add("每日健康：${it.friendly()}") }
             }
+            // Both streams are optional: firmware without the sensor answers
+            // with an empty list, and the sleep page simply omits those cards.
+            val respirationJob = async {
+                runCatching { api.respiration(fromMs, toMs, 200) }.onSuccess { respiration = it }
+            }
+            val nightBreathingJob = async {
+                runCatching { api.nightBreathing(userId, fromMs, toMs, 200) }
+                    .onSuccess { nightBreathing = it }
+            }
             val workoutJob = async {
                 runCatching {
                     api.workouts(
@@ -358,7 +370,8 @@ class HealthStore private constructor(
             }
             listOf(
                 profileJob, readinessJob, paiJob, stressJob, spO2Job, chargeJob, loadJob, vo2Job,
-                weightJob, workoutJob, hrvJob, dailyHealthJob
+                weightJob, workoutJob, hrvJob, dailyHealthJob, respirationJob,
+                nightBreathingJob
             ).forEach { it.await() }
             bandJobs.forEach { it.await() }
         }
@@ -428,10 +441,17 @@ class HealthStore private constructor(
                 ?.ifEmpty { previous?.load.orEmpty() } ?: previous?.load.orEmpty(),
             heartRate = heartRate.ifEmpty { previous?.heartRate.orEmpty() },
             hrv = hrv?.let { HealthParser.parseHrv(it) }.orEmpty().ifEmpty { previous?.hrv.orEmpty() },
+            respiration = respiration?.let { HealthParser.parseRespiration(it, zone) }
+                .orEmpty().ifEmpty { previous?.respiration.orEmpty() },
+            nightBreathing = nightBreathing?.let { HealthParser.parseNightBreathing(it, zone) }
+                .orEmpty().ifEmpty { previous?.nightBreathing.orEmpty() },
             vo2Max = vo2?.let { HealthParser.parseVo2Max(it) } ?: previous?.vo2Max,
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: previous?.body ?: BodyProfile(),
             warnings = warnings.distinct()
         ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, zone)) }
+        // The two night streams are optional; the count is how a missing
+        // sensor is told apart from a parser that did not understand the reply.
+        Log.d("ZeppApi", "respiration=${data.respiration.size} apnea=${data.nightBreathing.size}")
 
         // Signed out while this request was in flight: its answer belongs to a
         // session that no longer exists, so neither the page nor the file keeps
@@ -481,6 +501,8 @@ class HealthStore private constructor(
         carrySection("workouts", workouts)
         carrySection("hrv", hrv)
         carrySection("dailyHealth", dailyHealth)
+        carrySection("respiration", respiration)
+        carrySection("nightBreathing", nightBreathing)
 
         withContext(Dispatchers.IO) {
             if (gen == generation) runCatching { cacheFile().writeText(snapshot.toString()) }
@@ -524,6 +546,10 @@ class HealthStore private constructor(
                 workouts = json.optJSONObject("workouts")?.let { HealthParser.parseWorkouts(it) }.orEmpty(),
                 load = json.optJSONObject("load")?.let { HealthParser.parseLoad(it, zone) }.orEmpty(),
                 hrv = json.optJSONObject("hrv")?.let { HealthParser.parseHrv(it) }.orEmpty(),
+                respiration = json.optJSONObject("respiration")
+                    ?.let { HealthParser.parseRespiration(it, zone) }.orEmpty(),
+                nightBreathing = json.optJSONObject("nightBreathing")
+                    ?.let { HealthParser.parseNightBreathing(it, zone) }.orEmpty(),
                 vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
                 body = profile?.let { HealthParser.parseBodyProfile(it) } ?: BodyProfile(),
                 heartRate = parsed.flatMap { it.heartRate }.distinctBy { it.first }.sortedBy { it.first }

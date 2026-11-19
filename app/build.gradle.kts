@@ -11,8 +11,8 @@ android {
         applicationId = "com.genkaim.zeppglass"
         minSdk = 26
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.2.6"
+        versionCode = 19
+        versionName = "0.2.7"
     }
 
     buildFeatures {

@@ -6,6 +6,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +44,7 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShowChart
+import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -63,6 +67,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -351,10 +359,11 @@ fun OverviewScreen(
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.STRESS, date)) }
                                 )
                                 MetricTile(
-                                    label = "准备度",
-                                    value = readiness?.officialScore?.toString() ?: "--",
-                                    unit = readiness?.officialScore?.let { "分" },
-                                    icon = Icons.Rounded.Bolt,
+                                    label = "皮肤温度",
+                                    value = readiness?.skinTempScore?.toString() ?: "--",
+                                    unit = readiness?.skinTempScore?.let { "分" },
+                                    icon = Icons.Rounded.Thermostat,
+                                    tint = LocalZgPalette.current.warn,
                                     modifier = Modifier.weight(1f),
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.READINESS, date)) }
                                 )
@@ -853,7 +862,9 @@ private fun TopRings(
             label = "睡眠",
             value = sleepScore?.toString() ?: "--",
             progress = (sleepScore ?: 0) / 100f,
-            tint = palette.sleepLight,
+            // A poor night turns amber, a clearly bad one turns red: the ring
+            // itself says how the night went, not only the number inside it.
+            tint = scoreTint(sleepScore, palette.sleepLight, palette.warn, palette.critical),
             onClick = onSleep
         )
         RingCell(
@@ -861,18 +872,140 @@ private fun TopRings(
             label = "Charge",
             value = chargeScore?.toString() ?: "--",
             progress = (chargeScore ?: 0) / 100f,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = scoreTint(chargeScore, MaterialTheme.colorScheme.primary, palette.warn, palette.critical),
             size = 104.dp,
             onClick = onCharge
         )
-        RingCell(
+        StrainRingCell(
             modifier = Modifier.weight(1f),
-            label = "负荷",
-            value = strain?.let { String.format("%.1f", it) } ?: "--",
-            progress = ((strain ?: 0.0) / 21.0).toFloat(),
-            tint = MaterialTheme.colorScheme.tertiary,
+            value = strain,
             onClick = onStrain
         )
+    }
+}
+
+/**
+ * Score bands for the two 0–100 rings. Under 60 is the red band, 60–74 the
+ * amber one; above that the ring keeps its own colour.
+ */
+private fun scoreTint(score: Int?, base: Color, warn: Color, critical: Color): Color = when {
+    score == null -> base
+    score < 60 -> critical
+    score < 75 -> warn
+    else -> base
+}
+
+/** 15 of 21 is the watch's "high load" threshold; the ring marks it. */
+private const val STRAIN_HIGH = 15f
+private const val STRAIN_MAX = 21f
+
+/**
+ * The strain ring, drawn as two coloured segments: everything up to 15 in the
+ * normal accent, the part above 15 in red, with a horizontal tick sitting on
+ * the ring exactly at 15 so the threshold is visible before it is crossed.
+ */
+@Composable
+private fun StrainRingCell(
+    modifier: Modifier,
+    value: Double?,
+    onClick: () -> Unit
+) {
+    val palette = LocalZgPalette.current
+    val normal = MaterialTheme.colorScheme.tertiary
+    val progress = ((value ?: 0.0) / STRAIN_MAX).toFloat()
+    val animated = remember { Animatable(0f) }
+    LaunchedEffect(progress) { animated.animateTo(progress.coerceIn(0f, 1f), tween(700)) }
+
+    Column(
+        modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(enabled = value != null, onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "负荷",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(13.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        val markerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+        Box(Modifier.size(88.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 6.dp.toPx()
+                val inset = stroke / 2
+                val topLeft = Offset(inset, inset)
+                val arcSize = Size(size.width - stroke, size.height - stroke)
+                val strokeStyle = Stroke(stroke, cap = StrokeCap.Round)
+                drawArc(
+                    color = normal.copy(alpha = 0.16f),
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = strokeStyle
+                )
+                val filled = 360f * animated.value
+                val thresholdSweep = 360f * (STRAIN_HIGH / STRAIN_MAX)
+                // Below the threshold, then above it: the two segments keep
+                // their own colour instead of the whole ring turning red.
+                val lowSweep = minOf(filled, thresholdSweep)
+                if (lowSweep > 0f) {
+                    drawArc(
+                        color = normal,
+                        startAngle = -90f,
+                        sweepAngle = lowSweep,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = strokeStyle
+                    )
+                }
+                if (filled > thresholdSweep) {
+                    drawArc(
+                        color = palette.critical,
+                        startAngle = -90f + thresholdSweep,
+                        sweepAngle = filled - thresholdSweep,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = strokeStyle
+                    )
+                }
+                // The 15 mark: a short horizontal line laid on the ring at the
+                // angle that corresponds to 15 / 21 of the circle.
+                val angle = Math.toRadians((-90f + thresholdSweep).toDouble())
+                val radius = size.minDimension / 2 - inset
+                val cx = size.width / 2 + (radius * kotlin.math.cos(angle)).toFloat()
+                val cy = size.height / 2 + (radius * kotlin.math.sin(angle)).toFloat()
+                val half = stroke * 1.15f
+                drawLine(
+                    color = markerColor,
+                    start = Offset(cx - half, cy),
+                    end = Offset(cx + half, cy),
+                    strokeWidth = 1.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+            Text(
+                value?.let { String.format("%.1f", it) } ?: "--",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }
 

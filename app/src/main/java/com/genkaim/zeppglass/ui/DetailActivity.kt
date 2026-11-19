@@ -45,7 +45,10 @@ class DetailActivity : ComponentActivity() {
                         settings = settings,
                         store = store,
                         target = target,
-                        onClose = { finish() }
+                        onClose = { finish() },
+                        // A card inside a detail page opens its own page on top,
+                        // so back returns to the sleep page rather than home.
+                        onOpen = { startActivity(intent(this@DetailActivity, it)) }
                     )
                 }
             }

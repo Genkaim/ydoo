@@ -113,7 +113,8 @@ fun DetailScreen(
     settings: AppSettings,
     store: HealthStore,
     target: DetailTarget,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onOpen: (DetailTarget) -> Unit = {}
 ) {
     val data = store.displayData
     val palette = LocalZgPalette.current
@@ -134,7 +135,7 @@ fun DetailScreen(
         ) {
             Spacer(Modifier.height(headerHeight + 4.dp))
             when (target.kind) {
-                DetailKind.SLEEP -> SleepDetail(data, target.date)
+                DetailKind.SLEEP -> SleepDetail(data, target.date, onOpen)
                 DetailKind.CHARGE -> ChargeDetail(data, target.date)
                 DetailKind.STRESS -> StressDetail(data, target.date)
                 DetailKind.READINESS -> ReadinessDetail(data, target.date)
@@ -149,6 +150,9 @@ fun DetailScreen(
                 DetailKind.RHR -> RhrDetail(data, target.date)
                 DetailKind.HRV -> HrvDetail(data, target.date)
                 DetailKind.DIET -> DietDetail(data, settings, target.date ?: LocalDate.now())
+                DetailKind.SLEEP_HR -> SleepMetricDetail(data, target.date, SleepMetric.HEART_RATE)
+                DetailKind.SLEEP_RR -> SleepMetricDetail(data, target.date, SleepMetric.RESPIRATION)
+                DetailKind.SLEEP_APNEA -> SleepMetricDetail(data, target.date, SleepMetric.APNEA)
             }
         }
 
@@ -200,6 +204,9 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.RHR -> "静息心率"
     DetailKind.HRV -> "心率变异性"
     DetailKind.DIET -> "饮食"
+    DetailKind.SLEEP_HR -> "睡眠心率"
+    DetailKind.SLEEP_RR -> "呼吸率"
+    DetailKind.SLEEP_APNEA -> "低通气"
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -218,12 +225,15 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.RHR -> target.date?.let(Fmt::date) ?: "睡眠静息心率"
     DetailKind.HRV -> target.date?.let(Fmt::date) ?: "全天 rMSSD"
     DetailKind.DIET -> ""
+    DetailKind.SLEEP_HR -> target.date?.let(Fmt::date) ?: "最近一晚的睡眠心率，近 7 天趋势"
+    DetailKind.SLEEP_RR -> target.date?.let(Fmt::date) ?: "每夜平均呼吸率，近 7 天趋势"
+    DetailKind.SLEEP_APNEA -> target.date?.let(Fmt::date) ?: "夜间低通气指数，近 7 天趋势"
 }
 
 // ---------------- sleep ----------------
 
 @Composable
-private fun SleepDetail(data: HealthData?, date: LocalDate?) {
+private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarget) -> Unit) {
     val palette = LocalZgPalette.current
     val night = (date?.let { data?.nightOn(it) } ?: data?.latestNight())
     if (night == null) {
@@ -293,39 +303,70 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
 
         FlatPanel {
             Column(Modifier.padding(16.dp)) {
-                // The four stages live at the top of the timeline card: durations
-                // first, the picture underneath.
+                // Two stages per row: four across was too tight for a verdict
+                // line, and the share of the night is the number that matters
+                // ("深睡 1:12" says nothing without knowing it is 22%).
+                val sleepTotal = listOfNotNull(
+                    night.deepMinutes, night.lightMinutes, night.remMinutes
+                ).sum().takeIf { it > 0 }
+                val inBed = listOf(
+                    night.deepMinutes, night.lightMinutes, night.remMinutes, night.awakeMinutes
+                ).mapNotNull { it }.sum()
+                fun share(minutes: Int?): Double? =
+                    if (minutes == null || sleepTotal == null) null else minutes * 100.0 / sleepTotal
+                val normalColor = MaterialTheme.colorScheme.primary
+                val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                fun verdict(pct: Double?, low: Double, high: Double): Pair<String, Color> = when {
+                    pct == null -> "无数据" to mutedColor
+                    pct < low -> "偏低" to palette.warn
+                    pct > high -> "偏高" to palette.warn
+                    else -> "正常" to normalColor
+                }
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    StatBlock(
+                    StageBlock(
                         Modifier.weight(1f),
                         Icons.Rounded.DarkMode,
                         "深睡",
                         Fmt.hoursMinutes(night.deepMinutes),
-                        palette.sleepDeep
+                        palette.sleepDeep,
+                        verdict(share(night.deepMinutes), 13.0, 23.0)
                     )
-                    StatBlock(
+                    StageBlock(
                         Modifier.weight(1f),
                         Icons.Rounded.LightMode,
                         "浅睡",
                         Fmt.hoursMinutes(night.lightMinutes),
-                        palette.sleepLight
+                        palette.sleepLight,
+                        verdict(share(night.lightMinutes), 40.0, 60.0)
                     )
-                    StatBlock(
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StageBlock(
                         Modifier.weight(1f),
                         Icons.Rounded.AutoAwesome,
                         "REM",
                         Fmt.hoursMinutes(night.remMinutes),
-                        palette.sleepRem
+                        palette.sleepRem,
+                        verdict(share(night.remMinutes), 18.0, 25.0)
                     )
-                    StatBlock(
+                    StageBlock(
                         Modifier.weight(1f),
                         Icons.Rounded.Visibility,
                         "清醒",
                         Fmt.hoursMinutes(night.awakeMinutes),
-                        palette.sleepAwake
+                        palette.sleepAwake,
+                        verdict(
+                            if (night.awakeMinutes == null || inBed <= 0) null
+                            else night.awakeMinutes * 100.0 / inBed,
+                            0.0, 8.0
+                        )
                     )
                 }
                 Spacer(Modifier.height(14.dp))
@@ -443,30 +484,136 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
         }
     }
 
+    // 睡眠数据: the three vitals the watch reports for the night, each opening
+    // its own 7-day trend. 夜醒 / 睡眠效率 / 最低血氧 were dropped: they either
+    // repeat a number above or say nothing you can act on.
     SectionTitle("睡眠数据")
+    val breathing = data?.breathingOn(night.date)
+    val respiration = data?.respirationOn(night.date)
+    val sleepHr = readiness?.sleepRhr ?: night.restingHr
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("睡眠心率", (readiness?.sleepRhr ?: night.restingHr)?.toString() ?: "--", "bpm", Modifier.weight(1f))
-        MetricTile("睡眠 HRV", readiness?.sleepHrv?.toString() ?: "--", "ms", Modifier.weight(1f))
+        SleepVitalTile(
+            label = "睡眠心率",
+            value = sleepHr?.toString() ?: "--",
+            unit = "bpm",
+            tint = palette.sleepRem,
+            verdict = when {
+                sleepHr == null -> null
+                sleepHr < 45 || sleepHr > 70 -> "偏离" to palette.warn
+                else -> "正常" to MaterialTheme.colorScheme.primary
+            },
+            modifier = Modifier.weight(1f),
+            onClick = { onOpen(DetailTarget(DetailKind.SLEEP_HR, night.date)) }
+        )
+        SleepVitalTile(
+            label = "呼吸率",
+            value = respiration?.let { Fmt.oneDecimal(it) } ?: "--",
+            unit = "次/分",
+            tint = palette.sleepLight,
+            verdict = when {
+                respiration == null -> null
+                respiration < 12.0 || respiration > 20.0 -> "偏离" to palette.warn
+                else -> "正常" to MaterialTheme.colorScheme.primary
+            },
+            modifier = Modifier.weight(1f),
+            onClick = { onOpen(DetailTarget(DetailKind.SLEEP_RR, night.date)) }
+        )
     }
-    val inBedSeconds = (night.endEpochSec - night.startEpochSec).coerceAtLeast(1)
-    val efficiency = (night.totalMinutes * 60.0 / inBedSeconds * 100).roundToInt().coerceIn(0, 100)
+    Spacer(Modifier.height(12.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("夜醒", night.wakeCount?.toString() ?: "--", "次", Modifier.weight(1f))
-        MetricTile("睡眠效率", efficiency.toString(), "%", Modifier.weight(1f))
+        val apnea = breathing?.apneaIndex
+        SleepVitalTile(
+            label = "低通气",
+            value = apnea?.let { Fmt.oneDecimal(it) } ?: "--",
+            unit = "次/时",
+            tint = palette.sleepAwake,
+            verdict = when {
+                apnea == null -> null
+                apnea < 5.0 -> "正常" to MaterialTheme.colorScheme.primary
+                apnea < 15.0 -> "偏高" to palette.warn
+                else -> "偏高" to palette.critical
+            },
+            modifier = Modifier.weight(1f),
+            onClick = { onOpen(DetailTarget(DetailKind.SLEEP_APNEA, night.date)) }
+        )
+        SleepVitalTile(
+            label = "睡眠 HRV",
+            value = readiness?.sleepHrv?.toString() ?: "--",
+            unit = "ms",
+            tint = palette.sleepDeep,
+            verdict = null,
+            modifier = Modifier.weight(1f),
+            onClick = null
+        )
     }
     val spo2 = data?.spo2?.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
     if (!spo2.isNullOrEmpty()) {
+        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricTile("夜间血氧均值", spo2.map { it.value }.average().roundToInt().toString(), "%", Modifier.weight(1f))
-            MetricTile("最低血氧", spo2.minOf { it.value }.toString(), "%", Modifier.weight(1f))
+            MetricTile(
+                "夜间血氧均值",
+                spo2.map { it.value }.average().roundToInt().toString(),
+                "%",
+                Modifier.weight(1f)
+            )
         }
     }
 
     val nights = data?.nights?.takeLast(14).orEmpty()
     if (nights.size > 1) {
-        SectionTitle("近 14 晚", trailing = "入睡 / 醒来")
+        SectionTitle("睡眠规律性", trailing = "近 14 晚")
         FlatPanel {
             Column(Modifier.padding(16.dp)) {
+                val rhythm = sleepRhythm(nights)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    RhythmBlock(
+                        Modifier.weight(1f),
+                        "平均入睡",
+                        rhythm?.averageOnset?.let { Fmt.clock(it) } ?: "--",
+                        palette.sleepLight
+                    )
+                    RhythmBlock(
+                        Modifier.weight(1f),
+                        "平均醒来",
+                        rhythm?.averageWake?.let { Fmt.clock(it) } ?: "--",
+                        palette.sleepAwake
+                    )
+                    RhythmBlock(
+                        Modifier.weight(1f),
+                        "规律性",
+                        rhythm?.score?.let { "$it%" } ?: "--",
+                        when {
+                            rhythm?.score == null -> palette.sleepLight
+                            rhythm.score >= 85 -> MaterialTheme.colorScheme.primary
+                            rhythm.score >= 70 -> palette.warn
+                            else -> palette.critical
+                        },
+                        verdict = rhythm?.score?.let {
+                            when {
+                                it >= 85 -> "正常"
+                                it >= 70 -> "一般"
+                                else -> "偏低"
+                            }
+                        }
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "规律性 = 100 − 最近 ${nights.size} 晚入睡时刻的标准差（分钟）：每晚都在同一时间躺下得满分，" +
+                        "作息每波动一小时就扣约十分。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        FlatPanel {
+            Column(Modifier.padding(16.dp)) {
+                // The bars answer "when did each night start and end"; the blue
+                // times on the newest bar spell out its two ends.
                 SleepWindowChart(
                     nights = nights,
                     modifier = Modifier
@@ -1999,3 +2146,278 @@ private fun Missing(text: String) {
 
 
 
+
+// ---------------- sleep stage / vital blocks ----------------
+
+/**
+ * One sleep stage: coloured duration plus a one-word verdict underneath.
+ * The verdict compares the stage's share of the night against the usual band,
+ * which is the part of a stage number people cannot judge by themselves.
+ */
+@Composable
+private fun StageBlock(
+    modifier: Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    tint: Color,
+    verdict: Pair<String, Color>
+) {
+    Column(modifier, horizontalAlignment = Alignment.Start) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.size(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        // The number wears the stage's own colour: 深睡 blue, REM teal, 清醒 amber.
+        Text(value, style = MaterialTheme.typography.titleLarge, color = tint)
+        Text(
+            verdict.first,
+            style = MaterialTheme.typography.labelSmall,
+            color = verdict.second
+        )
+    }
+}
+
+/** A sleep vital with its rating; opens the 7-day trend when there is one. */
+@Composable
+private fun SleepVitalTile(
+    label: String,
+    value: String,
+    unit: String,
+    tint: Color,
+    verdict: Pair<String, Color>?,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)?
+) {
+    // Not MetricTile: there the value is always ink-coloured and the caption
+    // always grey, while these cards are meant to carry the metric's colour
+    // and a coloured verdict.
+    val hasValue = value.isNotBlank() && value != "--"
+    FlatPanel(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        onClick = onClick.takeIf { hasValue }
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(value, style = MaterialTheme.typography.headlineSmall, color = tint)
+                Text(
+                    " $unit",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 3.dp)
+                )
+            }
+            if (verdict != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    verdict.first,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = verdict.second
+                )
+            }
+        }
+    }
+}
+
+/** One column of the 睡眠规律性 header: label, big value, optional verdict. */
+@Composable
+private fun RhythmBlock(
+    modifier: Modifier,
+    label: String,
+    value: String,
+    tint: Color,
+    verdict: String? = null
+) {
+    Column(modifier, horizontalAlignment = Alignment.Start) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(value, style = MaterialTheme.typography.titleLarge, color = tint)
+        if (verdict != null) {
+            Text(
+                verdict,
+                style = MaterialTheme.typography.labelSmall,
+                color = tint
+            )
+        }
+    }
+}
+
+/**
+ * Sleep timing over a window of nights, all expressed in minutes since 18:00 so
+ * a night that crosses midnight stays one monotonic number.
+ */
+private class SleepRhythm(
+    val averageOnset: Int,
+    val averageWake: Int,
+    /** 100 minus the standard deviation of the onset, in minutes. */
+    val score: Int
+)
+
+private fun sleepRhythm(nights: List<SleepNight>): SleepRhythm? {
+    if (nights.isEmpty()) return null
+    val zone = ZoneId.systemDefault()
+    fun minutesSinceEvening(epochSec: Long): Int {
+        val time = Instant.ofEpochSecond(epochSec).atZone(zone).toLocalTime()
+        return ((time.hour * 60 + time.minute) - 18 * 60 + 1440) % 1440
+    }
+    val onsets = nights.map { minutesSinceEvening(it.startEpochSec) }
+    // Wake times past 18:00 belong to the next evening; add a day so an early
+    // riser and a late one land on the same scale.
+    val wakes = nights.map { minutesSinceEvening(it.endEpochSec) }
+    val onsetMean = onsets.average()
+    val sd = kotlin.math.sqrt(onsets.sumOf { (it - onsetMean) * (it - onsetMean) } / onsets.size)
+    // Back to clock minutes for display: the offset was only there to keep the
+    // arithmetic monotonic across midnight.
+    fun toClock(minutesSinceEvening: Int): Int = (minutesSinceEvening + 18 * 60) % 1440
+    return SleepRhythm(
+        averageOnset = toClock(onsetMean.roundToInt()),
+        averageWake = toClock(wakes.average().roundToInt()),
+        score = (100 - sd).roundToInt().coerceIn(0, 100)
+    )
+}
+
+// ---------------- sleep vitals with a 7-day trend ----------------
+
+private enum class SleepMetric(val unit: String) {
+    HEART_RATE("bpm"),
+    RESPIRATION("次/分"),
+    APNEA("次/时")
+}
+
+/**
+ * One sleep vital, one page: today's reading, its rating, and the last seven
+ * nights as a line. Values come from the readiness record (心率),
+ * `RespiratoryRate` (呼吸率) and the blood-oxygen `odi` stream (低通气).
+ */
+@Composable
+private fun SleepMetricDetail(data: HealthData?, date: LocalDate?, metric: SleepMetric) {
+    val source = data ?: run {
+        Missing("还没有这一晚的数据")
+        return
+    }
+    val night = date?.let { source.nightOn(it) } ?: source.latestNight()
+    val day = night?.date ?: date ?: LocalDate.now()
+    val readiness = source.readiness.firstOrNull { it.date == day }
+
+    fun valueOn(target: LocalDate): Double? = when (metric) {
+        SleepMetric.HEART_RATE ->
+            source.readiness.firstOrNull { it.date == target }?.sleepRhr?.toDouble()
+                ?: source.nightOn(target)?.restingHr?.toDouble()
+        SleepMetric.RESPIRATION -> source.respirationOn(target)
+        SleepMetric.APNEA -> source.breathingOn(target)?.apneaIndex
+    }
+
+    val value = valueOn(day)
+    if (value == null) {
+        Missing("这一晚没有这项记录")
+        return
+    }
+    val verdict = when (metric) {
+        SleepMetric.HEART_RATE -> if (value in 45.0..70.0) "正常" to MaterialTheme.colorScheme.primary
+        else "偏离" to LocalZgPalette.current.warn
+        SleepMetric.RESPIRATION -> if (value in 12.0..20.0) "正常" to MaterialTheme.colorScheme.primary
+        else "偏离" to LocalZgPalette.current.warn
+        SleepMetric.APNEA -> when {
+            value < 5.0 -> "正常" to MaterialTheme.colorScheme.primary
+            value < 15.0 -> "偏高" to LocalZgPalette.current.warn
+            else -> "偏高" to LocalZgPalette.current.critical
+        }
+    }
+    // Each vital keeps the colour it has on the sleep page.
+    val color = when (metric) {
+        SleepMetric.HEART_RATE -> LocalZgPalette.current.sleepRem
+        SleepMetric.RESPIRATION -> LocalZgPalette.current.sleepLight
+        SleepMetric.APNEA -> LocalZgPalette.current.sleepAwake
+    }
+
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                Fmt.date(day),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    Fmt.oneDecimal(value),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = color
+                )
+                Text(
+                    " ${metric.unit}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+        }
+    }
+
+    // Seven calendar days ending on the night being read, whether or not the
+    // watch had an activity record for each of them.
+    val recent = (0..6).map { day.minusDays(6L - it) }
+    val series = recent.map { valueOn(it)?.toFloat() }
+    if (series.count { it != null } > 1) {
+        SectionTitle("近 7 天")
+        FlatPanel {
+            TrendLineChart(
+                values = series,
+                labels = recent.map { Fmt.weekdayShort(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(170.dp),
+                color = color
+            )
+        }
+    }
+
+    SectionTitle("这些数字是什么？")
+    FlatPanel {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                when (metric) {
+                    SleepMetric.HEART_RATE ->
+                        "睡眠心率是整晚心跳的平均值，通常比清醒静息心率再低几次。熬夜、酒精、生病或高强度训练后它会偏高。"
+                    SleepMetric.RESPIRATION ->
+                        "呼吸率是每分钟呼吸次数，由手表的逐分钟呼吸数据取当晚平均。成年人静息时多在 12–20 次/分。"
+                    SleepMetric.APNEA ->
+                        "低通气指数是每小时呼吸变浅或暂停的次数，来自手表的夜间血氧记录（AHI，取不到时退回 ODI）。低于 5 次/时属于正常范围。"
+                },
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "评级用通用范围，不代替个人基线；手表没有记录时不显示数值，也不用 0 顶替。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}

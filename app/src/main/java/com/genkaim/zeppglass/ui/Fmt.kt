@@ -30,6 +30,12 @@ object Fmt {
     fun timeSec(epochSec: Long): String =
         Instant.ofEpochSecond(epochSec).atZone(zone).toLocalTime().format(timeFormatter)
 
+    /** A clock time given as minutes since midnight, wrapping past 24:00. */
+    fun clock(minuteOfDay: Int): String {
+        val minute = ((minuteOfDay % 1440) + 1440) % 1440
+        return "%02d:%02d".format(minute / 60, minute % 60)
+    }
+
     fun date(date: LocalDate): String =
         date.format(DateTimeFormatter.ofPattern("M 月 d 日", Locale.CHINA))
 

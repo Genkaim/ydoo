@@ -138,6 +138,83 @@ object HealthParser {
         }.getOrNull()
     }
 
+    /**
+     * 呼吸率: `RespiratoryRate/real_data` carries one item per day whose
+     * `value.measurements` is a base64 blob of 1440 bytes — one byte of
+     * breaths-per-minute per minute of the local day, 0 meaning "not measured".
+     * The night's figure is the mean of the plausible readings; bytes outside
+     * 4–60 brpm are sensor noise, not physiology, and are dropped rather than
+     * dragged into an average.
+     */
+    fun parseRespiration(payload: JSONObject, zone: ZoneId): List<DailyValue> {
+        val items = payload.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<DailyValue>()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val encoded = item.optJSONObject("value")?.anyString("measurements")
+                ?: item.anyString("measurements")
+                ?: continue
+            val bytes = runCatching {
+                var raw = Base64.getDecoder().decode(encoded)
+                if (raw.size > 2 && raw[0] == 0x1f.toByte() && raw[1] == 0x8b.toByte()) {
+                    raw = GZIPInputStream(ByteArrayInputStream(raw)).readBytes()
+                }
+                raw
+            }.getOrNull() ?: continue
+            val date = itemDate(item, zone) ?: continue
+            val readings = bytes.asSequence()
+                .map { (it.toInt() and 0xFF).toDouble() }
+                .filter { it in 4.0..60.0 }
+                .toList()
+            if (readings.isEmpty()) continue
+            out.add(DailyValue(date, readings.average()))
+        }
+        return out.distinctBy { it.date }.sortedBy { it.date }
+    }
+
+    /**
+     * 夜间呼吸暂停/低通气: the `odi` subtype of the blood-oxygen stream. The
+     * fields sit at the item's top level (not under `value`).
+     *
+     * `ahi`/`ahiNum` are the hypopnea figures and are preferred when the
+     * account reports them; `odi`/`odiNum` are the oxygen-desaturation
+     * fallback, so the card is never blank on firmware that ships only ODI.
+     */
+    fun parseNightBreathing(payload: JSONObject, zone: ZoneId): List<NightBreathing> {
+        val items = payload.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<NightBreathing>()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val date = itemDate(item, zone) ?: continue
+            val index = item.anyNumber("ahi") ?: item.anyNumber("odi")
+            val events = item.anyInt("ahiNum") ?: item.anyInt("odiNum")
+            val score = item.anyInt("score")?.takeIf { it in 0..100 }
+            val seconds = item.anyNumber("cost")
+            val minutes = seconds?.let { (it / 60.0).roundToInt() }?.takeIf { it > 0 && it < 1440 }
+            if (index == null && events == null && score == null && minutes == null) continue
+            out.add(
+                NightBreathing(
+                    date = date,
+                    apneaIndex = index?.takeIf { it >= 0.0 },
+                    apneaEvents = events?.takeIf { it >= 0 },
+                    oxygenScore = score,
+                    measuredMinutes = minutes
+                )
+            )
+        }
+        return out.distinctBy { it.date }.sortedBy { it.date }
+    }
+
+    /** The calendar day an event item belongs to, however the payload spells it. */
+    private fun itemDate(item: JSONObject, zone: ZoneId): LocalDate? {
+        for (key in listOf("dateString", "date", "day", "dayId")) {
+            val text = item.anyString(key) ?: continue
+            runCatching { LocalDate.parse(text.take(10)) }.getOrNull()?.let { return it }
+        }
+        val stamp = item.anyNumber("timestamp") ?: item.anyNumber("time") ?: item.anyNumber("startTime")
+        return stamp?.let { dateOf(it.toLong(), zone) }
+    }
+
     private fun parseNight(date: LocalDate, sleep: JSONObject, zone: ZoneId): SleepNight? {
         val start = sleep.anyNumber("st")?.toLong() ?: return null
         val end = sleep.anyNumber("ed")?.toLong() ?: return null

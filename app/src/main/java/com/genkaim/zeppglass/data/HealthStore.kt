@@ -37,7 +37,8 @@ class HealthStore private constructor(
     private val settings: AppSettings
 ) {
     private val appContext = context.applicationContext
-    private val cacheFile = File(appContext.filesDir, "health-snapshot.json")
+    /** One snapshot per account: switching accounts swaps the whole file. */
+    private fun cacheFile(): File = AccountScope.file(appContext, "health-snapshot", settings)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val zone: ZoneId = ZoneId.systemDefault()
     private val api = ZeppApi(settings)
@@ -111,11 +112,22 @@ class HealthStore private constructor(
         scope.launch { doRefreshSafely() }
     }
 
-    fun onLoginChanged() {
-        state = state.copy(error = null)
+    /**
+     * The account changed — a sign-in, a sign-out, or a different person on the
+     * same phone. Nothing is deleted: memory is dropped, the new account's
+     * snapshot file is read, and the network refresh starts again from there.
+     */
+    fun switchUser() {
+        // Requests that started before the switch must not write their answer
+        // into the file of the account that is now open.
+        generation++
         workoutCache.clear()
-        refresh()
+        blanked = null
+        state = loadInitialState()
+        if (settings.isLoggedIn) refresh()
     }
+
+    fun onLoginChanged() = switchUser()
 
     /**
      * Workout detail is fetched on demand (the list payload has no GPS), then
@@ -379,7 +391,7 @@ class HealthStore private constructor(
         // Keep whatever this run could not fetch from the previous snapshot, so
         // a partially failed sync never wipes the local cache.
         val previousJson = withContext(Dispatchers.IO) {
-            runCatching { JSONObject(cacheFile.readText()) }.getOrNull()
+            runCatching { JSONObject(cacheFile().readText()) }.getOrNull()
         }
         val snapshot = JSONObject()
         snapshot.put("fetchedAt", data.fetchedAt)
@@ -412,28 +424,16 @@ class HealthStore private constructor(
         carrySection("dailyHealth", dailyHealth)
 
         withContext(Dispatchers.IO) {
-            if (gen == generation) runCatching { cacheFile.writeText(snapshot.toString()) }
+            if (gen == generation) runCatching { cacheFile().writeText(snapshot.toString()) }
         }
-    }
-
-    /**
-     * Signing out removes the account, so every number it produced goes too:
-     * the snapshot file, the parsed state, workout details and anything a
-     * request in flight would have written back.
-     */
-    fun reset() {
-        generation++
-        workoutCache.clear()
-        runCatching { cacheFile.delete() }
-        state = HealthUiState(loading = false, refreshing = false, data = null)
     }
 
     private class Cached(val data: HealthData, val fetchedAt: Long)
 
     private fun readSnapshot(): Cached? {
-        if (!cacheFile.isFile) return null
+        if (!cacheFile().isFile) return null
         return runCatching {
-            val json = JSONObject(cacheFile.readText())
+            val json = JSONObject(cacheFile().readText())
             val band = mutableListOf<JSONObject>()
             json.optJSONArray("band")?.let { arr ->
                 for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(band::add)

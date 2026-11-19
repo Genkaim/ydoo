@@ -6,26 +6,25 @@ import android.webkit.WebStorage
 import java.io.File
 
 /**
- * Leaving the account has to leave nothing behind.
+ * Signing out ends the web session; it does not delete anything.
  *
- * The token in [AppSettings] is only the key: the pages the login WebView
- * opened keep their own cookie jar and local storage, and the app keeps a
- * health snapshot, the AI chat archive and the diet log with its photos. All of
- * it belongs to the account, so all of it goes.
+ * The pages the login WebView opened keep their own cookie jar, and that jar is
+ * shared by whoever signs in next, so it is cleared here. Everything else — the
+ * health snapshot, the diet log with its photos, the chat archive, today's AI
+ * summary — is filed under the account that produced it (see [AccountScope]),
+ * so the next account starts empty and this one gets its data back when it
+ * signs in again.
  *
- * Configuration is not data and stays: the AI endpoint, the theme and the tab
- * layout are the user's setup, not the account's contents.
+ * Configuration is not data and is never touched: the AI endpoint, the theme
+ * and the tab layout belong to the install.
  */
 object SignOut {
 
     fun run(context: Context, settings: AppSettings, store: HealthStore) {
         val app = context.applicationContext
         clearWebSession(app)
-        AiChatSession.clearAll()
-        DietStore.wipe()
-        store.reset()
-        settings.clearDerivedData()
         settings.clearSession()
+        Account.switch(app, settings, store)
     }
 
     /**

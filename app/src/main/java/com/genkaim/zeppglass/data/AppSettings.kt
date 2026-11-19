@@ -79,14 +79,18 @@ class AppSettings private constructor(context: Context) {
     var aiIncludeHealth: Boolean by mutableStateOf(prefs.getBoolean(KEY_AI_CONTEXT, true))
         private set
 
-    /** Today's AI summary: text, the logical day it belongs to (05:00 boundary). */
-    var dailySummaryText by mutableStateOf(prefs.getString(KEY_SUMMARY_TEXT, "") ?: "")
+    /**
+     * Today's AI summary: text, the logical day it belongs to (05:00 boundary).
+     * The summary is a reading of one person's data, so it is stored per
+     * account and re-read whenever the account changes.
+     */
+    var dailySummaryText by mutableStateOf(prefs.getString(userKey(KEY_SUMMARY_TEXT), "") ?: "")
         private set
 
-    var dailySummaryDay by mutableStateOf(prefs.getString(KEY_SUMMARY_DAY, "") ?: "")
+    var dailySummaryDay by mutableStateOf(prefs.getString(userKey(KEY_SUMMARY_DAY), "") ?: "")
         private set
 
-    var dailySummaryAt by mutableStateOf(prefs.getLong(KEY_SUMMARY_AT, 0L))
+    var dailySummaryAt by mutableStateOf(prefs.getLong(userKey(KEY_SUMMARY_AT), 0L))
         private set
 
     fun saveDailySummary(text: String, day: String, at: Long) {
@@ -94,9 +98,9 @@ class AppSettings private constructor(context: Context) {
         dailySummaryDay = day
         dailySummaryAt = at
         prefs.edit()
-            .putString(KEY_SUMMARY_TEXT, text)
-            .putString(KEY_SUMMARY_DAY, day)
-            .putLong(KEY_SUMMARY_AT, at)
+            .putString(userKey(KEY_SUMMARY_TEXT), text)
+            .putString(userKey(KEY_SUMMARY_DAY), day)
+            .putLong(userKey(KEY_SUMMARY_AT), at)
             .apply()
     }
 
@@ -132,6 +136,7 @@ class AppSettings private constructor(context: Context) {
             .putString(KEY_NICKNAME, nickname)
             .putString(KEY_AVATAR, avatar)
             .apply()
+        reloadForUser()
     }
 
     fun updateProfile(nickname: String?, avatar: String?) {
@@ -151,22 +156,24 @@ class AppSettings private constructor(context: Context) {
             .remove(KEY_NICKNAME)
             .remove(KEY_AVATAR)
             .apply()
+        reloadForUser()
     }
 
     /**
-     * Everything the app derived from the account rather than from the user's
-     * own setup: today's AI summary is a reading of their health data, so it
-     * must not survive a sign-out.
+     * Keys that belong to one account, not to the install: today's AI summary
+     * is a reading of that person's health data.
      */
-    fun clearDerivedData() {
-        dailySummaryText = ""
-        dailySummaryDay = ""
-        dailySummaryAt = 0L
-        prefs.edit()
-            .remove(KEY_SUMMARY_TEXT)
-            .remove(KEY_SUMMARY_DAY)
-            .remove(KEY_SUMMARY_AT)
-            .apply()
+    private fun userKey(base: String): String =
+        "$base-${userId?.takeIf { it.isNotBlank() } ?: AccountScope.GUEST}"
+
+    /**
+     * Re-reads the per-account pieces after a sign-in or a sign-out. Nothing is
+     * cleared: the previous account's summary stays saved under its own key.
+     */
+    fun reloadForUser() {
+        dailySummaryText = prefs.getString(userKey(KEY_SUMMARY_TEXT), "") ?: ""
+        dailySummaryDay = prefs.getString(userKey(KEY_SUMMARY_DAY), "") ?: ""
+        dailySummaryAt = prefs.getLong(userKey(KEY_SUMMARY_AT), 0L)
     }
 
     fun updateTheme(mode: String) {

@@ -143,11 +143,11 @@ fun SettingsScreen(
                         )
                         if (settings.isLoggedIn) {
                             FlatButton(
-                                text = "断开",
+                                text = "退出登录",
                                 icon = Icons.Rounded.Logout,
                                 primary = false,
-                                // Signing out also clears what the account left
-                                // on the phone, so it asks first.
+                                // Only the web session ends here; the data stays
+                                // filed under this account, so it still asks.
                                 onClick = { confirmSignOut = true }
                             )
                         }
@@ -401,22 +401,14 @@ fun SettingsScreen(
             onDismissRequest = { confirmSignOut = false },
             shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text("断开并清除本机数据？") },
-            text = {
-                Text(
-                    "会把网页登录状态一并删掉，并清空本机的健康快照、AI 对话记录、饮食记录与照片。" +
-                        "AI 接入点、主题与底栏设置会保留，重新登录后数据会重新同步。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
+            title = { Text("退出登录？") },
             confirmButton = {
                 TextButton(onClick = {
                     SignOut.run(context, settings, store)
                     confirmSignOut = false
                     testOk = true
-                    testResult = "已断开，本机数据已清除"
-                }) { Text("断开并清除", color = MaterialTheme.colorScheme.error) }
+                    testResult = "已退出登录"
+                }) { Text("退出", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmSignOut = false }) { Text("取消") }

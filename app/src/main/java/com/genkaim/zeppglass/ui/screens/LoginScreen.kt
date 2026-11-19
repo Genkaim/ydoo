@@ -171,7 +171,9 @@ fun LoginScreen(
             busy = false
             result.onSuccess { verified ->
                 settings.saveSession(token, userId, verified.host, verified.nickname, verified.avatar)
-                store.onLoginChanged()
+                // Every store follows the account: its own snapshot, log and
+                // archive are already on disk and get read back here.
+                com.genkaim.zeppglass.data.Account.switch(context, settings, store)
                 onDone()
             }.onFailure {
                 error = it.message ?: "验证失败"

@@ -4,7 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -15,6 +17,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +83,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -209,34 +214,41 @@ fun AiScreen(
 
     // ---- bottom spacing ---------------------------------------------------
     // The composer has to clear two different things: the floating tab bar
-    // while the keyboard is down, and the keyboard itself while it is up. Both
-    // are driven by one fraction we own instead of by the raw IME inset, so the
-    // field travels along a single line. Reading the inset directly made it
-    // drop to the bar first and only then climb back: the inset collapses in
-    // one frame while the old spacing animation was still running.
+    // while the keyboard is down, and the keyboard itself while it is up.
+    // Its position follows the live IME inset, not a "keyboard is open" flag:
+    // the flag only flips when the keyboard has finished moving, so the field
+    // used to stand still until the keyboard was gone and then jump home.
+    // Reading the inset means it travels with the keyboard, both ways.
     val density = LocalDensity.current
-    val imeVisible = WindowInsets.isImeVisible
-    val imeNowPx = with(density) { WindowInsets.ime.getBottom(this) }
-    // The keyboard keeps its height for the whole session; remembering the
-    // tallest value keeps the travel distance stable when the inset itself is
-    // already back at zero.
-    var tallestImePx by remember { mutableIntStateOf(0) }
-    SideEffect { if (imeNowPx > tallestImePx) tallestImePx = imeNowPx }
-    val screenHeightDp = LocalConfiguration.current.screenHeightDp
-    // Two sources, because either one can be missing: the platform's IME
-    // visibility flag, and an IME inset taller than the navigation bar (some
-    // ROMs report the bar height even while the keyboard is closed).
+    val imePx = with(density) { WindowInsets.ime.getBottom(this) }
     val navBarPx = with(density) { WindowInsets.navigationBars.getBottom(this) }
-    val keyboardUp = imeVisible || imeNowPx > navBarPx
+    val imeVisible = WindowInsets.isImeVisible
+    // The keyboard keeps its height for the whole session; remembering the
+    // tallest value keeps the travel distance stable once the inset is back at
+    // zero.
+    var tallestImePx by remember { mutableIntStateOf(0) }
+    // A few builds never move the IME inset (older ROMs, and AVDs without a
+    // SystemUI): there the flag drives the animation instead.
+    var insetTravels by remember { mutableStateOf(false) }
+    SideEffect {
+        if (imePx > tallestImePx) tallestImePx = imePx
+        if (imePx > navBarPx + 1) insetTravels = true
+    }
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
     // A few builds report no IME inset at all (the window resizes instead).
     // A rough keyboard height beats hiding the field behind the keyboard.
     val keyboardPx = tallestImePx.takeIf { it > 0 }
         ?: with(density) { (screenHeightDp * 0.40f).dp.roundToPx() }
-    val typing by animateFloatAsState(
+    val keyboardUp = imeVisible || imePx > navBarPx
+    // Fallback for the builds that never animate the inset.
+    val fallbackTyping by animateFloatAsState(
         targetValue = if (keyboardUp) 1f else 0f,
         animationSpec = tween(200, easing = FastOutSlowInEasing),
         label = "typing"
     )
+    val travelPx = (keyboardPx - navBarPx).coerceAtLeast(1)
+    val insetTyping = ((imePx - navBarPx).toFloat() / travelPx).coerceIn(0f, 1f)
+    val typing = if (insetTravels) insetTyping else fallbackTyping
     // Measured by the shell, so the field clears the bar on every device no
     // matter which system-bar insets it reports.
     val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace
@@ -245,6 +257,13 @@ fun AiScreen(
         stop = with(density) { keyboardPx.toDp() } + ComposerAir,
         fraction = typing
     )
+
+    // Everything already on screen when the page opens is simply there; only
+    // messages that arrive while it is open slide up into place. The baseline
+    // is rebuilt when a whole conversation is swapped in, and shrinks when the
+    // list is emptied (new chat, deleted session).
+    var settled by remember(AiChatSession.sessionEpoch) { mutableIntStateOf(messages.size) }
+    LaunchedEffect(messages.size) { if (messages.size < settled) settled = messages.size }
 
     Column(
         modifier
@@ -268,22 +287,36 @@ fun AiScreen(
             }
         )
 
+        // The transcript runs to the bottom edge of the window and the deck
+        // (suggestions, composer, the gap under them) floats over it. Nothing
+        // paints a band behind the deck any more, so while the list scrolls its
+        // messages stay visible in the margin around the capsules.
         Box(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
+            var deckPx by remember { mutableIntStateOf(0) }
+            val deckSpace = with(density) { deckPx.toDp() }
+
             if (messages.isEmpty()) {
                 EmptyTranscript(
                     configured = configured,
                     onOpenSettings = onOpenSettings,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = deckSpace)
                 )
             } else {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        top = 4.dp,
+                        bottom = deckSpace + 8.dp
+                    ),
                     // A short conversation sits at the bottom of the page, the
                     // way a chat should: sending grows it upward.
                     verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom)
@@ -293,19 +326,24 @@ fun AiScreen(
                         key = { index, message -> "$index-${message.role}" }
                     ) { index, message ->
                         val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
-                        if (message.role == "user") {
-                            UserBubble(message.content)
-                        } else {
-                            AssistantMessage(
-                                message = message,
-                                streaming = streamingHere,
-                                phase = if (streamingHere) phase else "",
-                                data = data,
-                                canRegenerate = !sending && index == messages.lastIndex,
-                                onRetry = { AiChatSession.retry(settings, data) },
-                                onRegenerate = { AiChatSession.regenerate(settings, data) },
-                                onCopy = { copy(message.content) }
-                            )
+                        AppearFromBelow(
+                            animate = index >= settled,
+                            modifier = Modifier.animateItem()
+                        ) {
+                            if (message.role == "user") {
+                                UserBubble(message.content)
+                            } else {
+                                AssistantMessage(
+                                    message = message,
+                                    streaming = streamingHere,
+                                    phase = if (streamingHere) phase else "",
+                                    data = data,
+                                    canRegenerate = !sending && index == messages.lastIndex,
+                                    onRetry = { AiChatSession.retry(settings, data) },
+                                    onRegenerate = { AiChatSession.regenerate(settings, data) },
+                                    onCopy = { copy(message.content) }
+                                )
+                            }
                         }
                     }
                 }
@@ -320,37 +358,46 @@ fun AiScreen(
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 10.dp)
+                        .padding(bottom = deckSpace + 6.dp)
                 )
             }
-        }
 
-        // Starter questions belong next to the composer: they are shortcuts for
-        // what to type, not page content to scroll past. They grow out of the
-        // composer and fold back into it, so the field glides instead of
-        // jumping the moment the first message is sent.
-        AnimatedVisibility(
-            visible = messages.isEmpty() && configured,
-            enter = fadeIn(tween(160)) + expandVertically(tween(220), expandFrom = Alignment.Bottom),
-            exit = fadeOut(tween(110)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Bottom)
-        ) {
-            SuggestionStrip(
-                suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
-                loading = AiChatSession.suggestionsLoading,
-                onPick = { send(it) }
-            )
-        }
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { deckPx = it.height }
+            ) {
+                // Starter questions belong next to the composer: they are
+                // shortcuts for what to type, not page content to scroll past.
+                // They rise out of the composer and are drawn back up into it,
+                // so nothing travels downward while the first message lands.
+                AnimatedVisibility(
+                    visible = messages.isEmpty() && configured,
+                    enter = fadeIn(tween(160)) +
+                        expandVertically(tween(240, easing = FastOutSlowInEasing), expandFrom = Alignment.Bottom),
+                    exit = fadeOut(tween(120)) +
+                        shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
+                ) {
+                    SuggestionStrip(
+                        suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
+                        loading = AiChatSession.suggestionsLoading,
+                        onPick = { send(it) }
+                    )
+                }
 
-        Composer(
-            value = input,
-            onValueChange = { AiChatSession.draft = it },
-            sending = sending,
-            enabled = configured,
-            onSend = { send(input) },
-            onStop = { AiChatSession.stop() },
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
-        )
-        Spacer(Modifier.height(bottomSpace))
+                Composer(
+                    value = input,
+                    onValueChange = { AiChatSession.draft = it },
+                    sending = sending,
+                    enabled = configured,
+                    onSend = { send(input) },
+                    onStop = { AiChatSession.stop() },
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
+                )
+                Spacer(Modifier.height(bottomSpace))
+            }
+        }
     }
 
     if (showHistory) {
@@ -498,6 +545,35 @@ private fun Composer(
     }
 }
 
+/**
+ * A message that arrived while the page was open rises into place from below
+ * the composer, growing upward as it fades in. Messages that were already
+ * there when the page opened are simply drawn.
+ */
+@Composable
+private fun AppearFromBelow(
+    animate: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    if (!animate) {
+        Box(modifier) { content() }
+        return
+    }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    AnimatedVisibility(
+        visible = shown,
+        modifier = modifier,
+        enter = fadeIn(tween(200)) +
+            slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 3 } +
+            expandVertically(tween(280, easing = FastOutSlowInEasing), expandFrom = Alignment.Bottom),
+        exit = ExitTransition.None
+    ) {
+        content()
+    }
+}
+
 @Composable
 private fun UserBubble(text: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -518,9 +594,16 @@ private fun UserBubble(text: String) {
     }
 }
 
+/** The three faces one answer can have; swapping them is animated. */
+private enum class AnswerMode { WAITING, ERROR, TEXT }
+
 /**
  * Answers are page text, not a bubble: full width, so long paragraphs use the
  * whole line, with the copy / regenerate pair underneath once the reply is done.
+ *
+ * Waiting, failing and answering are three different states of the same block,
+ * so they cross-fade instead of snapping: a request that dies turns its dots
+ * into an error line, and the first token turns them into text.
  */
 @Composable
 private fun AssistantMessage(
@@ -533,9 +616,18 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onCopy: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        when {
-            message.error -> {
+    val mode = when {
+        message.error -> AnswerMode.ERROR
+        message.content.isBlank() && streaming -> AnswerMode.WAITING
+        else -> AnswerMode.TEXT
+    }
+    AnimatedContent(
+        targetState = mode,
+        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(130)) },
+        label = "answerMode"
+    ) { current ->
+        when (current) {
+            AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
                 Text(
                     message.content,
                     style = MaterialTheme.typography.bodyMedium,
@@ -550,13 +642,19 @@ private fun AssistantMessage(
                 }
             }
 
-            message.content.isBlank() && streaming -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TypingDots(Modifier.padding(vertical = 8.dp))
-                    if (phase.isNotBlank()) {
-                        Spacer(Modifier.size(10.dp))
+            AnswerMode.WAITING -> Row(verticalAlignment = Alignment.CenterVertically) {
+                TypingDots(Modifier.padding(vertical = 8.dp))
+                if (phase.isNotBlank()) {
+                    Spacer(Modifier.size(10.dp))
+                    // The status changes as the request moves on (查数据 →
+                    // 组织回答); each change is a small fade, not a swap.
+                    AnimatedContent(
+                        targetState = phase,
+                        transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                        label = "phase"
+                    ) { line ->
                         Text(
-                            phase,
+                            line,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -564,11 +662,20 @@ private fun AssistantMessage(
                 }
             }
 
-            else -> {
+            AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
                 MarkdownView(message.content, data = data)
-                if (streaming) {
+                AnimatedVisibility(
+                    visible = streaming,
+                    enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(160), shrinkTowards = Alignment.Top)
+                ) {
                     TypingDots(Modifier.padding(top = 8.dp))
-                } else {
+                }
+                AnimatedVisibility(
+                    visible = !streaming,
+                    enter = fadeIn(tween(200)) + expandVertically(tween(220), expandFrom = Alignment.Top),
+                    exit = fadeOut(tween(100)) + shrinkVertically(tween(140), shrinkTowards = Alignment.Top)
+                ) {
                     Row(
                         Modifier.padding(top = 2.dp, start = 0.dp),
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -649,7 +756,11 @@ private fun SuggestionStrip(
     onPick: (String) -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-        if (loading) {
+        AnimatedVisibility(
+            visible = loading,
+            enter = fadeIn(tween(200)) + expandVertically(tween(220), expandFrom = Alignment.Top),
+            exit = fadeOut(tween(140)) + shrinkVertically(tween(180), shrinkTowards = Alignment.Top)
+        ) {
             Text(
                 "正在根据最近的数据准备问题…",
                 style = MaterialTheme.typography.labelSmall,

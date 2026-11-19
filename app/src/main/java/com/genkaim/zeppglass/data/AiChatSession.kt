@@ -55,6 +55,15 @@ object AiChatSession {
         private set
 
     /**
+     * Bumped whenever the whole transcript is swapped for another one (a
+     * history entry, a new chat, another account). The page uses it to tell
+     * "this conversation opened" from "a message just arrived", so only the
+     * latter is animated.
+     */
+    var sessionEpoch by mutableStateOf(0)
+        private set
+
+    /**
      * The bulky system prompt (role, tool catalogue, seven-day digest) goes out
      * once per conversation. Repeating it on every turn drowned short questions
      * in data and made the model ignore the instructions.
@@ -120,7 +129,9 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         load()
     }
 
-    private fun archiveFile(): File? = appContext?.let { File(it.filesDir, "ai-chats.json") }
+    /** One archive per account, so two people never see each other's chats. */
+    private fun archiveFile(): File? =
+        appContext?.let { AccountScope.file(it, "ai-chats", AppSettings.get(it)) }
 
     private fun load() {
         val file = archiveFile() ?: return
@@ -240,6 +251,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
     fun newChat() {
         stop()
         snapshot()
+        sessionEpoch++
         contextSent = false
         currentId = null
         messages.clear()
@@ -260,6 +272,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         stop()
         snapshot()
         val session = stored[id] ?: return
+        sessionEpoch++
         contextSent = false
         messages.clear()
         messages.addAll(session.messages)
@@ -291,10 +304,19 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
     }
 
     /**
-     * Signing out: the whole archive is user data, so the live lists and the
-     * file on disk both go. Nothing here is reachable without the account.
+     * The account changed: the archive in memory belongs to the previous
+     * person, so everything is dropped and the file of the account that is
+     * open now is read instead. Nothing on disk is touched.
      */
-    fun clearAll() {
+    fun switchUser(context: Context) {
+        sessionEpoch++
+        resetInMemory()
+        appContext = context.applicationContext
+        loaded = true
+        load()
+    }
+
+    private fun resetInMemory() {
         stop()
         job?.cancel()
         job = null
@@ -312,6 +334,14 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         suggestions.clear()
         stored.clear()
         draft = ""
+    }
+
+    /**
+     * Signing out: the whole archive is user data, so the live lists and the
+     * file on disk both go. Nothing here is reachable without the account.
+     */
+    fun clearAll() {
+        resetInMemory()
         runCatching { archiveFile()?.delete() }
     }
 

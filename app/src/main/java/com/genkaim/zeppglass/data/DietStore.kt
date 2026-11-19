@@ -47,10 +47,23 @@ object DietStore {
     private var loaded = false
     private var appContext: Context? = null
 
+    /**
+     * The account changed: the log in memory belongs to the previous person, so
+     * it is replaced by the one stored under the account that is open now.
+     * Photos stay in the shared `diet/` folder — their names are unique, and
+     * the entries that point at them live in the per-account file.
+     */
+    fun switchUser(context: Context) {
+        appContext = context.applicationContext
+        loaded = true
+        meals.clear()
+        load()
+    }
+
     fun attach(context: Context) {
+        appContext = context.applicationContext
         if (loaded) return
         loaded = true
-        appContext = context.applicationContext
         load()
     }
 
@@ -112,25 +125,15 @@ object DietStore {
         save()
     }
 
-    /**
-     * Signing out: the log and its photos only exist on this phone, so both go.
-     * The AI endpoint, theme and tab layout are configuration, not data, and
-     * stay where they are.
-     */
-    fun wipe() {
-        meals.clear()
-        val root = File(appContext?.filesDir ?: File("."), "diet")
-        runCatching { root.deleteRecursively() }
-    }
-
     private fun archive(): File {
-        val root = File(appContext?.filesDir ?: File("."), "diet")
-        root.mkdirs()
-        return File(root, "meals.json")
+        val context = appContext ?: return File(".")
+        File(context.filesDir, "diet").mkdirs()
+        return AccountScope.file(context, "meals", AppSettings.get(context), "diet")
     }
 
     private fun load() {
         val file = archive()
+        meals.clear()
         if (!file.isFile) return
         runCatching {
             val array = JSONArray(file.readText())

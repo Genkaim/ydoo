@@ -29,18 +29,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Restaurant
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -69,13 +70,17 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.ChatMessage
 import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.Meal
 import com.genkaim.zeppglass.data.MealItem
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.SettingsActivity
+import com.genkaim.zeppglass.ui.components.CapsuleField
+import com.genkaim.zeppglass.ui.components.FlatButton
 import com.genkaim.zeppglass.ui.components.FlatPanel
+import com.genkaim.zeppglass.ui.components.RoundIconButton
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +104,15 @@ private const val FOOD_PROMPT = """
 看不清或份量不确定时给保守估计，并在 note 里说明。不要编造看不到的食物。
 """
 
+private const val TEXT_FOOD_PROMPT = """
+你是一名营养估算助手。用户会用文字描述刚吃的东西，请据此把这一餐的食物逐一列出，按一人份估算：
+- 每种食物：名称、大致份量、热量 kcal
+- 整餐合计：总热量 kcal，蛋白质、碳水、脂肪（克）
+只输出一个 JSON 对象，不要 Markdown 代码块、不要解释，格式：
+{"items":[{"name":"米饭","amount":"1 碗","kcal":230}],"calories":480,"protein_g":38,"carbs_g":52,"fat_g":9,"note":"估算依据"}
+描述里没写份量就按常见一人份估计，并在 note 里说明。不要添加用户没有提到的食物。
+"""
+
 /** A meal under construction, either straight from the camera or being edited. */
 private data class MealDraft(
     /** Null for a new photo, the stored meal's id while editing. */
@@ -114,7 +128,8 @@ private data class MealDraft(
 
 /** The floating card that follows a photo: spinner, then success or failure. */
 private sealed interface PhotoFlow {
-    data class Loading(val file: File) : PhotoFlow
+    /** Null when the estimate came from a written description instead of a photo. */
+    data class Loading(val file: File?) : PhotoFlow
     data class Failed(val file: File?, val message: String) : PhotoFlow
 }
 
@@ -137,6 +152,8 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     var cameraFile by remember { mutableStateOf<File?>(null) }
     var draft by remember { mutableStateOf<MealDraft?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var describeOpen by remember { mutableStateOf(false) }
+    var description by remember { mutableStateOf("") }
 
     fun analyze(file: File) {
         flow = PhotoFlow.Loading(file)
@@ -163,6 +180,51 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             } catch (e: Exception) {
                 // The failure belongs to the photo card, not to the page.
                 flow = PhotoFlow.Failed(file, e.message ?: "估算失败")
+            }
+        }
+    }
+
+    /**
+     * The written-description path: same JSON contract as the photo, only the
+     * input differs. The result goes through the same editable card, so nothing
+     * is stored until the user confirms it.
+     */
+    fun analyzeText(described: String) {
+        val text = described.trim()
+        if (text.isEmpty()) return
+        describeOpen = false
+        error = null
+        flow = PhotoFlow.Loading(null)
+        scope.launch {
+            try {
+                val reply = withContext(Dispatchers.IO) {
+                    AiClient(settings).complete(
+                        listOf(
+                            ChatMessage("system", TEXT_FOOD_PROMPT),
+                            ChatMessage("user", "这一餐：$text")
+                        ),
+                        maxTokens = 1024
+                    )
+                }
+                val json = parseFoodJson(reply)
+                    ?: error("AI 返回的内容不是可用的估算：${reply.take(60)}")
+                val items = parseItems(json)
+                // An empty list would open an editor with nothing in it.
+                if (items.isEmpty()) error("AI 没有给出具体的食物，换个说法再试")
+                draft = MealDraft(
+                    id = null,
+                    epochMs = System.currentTimeMillis(),
+                    photoPath = null,
+                    items = items,
+                    proteinG = json.optDouble("protein_g", Double.NaN).takeUnless { it.isNaN() },
+                    carbsG = json.optDouble("carbs_g", Double.NaN).takeUnless { it.isNaN() },
+                    fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
+                    note = json.optString("note").takeIf { it.isNotBlank() }
+                )
+                description = ""
+                flow = null
+            } catch (e: Exception) {
+                flow = PhotoFlow.Failed(null, e.message ?: "估算失败")
             }
         }
     }
@@ -219,6 +281,14 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
         galleryLauncher.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         )
+    }
+
+    fun describe() {
+        if (!configured) {
+            error = "先在设置里填好 AI 接入点和密钥，才能估算热量"
+            return
+        }
+        describeOpen = true
     }
 
     val meals = DietStore.mealsOn(day)
@@ -364,18 +434,36 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
         }
     }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(onClick = { takePhoto() }, modifier = Modifier.weight(1f)) {
-            Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("拍照估算")
-        }
-        OutlinedButton(onClick = { pickPhoto() }, modifier = Modifier.weight(1f)) {
-            Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("从相册选")
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlatButton(
+            text = "拍照估算",
+            onClick = { takePhoto() },
+            modifier = Modifier.weight(1.2f),
+            icon = Icons.Rounded.CameraAlt,
+            horizontalPadding = 8.dp
+        )
+        FlatButton(
+            text = "相册",
+            onClick = { pickPhoto() },
+            modifier = Modifier.weight(1f),
+            icon = Icons.Rounded.PhotoLibrary,
+            primary = false,
+            horizontalPadding = 8.dp
+        )
+        FlatButton(
+            text = "描述",
+            onClick = { describe() },
+            modifier = Modifier.weight(1f),
+            icon = Icons.Rounded.EditNote,
+            primary = false,
+            horizontalPadding = 8.dp
+        )
     }
+    Text(
+        "拍一张、从相册选，或者用一句话写下来，都由 AI 估算；确认之后才写进记录。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 
     if (!configured) {
         FlatPanel {
@@ -496,7 +584,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "拍照识别需要支持图片输入的模型（如 GPT-4o、Gemini、Qwen-VL）；照片只发给你配置的 AI 接入点，识别结果确认后才写进本机记录。",
+                "拍照和相册识别需要支持图片输入的模型（如 GPT-4o、Gemini、Qwen-VL）；文字描述用普通对话模型即可。内容只发给你配置的 AI 接入点，识别结果确认后才写进本机记录。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -508,7 +596,24 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     when (val state = flow) {
         is PhotoFlow.Loading -> FloatingCard(onDismiss = {}) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                MealThumb(state.file.absolutePath, 54.dp)
+                if (state.file != null) {
+                    MealThumb(state.file.absolutePath, 54.dp)
+                } else {
+                    Box(
+                        Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.EditNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
                 Spacer(Modifier.width(12.dp))
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(12.dp))
@@ -539,14 +644,16 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Button(
+            FlatButton(
+                text = "知道了",
                 onClick = {
                     state.file?.let { runCatching { it.delete() } }
                     flow = null
                     draft = null
                 },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("确认") }
+                modifier = Modifier.fillMaxWidth(),
+                primary = false
+            )
         }
         null -> Unit
     }
@@ -597,6 +704,71 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                 draft = null
             }
         )
+    }
+
+    if (describeOpen) {
+        DescriptionDialog(
+            text = description,
+            onTextChange = { description = it },
+            onDismiss = { describeOpen = false },
+            onSubmit = { analyzeText(it) }
+        )
+    }
+}
+
+/**
+ * Written description of a meal. The AI turns it into the same item list the
+ * photo path produces, so the confirmation card afterwards is identical.
+ */
+@Composable
+private fun DescriptionDialog(
+    text: String,
+    onTextChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 60.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("用文字描述这一餐", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "例如：一碗米饭、两个鸡腿、一份炒青菜、一杯无糖豆浆。份量没写就按常见一人份算。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    CapsuleField(
+                        value = text,
+                        onValueChange = onTextChange,
+                        placeholder = "吃了什么，大概多少…",
+                        singleLine = false,
+                        minLines = 4,
+                        maxLines = 8
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FlatButton(text = "取消", onClick = onDismiss, primary = false)
+                        FlatButton(
+                            text = "估算",
+                            onClick = { onSubmit(text) },
+                            icon = Icons.Rounded.AutoAwesome,
+                            enabled = text.isNotBlank()
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -782,8 +954,14 @@ private fun MealEditorCard(
                             }
                         }
                         Spacer(Modifier.weight(1f))
-                        OutlinedButton(onClick = onDismiss) { Text("取消") }
-                        Button(
+                        RoundIconButton(
+                            icon = Icons.Rounded.Close,
+                            contentDescription = "取消",
+                            onClick = onDismiss
+                        )
+                        RoundIconButton(
+                            icon = Icons.Rounded.Check,
+                            contentDescription = "完成",
                             onClick = {
                                 val items = rows.mapNotNull { food ->
                                     val name = food.name.trim()
@@ -795,8 +973,9 @@ private fun MealEditorCard(
                                     )
                                 }
                                 onConfirm(items)
-                            }
-                        ) { Text("确认") }
+                            },
+                            primary = true
+                        )
                     }
                 }
             }

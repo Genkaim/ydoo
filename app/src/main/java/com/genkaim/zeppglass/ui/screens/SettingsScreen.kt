@@ -20,21 +20,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,18 +43,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.Image
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import com.genkaim.zeppglass.BuildConfig
 import com.genkaim.zeppglass.R
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.ui.components.CapsuleField
+import com.genkaim.zeppglass.ui.components.FlatButton
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.SectionTitle
@@ -129,21 +128,22 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = onLogin, modifier = Modifier.weight(1f)) {
-                            Text(if (settings.isLoggedIn) "重新登录" else "连接 Zepp")
-                        }
+                        FlatButton(
+                            text = if (settings.isLoggedIn) "重新登录" else "连接 Zepp",
+                            onClick = onLogin,
+                            modifier = Modifier.weight(1f)
+                        )
                         if (settings.isLoggedIn) {
-                            OutlinedButton(
+                            FlatButton(
+                                text = "断开",
+                                icon = Icons.Rounded.Logout,
+                                primary = false,
                                 onClick = {
                                     settings.clearSession()
                                     testResult = "已断开，本机缓存的数据仍在"
                                     testOk = false
                                 }
-                            ) {
-                                Icon(Icons.Rounded.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.size(6.dp))
-                                Text("断开")
-                            }
+                            )
                         }
                     }
                 }
@@ -152,18 +152,28 @@ fun SettingsScreen(
             SectionTitle("外观")
             FlatPanel {
                 Row(
-                    Modifier.fillMaxWidth().padding(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Top
                 ) {
-                    ThemeChoice("跟随系统", settings.themeMode == "system", Modifier.weight(1f)) {
-                        settings.updateTheme("system")
-                    }
-                    ThemeChoice("浅色", settings.themeMode == "light", Modifier.weight(1f)) {
-                        settings.updateTheme("light")
-                    }
-                    ThemeChoice("深色", settings.themeMode == "dark", Modifier.weight(1f)) {
-                        settings.updateTheme("dark")
-                    }
+                    ThemeChoice(
+                        icon = Icons.Rounded.BrightnessAuto,
+                        label = "跟随系统",
+                        selected = settings.themeMode == "system",
+                        modifier = Modifier.weight(1f)
+                    ) { settings.updateTheme("system") }
+                    ThemeChoice(
+                        icon = Icons.Rounded.LightMode,
+                        label = "浅色",
+                        selected = settings.themeMode == "light",
+                        modifier = Modifier.weight(1f)
+                    ) { settings.updateTheme("light") }
+                    ThemeChoice(
+                        icon = Icons.Rounded.DarkMode,
+                        label = "深色",
+                        selected = settings.themeMode == "dark",
+                        modifier = Modifier.weight(1f)
+                    ) { settings.updateTheme("dark") }
                 }
             }
 
@@ -225,51 +235,48 @@ fun SettingsScreen(
             }
             AnimatedVisibility(visible = aiOpen) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    FieldLabel("Base URL")
+                    CapsuleField(
                         value = baseUrl,
                         onValueChange = { baseUrl = it },
-                        label = { Text("Base URL") },
-                        placeholder = { Text("https://api.openai.com/v1") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        placeholder = "https://api.openai.com/v1"
                     )
-                    OutlinedTextField(
+                    FieldLabel("API Key")
+                    CapsuleField(
                         value = apiKey,
                         onValueChange = { apiKey = it },
-                        label = { Text("API Key") },
-                        placeholder = { Text("sk-…") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
+                        placeholder = "sk-…",
                         visualTransformation = PasswordVisualTransformation()
                     )
-                    OutlinedTextField(
+                    FieldLabel("模型")
+                    CapsuleField(
                         value = model,
                         onValueChange = { model = it },
-                        label = { Text("模型") },
-                        placeholder = { Text("deepseek-v4.1-flash") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        placeholder = "deepseek-v4.1-flash"
                     )
-                    OutlinedTextField(
+                    FieldLabel("识图模型（可留空）")
+                    CapsuleField(
                         value = visionModel,
                         onValueChange = { visionModel = it },
-                        label = { Text("识图模型（可留空）") },
-                        placeholder = { Text("gpt-4o / gemini-2.0-flash / qwen-vl") },
-                        supportingText = { Text("拍照识别食物时用这个模型；留空就沿用上面的模型") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        placeholder = "gpt-4o / gemini-2.0-flash / qwen-vl"
                     )
-                    OutlinedTextField(
+                    Text(
+                        "拍照识别食物时用这个模型；留空就沿用上面的模型",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FieldLabel("自定义请求头（每行 Key: Value）")
+                    CapsuleField(
                         value = headers,
                         onValueChange = { headers = it },
-                        label = { Text("自定义请求头（每行 Key: Value）") },
-                        placeholder = { Text("x-opencode-session: …") },
-                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = "x-opencode-session: …",
+                        singleLine = false,
                         minLines = 2,
                         maxLines = 4
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(
+                        FlatButton(
+                            text = if (testing) "测试中…" else "测试连接",
                             onClick = {
                                 settings.saveAi(baseUrl, apiKey, model, visionModel = visionModel, headers = headers)
                                 testing = true
@@ -284,16 +291,18 @@ fun SettingsScreen(
                                     )
                                 }
                             },
+                            modifier = Modifier.weight(1f),
+                            primary = false,
                             enabled = !testing
-                        ) { Text(if (testing) "测试中…" else "测试连接") }
-
-                        Button(
+                        )
+                        FlatButton(
+                            text = "保存",
                             onClick = {
                                 settings.saveAi(baseUrl, apiKey, model, visionModel = visionModel, headers = headers)
                                 onBack()
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("保存") }
+                        )
                     }
                     testResult?.let {
                         Text(
@@ -338,7 +347,7 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("关于 ydoo", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "0.1 · 数据来源、隐私与开源引用",
+                            "${BuildConfig.VERSION_NAME} · 数据来源、隐私与开源引用",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -417,21 +426,51 @@ private fun ReferenceRow(name: String, body: String, licence: String) {
 }
 
 @Composable
-private fun ThemeChoice(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-        else MaterialTheme.colorScheme.onSurface
+private fun FieldLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
+    )
+}
+
+/**
+ * Appearance switch: three circular keys. The selected one is filled with the
+ * accent colour; the others are muted fills with no outline at all.
+ */
+@Composable
+private fun ThemeChoice(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
         Text(
             label,
-            modifier = Modifier.padding(vertical = 10.dp),
-            style = MaterialTheme.typography.labelMedium,
-            textAlign = TextAlign.Center
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

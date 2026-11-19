@@ -1,51 +1,53 @@
 package com.genkaim.zeppglass.ui.screens
 
-import androidx.compose.animation.AnimatedContent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Autorenew
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,8 +55,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,31 +64,43 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AiChatSession
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.EmptyCard
 import com.genkaim.zeppglass.ui.components.MarkdownView
 import com.genkaim.zeppglass.ui.components.PageHeader
-import com.genkaim.zeppglass.ui.components.PinnedPageHeader
+import com.genkaim.zeppglass.ui.components.RoundIconButton
 import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.TypingDots
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
+/** Floating tab bar (56 dp) plus its own margin, so the composer never hides it. */
+private val TabBarClearance = 74.dp
+
+/**
+ * Chat page, laid out like a mainstream assistant client: a fixed title bar on
+ * top, one scrolling transcript, and a composer that lives in the page flow at
+ * the bottom instead of floating over the list.
+ *
+ * The transcript follows the newest text while an answer streams in, stops the
+ * moment the reader drags upward, and offers a jump-to-bottom button afterwards.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AiScreen(
@@ -98,200 +110,196 @@ fun AiScreen(
     onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    val input = AiChatSession.draft
+    val scope = rememberCoroutineScope()
     val messages = AiChatSession.messages
     val sending = AiChatSession.sending
     val phase = AiChatSession.phase
+    val input = AiChatSession.draft
     val listState = rememberLazyListState()
-    val configured = settings.aiApiKey.isNotBlank()
+    val configured = settings.aiApiKey.isNotBlank() && settings.aiBaseUrl.isNotBlank()
     // The AI reads the raw snapshot: the three-hour rule is about what the UI
     // presents as "now", not about which rows the model may examine.
     val data = store.state.data
 
-    // The composer keeps one stable gap below the list: the floating tab bar's
-    // height when the keyboard is closed, a small gap above the keyboard when it
-    // is open. Deriving it from live insets made the first frame land under the
-    // bar and then jump up; animating it on close dipped behind the bar again.
-    val density = LocalDensity.current
-    // Keep the capsule at least 84dp above the bar. As the keyboard rises, the
-    // gap shrinks by exactly the IME height, so the capsule follows the keyboard
-    // continuously and never dips behind the tab bar on close.
-    val imeHeight = with(density) { WindowInsets.ime.getBottom(this).toDp() }
-    // Keep at least 10dp above the keyboard so the capsule never touches it.
-    val composerGap = maxOf(10.dp, 84.dp - imeHeight)
-
     var showHistory by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Keep following the newest content only while the reader is at the bottom.
-    // Dragging up during streaming must leave the page where the finger left it,
-    // otherwise every chunk would pull the list back down.
-    var followBottom by remember { mutableStateOf(true) }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
-            .collect { (scrolling, canScroll) ->
-                if (scrolling) followBottom = !canScroll
-            }
-    }
-    LaunchedEffect(AiChatSession.currentId) { followBottom = true }
-
-    // Attach once, then (re)generate the starter questions whenever the list is
-    // empty — the first visit, and right after 新对话 clears them — or when a
-    // fresh data snapshot arrives after an earlier attempt failed.
-    LaunchedEffect(settings.aiApiKey, AiChatSession.suggestions.isEmpty(), data?.fetchedAt) {
+    // Attach once, then refresh the starter questions whenever the data changes
+    // or 新对话 emptied them.
+    LaunchedEffect(settings.aiApiKey, settings.aiBaseUrl, data?.fetchedAt) {
         AiChatSession.attach(context)
         AiChatSession.loadSuggestions(settings, data)
     }
 
-    LaunchedEffect(messages.size, messages.lastOrNull()?.content) {
-        if (messages.isEmpty()) return@LaunchedEffect
-        if (!followBottom) return@LaunchedEffect
-        // Pin the newest message's bottom edge to the viewport. Scrolling to
-        // the item alone aligns its top, which overshoots for a long answer and
-        // made the list flash while streaming.
+    // ---- following the bottom -------------------------------------------
+    // Dragging up during streaming must leave the page where the finger left
+    // it; anything else pulls the reader back down on every chunk.
+    var followBottom by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
+            .collect { (scrolling, canScrollForward) ->
+                if (scrolling) followBottom = !canScrollForward
+            }
+    }
+    LaunchedEffect(AiChatSession.currentId) { followBottom = true }
+
+    // A new message jumps to its top; the layout observer below then pins its
+    // bottom edge. Doing both in one pass computed the overflow from the frame
+    // before the new text was measured, which is what made the list flicker
+    // while a long answer streamed in.
+    LaunchedEffect(messages.size) {
+        if (!followBottom || messages.isEmpty()) return@LaunchedEffect
         listState.scrollToItem(messages.lastIndex)
-        val last = listState.layoutInfo.visibleItemsInfo
-            .lastOrNull { it.index == messages.lastIndex } ?: return@LaunchedEffect
-        val end = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.afterContentPadding
-        val overflow = last.offset + last.size - end
-        if (overflow > 0) listState.scrollBy(overflow.toFloat())
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            Triple(
+                last?.index ?: -1,
+                last?.let { it.offset + it.size } ?: 0,
+                info.viewportEndOffset - info.afterContentPadding
+            )
+        }.collect { (index, bottom, viewportEnd) ->
+            if (!followBottom) return@collect
+            if (index != messages.lastIndex) return@collect
+            val overflow = bottom - viewportEnd
+            if (overflow > 0) listState.scrollBy(overflow.toFloat())
+        }
     }
 
     fun send(text: String) {
-        if (text.isBlank() || AiChatSession.sending) return
+        val prompt = text.trim()
+        if (prompt.isEmpty() || AiChatSession.sending) return
         if (!configured) {
             onOpenSettings()
             return
         }
-        // A fresh question always lands at the bottom, even if the reader had
-        // scrolled up in the previous answer.
         followBottom = true
-        AiChatSession.send(settings, text, data)
+        AiChatSession.send(settings, prompt, data)
     }
 
-    var headerHeight by remember { mutableStateOf(0.dp) }
-    Box(
+    fun copy(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("AI 回答", text))
+        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    }
+
+    // The keyboard shrinks the whole page; the reserved space for the tab bar
+    // only makes sense while the keyboard is down.
+    val imeVisible = WindowInsets.isImeVisible
+    val bottomClearance by animateDpAsState(
+        targetValue = if (imeVisible) 8.dp else TabBarClearance,
+        animationSpec = tween(180),
+        label = "composerGap"
+    )
+
+    Column(
         modifier
             .fillMaxSize()
             .navigationBarsPadding()
             .imePadding()
     ) {
-        Column(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
+        PageHeader(
+            title = "AI 教练",
+            subtitle = if (configured) settings.aiModel.ifBlank { "默认模型" } else "未接入",
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { AiChatSession.newChat() }) {
+                        Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
+                    }
+                    IconButton(onClick = { showHistory = true }) {
+                        Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+        )
+
+        Box(
+            Modifier
                 .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
-                top = headerHeight + 8.dp,
-                bottom = composerGap + 84.dp
-            ),
-            verticalArrangement = if (messages.isEmpty()) {
-                Arrangement.spacedBy(14.dp)
-            } else {
-                // A short conversation starts at the bottom of the page, like a
-                // chat should: sending a message grows it upward instead of
-                // leaving the newest bubble in the middle of an empty screen.
-                Arrangement.spacedBy(14.dp, Alignment.Bottom)
-            }
+                .fillMaxWidth()
         ) {
-            if (!configured) {
-                item {
-                    EmptyCard(
-                        title = "先填入自己的 AI 密钥",
-                        body = "在设置里填兼容 OpenAI 的接入点、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
-                        actionLabel = "去设置",
-                        onAction = onOpenSettings
-                    )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
+                verticalArrangement = if (messages.isEmpty()) {
+                    Arrangement.spacedBy(12.dp)
+                } else {
+                    // A short conversation sits at the bottom of the page, the
+                    // way a chat should: sending grows it upward.
+                    Arrangement.spacedBy(14.dp, Alignment.Bottom)
                 }
-            }
-            item {
-                AnimatedVisibility(
-                    visible = messages.isEmpty(),
-                    exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
-                ) {
-                    IntroCard(
-                        suggestions = AiChatSession.suggestions.ifEmpty {
-                            listOf(
-                                "今天适合练什么？",
-                                "解释一下我的准备度",
-                                "睡眠哪里可以改善？",
-                                "这周负荷是不是偏高？"
-                            )
-                        },
-                        onPick = { send(it) }
-                    )
+            ) {
+                if (!configured) {
+                    item(key = "setup") {
+                        EmptyCard(
+                            title = "先填入自己的 AI 接入点",
+                            body = "在设置里填兼容 OpenAI 的地址、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
+                            actionLabel = "去设置",
+                            onAction = onOpenSettings
+                        )
+                    }
                 }
-            }
-            items(messages.size, key = { index -> "$index-${messages[index].role}" }) { index ->
-                val message = messages[index]
-                val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
-                BubbleAppear(animate = sending && index >= messages.lastIndex - 1) {
+                if (messages.isEmpty()) {
+                    item(key = "intro") {
+                        IntroCard(
+                            suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
+                            loading = AiChatSession.suggestionsLoading,
+                            onPick = { send(it) }
+                        )
+                    }
+                }
+                itemsIndexed(
+                    items = messages,
+                    key = { index, message -> "$index-${message.role}" }
+                ) { index, message ->
+                    val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
                     if (message.role == "user") {
                         UserBubble(message.content)
                     } else {
-                        AssistantBubble(
-                            content = message.content,
-                            error = message.error,
+                        AssistantMessage(
+                            message = message,
                             streaming = streamingHere,
                             phase = if (streamingHere) phase else "",
                             data = data,
-                            onRetry = {
-                                AiChatSession.retry(settings, data)
-                            }
+                            canRegenerate = !sending && index == messages.lastIndex,
+                            onRetry = { AiChatSession.retry(settings, data) },
+                            onRegenerate = { AiChatSession.regenerate(settings, data) },
+                            onCopy = { copy(message.content) }
                         )
                     }
                 }
             }
-        }
-        }
 
-        PinnedPageHeader(onHeight = { headerHeight = it }) {
-            PageHeader(
-                title = "AI 教练",
-                subtitle = settings.aiModel.ifBlank { "未配置模型" },
-                trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { AiChatSession.newChat() }) {
-                            Icon(
-                                Icons.Rounded.Add,
-                                contentDescription = "新建对话",
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        IconButton(onClick = { showHistory = true }) {
-                            Icon(
-                                Icons.Rounded.History,
-                                contentDescription = "历史对话",
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
-                        }
+            JumpToBottom(
+                visible = !followBottom && messages.isNotEmpty(),
+                onClick = {
+                    followBottom = true
+                    scope.launch {
+                        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
                     }
-                }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
             )
         }
 
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, bottom = composerGap),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            ComposerField(
-                value = input,
-                onValueChange = { AiChatSession.draft = it },
-                sending = sending,
-                onSend = { send(input) },
-                onStop = { AiChatSession.stop() },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        Composer(
+            value = input,
+            onValueChange = { AiChatSession.draft = it },
+            sending = sending,
+            enabled = configured,
+            onSend = { send(input) },
+            onStop = { AiChatSession.stop() },
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
+        )
+        Spacer(Modifier.height(bottomClearance))
     }
 
     if (showHistory) {
@@ -318,35 +326,62 @@ fun AiScreen(
 }
 
 /**
- * The composer is a white capsule on the page background. Its inner padding is
- * deliberately larger than a stock OutlinedTextField, and the area outside the
- * capsule stays transparent.
+ * Shown once the reader has scrolled away from the newest text. It lives in its
+ * own composable so [AnimatedVisibility] resolves to the plain version instead
+ * of the ColumnScope one inherited from the page column.
  */
 @Composable
-private fun ComposerField(
+private fun JumpToBottom(visible: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(140)) + scaleIn(tween(140), initialScale = 0.85f),
+        exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.85f)
+    ) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Rounded.ArrowDownward,
+                    contentDescription = "回到最新",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Composer: one muted capsule holding the growing text field and the send key.
+ * While an answer streams the same key becomes a stop button.
+ */@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Composer(
     value: String,
     onValueChange: (String) -> Unit,
     sending: Boolean,
+    enabled: Boolean,
     onSend: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val canSend = value.isNotBlank() && !sending
     Surface(
-        modifier = modifier.shadow(
-            elevation = 10.dp,
-            shape = RoundedCornerShape(28.dp),
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.12f),
-            spotColor = Color.Black.copy(alpha = 0.18f)
-        ),
-        shape = RoundedCornerShape(28.dp),
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
         Row(
-            Modifier.padding(start = 20.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+            Modifier.padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             BasicTextField(
@@ -354,21 +389,23 @@ private fun ComposerField(
                 onValueChange = onValueChange,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(vertical = 11.dp),
+                    .padding(vertical = 10.dp),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 maxLines = 5,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
+                keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 decorationBox = { inner ->
                     Box {
                         if (value.isEmpty()) {
                             Text(
-                                "问问今天的训练或恢复…",
+                                if (enabled) "问问训练、恢复或饮食…" else "先填写 AI 接入点",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         inner()
@@ -376,50 +413,188 @@ private fun ComposerField(
                 }
             )
             if (sending) {
-                IconButton(onClick = onStop) {
-                    Icon(Icons.Rounded.Stop, contentDescription = "停止", modifier = Modifier.size(20.dp))
-                }
+                RoundIconButton(
+                    icon = Icons.Rounded.Stop,
+                    contentDescription = "停止",
+                    onClick = onStop,
+                    primary = true,
+                    size = 40.dp,
+                    iconSize = 18.dp
+                )
             } else {
-                IconButton(onClick = onSend, enabled = value.isNotBlank()) {
-                    Icon(
-                        Icons.Rounded.ArrowUpward,
-                        contentDescription = "发送",
-                        modifier = Modifier.size(20.dp),
-                        tint = if (value.isNotBlank()) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                RoundIconButton(
+                    icon = Icons.Rounded.ArrowUpward,
+                    contentDescription = "发送",
+                    onClick = { if (canSend) onSend() },
+                    enabled = canSend,
+                    primary = canSend,
+                    size = 40.dp,
+                    iconSize = 18.dp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserBubble(text: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Surface(
+            modifier = Modifier.widthIn(max = 300.dp),
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp),
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Text(
+                text,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+/**
+ * Answers are page text, not a bubble: full width, so long paragraphs use the
+ * whole line, with the copy / regenerate pair underneath once the reply is done.
+ */
+@Composable
+private fun AssistantMessage(
+    message: AiChatSession.Message,
+    streaming: Boolean,
+    phase: String,
+    data: HealthData?,
+    canRegenerate: Boolean,
+    onRetry: () -> Unit,
+    onRegenerate: () -> Unit,
+    onCopy: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        when {
+            message.error -> {
+                Text(
+                    message.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onRetry) {
+                        Icon(Icons.Rounded.Autorenew, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(4.dp))
+                        Text("重试")
+                    }
+                }
+            }
+
+            message.content.isBlank() && streaming -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TypingDots(Modifier.padding(vertical = 8.dp))
+                    if (phase.isNotBlank()) {
+                        Spacer(Modifier.size(10.dp))
+                        Text(
+                            phase,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            else -> {
+                MarkdownView(message.content, data = data)
+                if (streaming) {
+                    TypingDots(Modifier.padding(top = 8.dp))
+                } else {
+                    Row(
+                        Modifier.padding(top = 2.dp, start = 0.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MessageAction("复制", Icons.Rounded.ContentCopy, onCopy)
+                        if (canRegenerate) {
+                            MessageAction("重新生成", Icons.Rounded.Autorenew, onRegenerate)
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-/**
- * Fades and lifts a bubble in when it first appears. Only bubbles that arrive
- * while the chat is sending animate; opening an old conversation draws them
- * immediately, so switching tabs never replays the animation.
- */
 @Composable
-private fun BubbleAppear(animate: Boolean, content: @Composable () -> Unit) {
-    var visible by remember { mutableStateOf(!animate) }
-    LaunchedEffect(Unit) { if (animate) visible = true }
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(200)) + slideInVertically(tween(220)) { height -> height / 5 }
+private fun MessageAction(label: String, icon: ImageVector, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        content()
+        Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.size(4.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
-/** Fades and lifts a bubble in when it first appears. */@Composable
-private fun MessageAppear(content: @Composable () -> Unit) {
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
-    AnimatedVisibility(
-        visible = shown,
-        enter = fadeIn(tween(180)) + slideInVertically(tween(200)) { height -> height / 5 }
+/**
+ * Empty state: a line of context plus the starter questions as chips that wrap,
+ * instead of a card that competes with the composer for attention.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IntroCard(suggestions: List<String>, loading: Boolean, onPick: (String) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        content()
+        Text(
+            "今天想聊点什么？",
+            style = MaterialTheme.typography.headlineSmall
+        )
+        Text(
+            "回答会直接引用本机的睡眠、负荷与饮食记录；点一句开始，或者自己输入。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(2.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            suggestions.forEach { text ->
+                Surface(
+                    onClick = { onPick(text) },
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Text(
+                        text,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        }
+        if (loading) {
+            Text(
+                "正在根据最近的数据准备问题…",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -463,31 +638,38 @@ private fun HistorySheet(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable { onOpen(session.id) }
                                 .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    session.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (session.id == currentId) FontWeight.SemiBold
-                                    else FontWeight.Normal,
-                                    maxLines = 1
-                                )
-                                Text(
-                                    "${Fmt.dayAndTime(session.updatedAt)} · ${session.count} 条" +
-                                        if (session.id == currentId) " · 当前" else "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (session.preview.isNotBlank()) {
+                            Surface(
+                                onClick = { onOpen(session.id) },
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(Modifier.padding(vertical = 2.dp)) {
                                     Text(
-                                        session.preview,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        session.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (session.id == currentId) FontWeight.SemiBold
+                                        else FontWeight.Normal,
                                         maxLines = 1
                                     )
+                                    Text(
+                                        "${Fmt.dayAndTime(session.updatedAt)} · ${session.count} 条" +
+                                            if (session.id == currentId) " · 当前" else "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (session.preview.isNotBlank()) {
+                                        Text(
+                                            session.preview,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                             IconButton(onClick = { onDelete(session.id) }) {
@@ -507,116 +689,3 @@ private fun HistorySheet(
         Spacer(Modifier.height(24.dp))
     }
 }
-
-@Composable
-private fun IntroCard(suggestions: List<String>, onPick: (String) -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(18.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Rounded.AutoAwesome,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(Modifier.size(8.dp))
-            Text("问点什么", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(10.dp))
-        // The list is replaced once the model's own four questions arrive, so
-        // cross-fade instead of snapping.
-        AnimatedContent(
-            targetState = suggestions,
-            transitionSpec = { fadeIn(tween(240)) togetherWith fadeOut(tween(140)) },
-            label = "suggestions"
-        ) { list ->
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                list.forEach { text ->
-                    Surface(
-                        onClick = { onPick(text) },
-                        shape = RoundedCornerShape(10.dp),
-                        // Light enough to read as a hint, not as a filled button.
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
-                    ) {
-                        Text(
-                            text,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UserBubble(text: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        Surface(
-            modifier = Modifier.widthIn(max = 320.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Text(
-                text,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-private fun AssistantBubble(
-    content: String,
-    error: Boolean,
-    streaming: Boolean,
-    phase: String,
-    data: com.genkaim.zeppglass.data.HealthData?,
-    onRetry: () -> Unit
-) {
-    // Answers are page text, not a bubble: no surface, no inset box, full width
-    // of the list so long paragraphs use the whole line.
-    Column(Modifier.fillMaxWidth()) {
-        if (content.isBlank() && streaming) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TypingDots(Modifier.padding(vertical = 6.dp))
-                if (phase.isNotBlank()) {
-                    Spacer(Modifier.size(10.dp))
-                    Text(
-                        phase,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
-            MarkdownView(content, data = data)
-            if (streaming) {
-                TypingDots(Modifier.padding(top = 8.dp))
-            }
-        }
-        if (error) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onRetry) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("重试")
-                }
-            }
-        }
-    }
-}
-
-

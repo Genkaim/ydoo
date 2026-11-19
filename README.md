@@ -10,7 +10,7 @@
 
 <p align="center">
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.2.1-1f6feb">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.2.2-1f6feb">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3-7F52FF?logo=kotlin&logoColor=white">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-3DA639">
 </p>
@@ -23,8 +23,8 @@
 - **每日负荷** — 心率冲量 + 步数 + 脑力折算，再按 HRV 与静息心率的偏离调整，压到 0–21；不属于官方分数，页面写明来源
 - **Hybrid Charge** — 体力/精神/总分、当天曲线、近两周趋势；`255` 按「手表没算出来」处理
 - **活动与运动** — 步数/消耗/活动三环、今日心率、近 7 天步数、14 天趋势；运动详情含逐秒曲线与 GPS 轨迹
-- **AI 教练** — 兼容 OpenAI 的接入点，流式输出、Markdown 与数据卡片、历史会话；首轮注入七日摘要，模型可按需查询本机数据表
-- **饮食记录** — 拍照 → AI 估算 → 逐项确认 → 本地保存；今日可编辑，剩余热量与累计缺口
+- **AI 教练** — 主流聊天页布局：固定标题栏、贴着输入框滚动的会话流、上滑即停的跟随、回到底部按钮、复制与重新生成；兼容 OpenAI 的接入点，流式输出 Markdown 与数据卡片，历史会话留在本机；首轮注入七日摘要，问到更早的日期时才额外查表
+- **饮食记录** — 拍照、从相册选，或者用一句话描述，都由 AI 估算 → 逐项确认（勾／叉）→ 本地保存；今日可编辑，剩余热量与累计缺口
 - **准备度与指标详情** — 睡眠分期、压力、PAI、最大摄氧量、体重、血氧、静息心率、HRV 都有独立详情页
 - **缺失就是缺失** — 没有采样的指标显示 `--`，不补 0、不拿上一天顶替；快照超过 3 小时只显示 `--`
 

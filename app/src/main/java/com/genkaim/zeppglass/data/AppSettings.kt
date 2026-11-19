@@ -41,7 +41,10 @@ class AppSettings private constructor(context: Context) {
     var avatarUrl: String? by mutableStateOf(prefs.getString(KEY_AVATAR, null))
         private set
 
-    var aiBaseUrl: String by mutableStateOf(prefs.getString(KEY_AI_BASE, "https://api.openai.com/v1") ?: "https://api.openai.com/v1")
+    // Left empty on a fresh install: there is no endpoint that is right for
+    // everybody, so the field starts blank and the placeholder shows the shape
+    // of a URL instead of pretending one is already configured.
+    var aiBaseUrl: String by mutableStateOf(prefs.getString(KEY_AI_BASE, "") ?: "")
         private set
 
     var aiApiKey: String by mutableStateOf(prefs.getString(KEY_AI_KEY, "") ?: "")

@@ -84,7 +84,8 @@ object AiChatSession {
     private val stored = LinkedHashMap<String, Stored>()
     private var writeJob: Job? = null
 
-    private val defaults get() = listOf(
+    /** Fallback starter questions, also used while the model has not answered yet. */
+    val defaultPrompts get() = listOf(
         "今天适合练什么？",
         "解释一下我的准备度",
         "睡眠哪里可以改善？",
@@ -319,6 +320,23 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         request(settings, data)
     }
 
+    /**
+     * "重新生成": asks the same question again and replaces the answer that is
+     * already on screen, the way every chat client does it. The question stays
+     * where it is, so the list does not jump.
+     */
+    fun regenerate(settings: AppSettings, data: HealthData?) {
+        if (sending) return
+        if (messages.none { it.role == "user" }) return
+        while (messages.isNotEmpty() && messages.last().role == "assistant") {
+            messages.removeAt(messages.lastIndex)
+        }
+        if (messages.isEmpty()) return
+        ensureCurrent()
+        snapshot()
+        request(settings, data)
+    }
+
     private fun request(settings: AppSettings, data: HealthData?) {
         val assistantIndex = messages.size
         messages.add(Message("assistant", ""))
@@ -360,8 +378,11 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 history.forEach { conversation.add(ChatMessage(it.role, it.content)) }
                 val question = history.lastOrNull { it.role == "user" }?.content.orEmpty()
 
-                var queries = 0
-                while (queries < 1) {
+                // The digest above already holds the last seven days, so a
+                // planning round trip used to add a second of dead air to every
+                // single question. It now runs only when the question points at
+                // a period the digest cannot cover.
+                if (asksForOlderData(question)) {
                     phase = "正在读取本机数据…"
                     val plan = withContext(Dispatchers.IO) {
                         client.complete(
@@ -380,11 +401,11 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                             maxTokens = 160
                         )
                     }
-                    val query = extractQuery(plan) ?: break
-                    val result = withContext(Dispatchers.IO) { AiTools.execute(query, data) }
-                    conversation.add(ChatMessage("assistant", "（查询本机数据：$query）"))
-                    conversation.add(ChatMessage("user", "查询结果：\n$result"))
-                    queries++
+                    extractQuery(plan)?.let { query ->
+                        val result = withContext(Dispatchers.IO) { AiTools.execute(query, data) }
+                        conversation.add(ChatMessage("assistant", "（查询本机数据：$query）"))
+                        conversation.add(ChatMessage("user", "查询结果：\n$result"))
+                    }
                 }
 
                 phase = "深度思考中…"
@@ -401,10 +422,24 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 // Always stream the final answer. The old plan turn was capped
                 // at 500 tokens and its text became the answer, which is why
                 // long replies stopped mid-sentence.
-                client.stream(conversation).collect { chunk ->
-                    phase = ""
-                    val current = messages.getOrNull(assistantIndex) ?: return@collect
-                    messages[assistantIndex] = current.copy(content = current.content + chunk)
+                var round = 0
+                while (round < 2) {
+                    client.stream(conversation).collect { chunk ->
+                        phase = ""
+                        val current = messages.getOrNull(assistantIndex) ?: return@collect
+                        messages[assistantIndex] = current.copy(content = current.content + chunk)
+                    }
+                    // Safety net: the model may answer the protocol with nothing
+                    // but a query block. Run it once and let it write the real
+                    // answer instead of leaving JSON code in the bubble.
+                    val pending = onlyQuery(messages.getOrNull(assistantIndex)?.content.orEmpty())
+                    if (pending == null || round > 0) break
+                    phase = "正在读取本机数据…"
+                    val result = withContext(Dispatchers.IO) { AiTools.execute(pending, data) }
+                    conversation.add(ChatMessage("assistant", "（查询本机数据：$pending）"))
+                    conversation.add(ChatMessage("user", "查询结果：\n$result\n请据此给出最终回答。"))
+                    messages[assistantIndex] = Message("assistant", "")
+                    round++
                 }
                 if (messages.getOrNull(assistantIndex)?.content.isNullOrBlank()) {
                     messages[assistantIndex] = Message("assistant", "（没有收到内容）")
@@ -471,7 +506,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 .distinct()
                 .take(4)
             suggestions.clear()
-            suggestions.addAll(if (parsed.size >= 2) parsed else defaults)
+            suggestions.addAll(if (parsed.size >= 2) parsed else defaultPrompts)
             suggestionsLoading = false
             suggestionsJob = null
         }
@@ -484,11 +519,37 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
      */
     private fun extractQuery(text: String): String? = AiQuery.extract(text)
 
+    /** The reply is nothing but a query block — no prose to keep. */
+    private fun onlyQuery(text: String): String? {
+        val trimmed = text.trim()
+        if (!trimmed.startsWith("```")) return null
+        if (trimmed.lines().size > 8) return null
+        return AiQuery.extract(trimmed)
+    }
+
+    /**
+     * True when the question names a period outside the seven-day digest, which
+     * is the only case where a lookup before answering pays for itself.
+     */
+    private fun asksForOlderData(question: String): Boolean {
+        val keys = listOf(
+            "上个月", "上月", "去年", "前年", "更早", "之前", "历史",
+            "前几周", "几周前", "几个月", "春季", "夏季", "秋季", "冬季"
+        )
+        if (keys.any { question.contains(it) }) return true
+        return Regex("\\d{1,2}\\s*月\\s*\\d{1,2}\\s*[日号]").containsMatchIn(question)
+    }
+
     fun stop() {
         job?.cancel()
         job = null
         sending = false
         phase = ""
+        // A stop before the first token would leave an empty bubble behind.
+        val last = messages.lastOrNull()
+        if (last != null && last.role == "assistant" && last.content.isBlank() && !last.error) {
+            messages.removeAt(messages.lastIndex)
+        }
         snapshot()
     }
 

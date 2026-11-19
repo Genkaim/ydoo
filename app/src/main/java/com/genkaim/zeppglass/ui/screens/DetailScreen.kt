@@ -543,24 +543,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                 modifier = Modifier.weight(1f),
                 onClick = { onOpen(DetailTarget(DetailKind.SLEEP_APNEA, night.date)) }
             )
-            SleepVitalTile(
-                label = "睡眠 HRV",
-                value = readiness?.sleepHrv?.toString() ?: "--",
-                unit = "ms",
-                tint = palette.sleepDeep,
-                verdict = readiness?.hrvScore?.let {
-                    when {
-                        it >= 75 -> "正常" to MaterialTheme.colorScheme.onSurface
-                        it >= 50 -> "一般" to palette.warn
-                        else -> "偏低" to palette.critical
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                onClick = { onOpen(DetailTarget(DetailKind.HRV, night.date)) }
-            )
-        }
-        if (!spo2.isNullOrEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!spo2.isNullOrEmpty()) {
                 val average = spo2.map { it.value }.average().roundToInt()
                 MetricTile(
                     label = "夜间血氧均值",
@@ -758,14 +741,15 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
             }
             val abnormal = stressVerdict.first in setOf("偏高", "很高")
             Text(
-                current.second.toString(),
-                style = MaterialTheme.typography.displayMedium,
-                color = if (abnormal) stressVerdict.second else MaterialTheme.colorScheme.onSurface
-            )
-            Text(
                 "${Fmt.date(day.date)} ${Fmt.time(current.first)}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                current.second.toString(),
+                style = MaterialTheme.typography.displayMedium,
+                color = if (abnormal) stressVerdict.second else MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -1245,6 +1229,12 @@ private fun PaiDetail(data: HealthData?, date: LocalDate?) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
+                Fmt.date(pai.date),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
                 (total ?: 0.0).roundToInt().toString(),
                 style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = com.genkaim.zeppglass.ui.components.PaiAmber
@@ -1253,6 +1243,12 @@ private fun PaiDetail(data: HealthData?, date: LocalDate?) {
                 "PAI",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if ((total ?: 0.0) >= 100.0) "达标" else "未达标",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(10.dp))
             PaiWeekBars(
@@ -1382,10 +1378,63 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
         Missing(if (date != null) "这一天没有称重记录" else "还没有称重记录")
         return
     }
+    val ink = MaterialTheme.colorScheme.onSurface
+    val warnTone = LocalZgPalette.current.warn
+    val criticalTone = LocalZgPalette.current.critical
+    // The newest composition reading close to the current weight, same rule as
+    // the diet page: a shared scale can hold someone else's much lighter data.
+    val comp = points
+        .filter { it.bodyFatPct != null || it.skeletalMusclePct != null || it.skeletalMuscleKg != null }
+        .filter {
+            it.weightKg == null || latest.weightKg == null ||
+                kotlin.math.abs(it.weightKg - latest.weightKg) <= 8.0
+        }
+        .maxByOrNull { it.epochMs }
+    val bmi = latest.bmi
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         MetricTile("体重", Fmt.oneDecimal(latest.weightKg), "kg", Modifier.weight(1f))
-        MetricTile("BMI", Fmt.oneDecimal(latest.bmi), null, Modifier.weight(1f))
-        MetricTile("体脂", latest.bodyFatPct?.let { Fmt.oneDecimal(it) } ?: "--", "%", Modifier.weight(1f))
+        MetricTile(
+            label = "BMI",
+            value = Fmt.oneDecimal(bmi),
+            unit = null,
+            verdict = bmi?.let {
+                when {
+                    it < 18.5 -> "偏轻" to warnTone
+                    it < 24.0 -> "正常" to ink
+                    it < 28.0 -> "偏高" to warnTone
+                    else -> "肥胖" to criticalTone
+                }
+            },
+            modifier = Modifier.weight(1f)
+        )
+    }
+    Spacer(Modifier.height(12.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val fat = comp?.bodyFatPct
+        MetricTile(
+            label = "体脂",
+            value = fat?.let { Fmt.oneDecimal(it) } ?: "--",
+            unit = "%",
+            verdict = fat?.let {
+                when {
+                    it < 15.0 -> "偏低" to warnTone
+                    it <= 25.0 -> "正常" to ink
+                    it <= 30.0 -> "偏高" to warnTone
+                    else -> "偏高" to criticalTone
+                }
+            },
+            modifier = Modifier.weight(1f)
+        )
+        val musclePct = comp?.skeletalMusclePct
+        MetricTile(
+            label = "骨骼肌",
+            value = comp?.skeletalMuscleKg?.let { Fmt.oneDecimal(it) } ?: "--",
+            unit = "kg",
+            verdict = musclePct?.let {
+                if (it < 40.0) "偏低" to warnTone else "正常" to ink
+            },
+            modifier = Modifier.weight(1f)
+        )
     }
     if (points.size > 1) {
         SectionTitle("趋势", trailing = "${points.size} 次记录")
@@ -1978,14 +2027,13 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
                     color = if (abnormal) rhrVerdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                if (rhrVerdict != null) {
-                    Text(
-                        rhrVerdict.first,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = rhrVerdict.second,
-                        modifier = Modifier.padding(start = 6.dp, bottom = 9.dp)
-                    )
-                }
+            }
+            if (rhrVerdict != null) {
+                Text(
+                    rhrVerdict.first,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = rhrVerdict.second
+                )
             }
             Spacer(Modifier.height(16.dp))
             BaselineRow("基线", day.rhrBaseline, "次/分", value)
@@ -2080,14 +2128,13 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                if (hrvVerdict != null) {
-                    Text(
-                        hrvVerdict.first,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = hrvVerdict.second,
-                        modifier = Modifier.padding(start = 6.dp, bottom = 9.dp)
-                    )
-                }
+            }
+            if (hrvVerdict != null) {
+                Text(
+                    hrvVerdict.first,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = hrvVerdict.second
+                )
             }
             Spacer(Modifier.height(16.dp))
             BaselineRow("基线", day.hrvBaseline, "毫秒", value)

@@ -328,8 +328,8 @@ fun OverviewScreen(
                                     modifier = Modifier.weight(1f),
                                     verdict = morningCharge?.let {
                                         when {
-                                            it >= 70 -> "正常" to ink
-                                            it >= 50 -> "偏低" to warnTone
+                                            it >= 80 -> "优秀" to ink
+                                            it >= 60 -> "偏低" to warnTone
                                             else -> "偏低" to criticalTone
                                         }
                                     }
@@ -341,7 +341,16 @@ fun OverviewScreen(
                                     icon = Icons.Rounded.Favorite,
                                     tint = LocalZgPalette.current.sleepRem,
                                     modifier = Modifier.weight(1f),
-                                    verdict = scoreVerdict(readiness?.rhrScore),
+                                    verdict = readiness?.let { day ->
+                                        val value = day.sleepRhr
+                                        val base = day.rhrBaseline
+                                        if (value == null || base == null) null
+                                        else when {
+                                            value < base -> "低于平均" to ink
+                                            value > base -> "高于平均" to warnTone
+                                            else -> "平均" to ink
+                                        }
+                                    },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.RHR, date)) }
                                 )
                             }
@@ -355,7 +364,7 @@ fun OverviewScreen(
                                     tint = LocalZgPalette.current.accent,
                                     modifier = Modifier.weight(1f),
                                     verdict = pai?.total?.let {
-                                        if (it >= 100.0) "达标" to ink else "未达标" to warnTone
+                                        if (it >= 100.0) "达标" to ink else "未达标" to ink
                                     },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.PAI, date)) }
                                 )
@@ -365,7 +374,14 @@ fun OverviewScreen(
                                     unit = "ms",
                                     icon = Icons.Rounded.MonitorHeart,
                                     modifier = Modifier.weight(1f),
-                                    verdict = scoreVerdict(readiness?.hrvScore),
+                                    verdict = readiness?.hrvScore?.let {
+                                        when {
+                                            it >= 80 -> "优秀" to ink
+                                            it >= 60 -> "良好" to ink
+                                            it >= 40 -> "一般" to warnTone
+                                            else -> "偏低" to criticalTone
+                                        }
+                                    },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.HRV, date)) }
                                 )
                             }
@@ -425,7 +441,8 @@ fun OverviewScreen(
                                             it < 28.0 -> "偏高" to warnTone
                                             else -> "肥胖" to criticalTone
                                         }
-                                    }
+                                    },
+                                    onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
                                 )
                                 MetricTile(
                                     label = "血氧",
@@ -920,7 +937,7 @@ private fun TopRings(
             label = "Charge",
             value = chargeScore?.toString() ?: "--",
             progress = (chargeScore ?: 0) / 100f,
-            tint = scoreTint(chargeScore, MaterialTheme.colorScheme.primary, palette.warn, palette.critical),
+            tint = chargeTint(chargeScore),
             size = 104.dp,
             onClick = onCharge
         )
@@ -941,6 +958,18 @@ private fun scoreTint(score: Int?, base: Color, warn: Color, critical: Color): C
     score < 60 -> critical
     score < 75 -> warn
     else -> base
+}
+
+/** Charge only turns red at 50 or below; above that the 0–100 bands stay. */
+@Composable
+private fun chargeTint(score: Int?): Color {
+    val palette = LocalZgPalette.current
+    return when {
+        score == null -> MaterialTheme.colorScheme.primary
+        score <= 50 -> palette.critical
+        score < 75 -> palette.warn
+        else -> MaterialTheme.colorScheme.primary
+    }
 }
 
 /** 15 of 21 is the watch's "high load" threshold; the ring marks it. */

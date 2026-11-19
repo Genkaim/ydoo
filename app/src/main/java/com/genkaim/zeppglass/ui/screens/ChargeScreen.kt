@@ -280,8 +280,10 @@ private fun ChargeHero(charge: ChargeDay) {
     // Three columns: 精力 (left arc), the Hybrid Charge ring in the middle,
     // 体力 (right arc). The side gauges are separate from the centre ring, so
     // nothing sits on top of anything else.
-    val physicalColor = MaterialTheme.colorScheme.primary
-    val mentalColor = MaterialTheme.colorScheme.tertiary
+    val crit = LocalZgPalette.current.critical
+    val physicalColor = if ((charge.physical ?: 100.0) <= 50.0) crit else MaterialTheme.colorScheme.primary
+    val mentalColor = if ((charge.mental ?: 100.0) <= 50.0) crit else MaterialTheme.colorScheme.tertiary
+    val totalColor = if ((charge.total ?: 100) <= 50) crit else MaterialTheme.colorScheme.primary
     Column(
         Modifier
             .fillMaxWidth()
@@ -317,19 +319,19 @@ private fun ChargeHero(charge: ChargeDay) {
                 (charge.total ?: 0) / 100f,
                 Modifier.size(148.dp),
                 strokeWidth = 11.dp,
-                color = physicalColor,
-                trackColor = physicalColor.copy(alpha = 0.18f)
+                color = totalColor,
+                trackColor = totalColor.copy(alpha = 0.18f)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         charge.total?.toString() ?: "--",
                         style = MaterialTheme.typography.displaySmall,
-                        color = physicalColor
+                        color = totalColor
                     )
                     Text(
                         "HYBRID\nCHARGE",
                         style = MaterialTheme.typography.labelSmall,
-                        color = physicalColor,
+                        color = totalColor,
                         textAlign = TextAlign.Center,
                         lineHeight = 13.sp
                     )

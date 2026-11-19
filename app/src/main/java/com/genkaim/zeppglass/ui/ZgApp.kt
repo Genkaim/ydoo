@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +31,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.components.FlatBottomBar
@@ -61,8 +65,37 @@ fun ZgApp() {
     // Without a token there is nothing to load, so invite the user once — with a
     // small sheet, not the full web page: the sign-in itself only opens after
     // they press the button, and the sheet can be dismissed.
-    LaunchedEffect(settings.isLoggedIn) {
-        if (!settings.isLoggedIn && !loginPrompted) {
+    //
+    // The invite is only raised while this page is actually in front. Settings
+    // is a separate Activity: signing out there changes `isLoggedIn` while this
+    // composition sits behind it, and a prompt raised in the background survives
+    // the sign-in that follows — the reader comes back to the home page already
+    // signed in and is asked to sign in again. Hence the lifecycle gate, plus an
+    // unconditional teardown whenever an account is present.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var inFront by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> inFront = true
+                Lifecycle.Event.ON_STOP -> inFront = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        // The observer only reports changes; the state at attach time counts too.
+        inFront = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(settings.isLoggedIn, inFront) {
+        if (settings.isLoggedIn) {
+            // An account is signed in: whatever is left over is stale, and the
+            // next real sign-out deserves its own invitation.
+            showLoginSheet = false
+            showLogin = false
+            loginPrompted = false
+        } else if (inFront && !loginPrompted) {
             loginPrompted = true
             showLoginSheet = true
         }
@@ -163,7 +196,9 @@ fun ZgApp() {
             onDismiss = { showCustomize = false }
         )
     }
-    if (showLoginSheet) {
+    // Second guard, on the render path itself: an invitation can never sit on
+    // top of an account that is already connected, not even for one frame.
+    if (showLoginSheet && !settings.isLoggedIn) {
         LoginSheet(
             onDismiss = { showLoginSheet = false },
             onLogin = {

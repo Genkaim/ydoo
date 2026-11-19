@@ -496,6 +496,12 @@ private fun Composer(
     modifier: Modifier = Modifier
 ) {
     val canSend = value.isNotBlank() && !sending
+    // One line: the key centres on the text. Once the field grows the key drops
+    // to the bottom, which is where a chat composer keeps it. Without this the
+    // row was bottom-aligned, so a single line left the 40 dp circle sitting
+    // inside a 48 dp touch slot and it read as 4 dp too high.
+    var lineCount by remember { mutableStateOf(1) }
+    val keyAlign = if (lineCount <= 1) Alignment.CenterVertically else Alignment.Bottom
     // Sending empties the field and drops the whole capsule back to one line;
     // both the height and the returning placeholder are eased so the composer
     // settles instead of snapping.
@@ -529,6 +535,7 @@ private fun Composer(
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 maxLines = 5,
+                onTextLayout = { lineCount = it.lineCount },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                 decorationBox = { inner ->
@@ -553,6 +560,7 @@ private fun Composer(
                     contentDescription = "停止",
                     onClick = onStop,
                     primary = true,
+                    modifier = Modifier.align(keyAlign),
                     size = 40.dp,
                     iconSize = 18.dp
                 )
@@ -563,6 +571,7 @@ private fun Composer(
                     onClick = { if (canSend) onSend() },
                     enabled = canSend,
                     primary = canSend,
+                    modifier = Modifier.align(keyAlign),
                     size = 40.dp,
                     iconSize = 18.dp
                 )

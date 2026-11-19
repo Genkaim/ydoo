@@ -81,7 +81,13 @@ data class ZgPalette(
     val sleepDeep: Color,
     val sleepLight: Color,
     val sleepRem: Color,
-    val sleepAwake: Color
+    val sleepAwake: Color,
+    /**
+     * Workouts on the day chart. Deliberately warm and clearly apart from the
+     * sleep blue: one band is time that restored Charge, the other is time that
+     * spent it, and the two must not read as the same thing.
+     */
+    val workout: Color
 )
 
 val LocalZgPalette = staticCompositionLocalOf {
@@ -96,7 +102,8 @@ val LocalZgPalette = staticCompositionLocalOf {
         sleepDeep = Color(0xFF3B4C8A),
         sleepLight = Color(0xFF7C9BFF),
         sleepRem = Color(0xFF3FBFAE),
-        sleepAwake = Color(0xFFD99A4E)
+        sleepAwake = Color(0xFFD99A4E),
+        workout = Color(0xFFE07A3F)
     )
 }
 
@@ -149,7 +156,8 @@ fun ZeppGlassTheme(
         sleepDeep = if (darkTheme) Color(0xFF7E93E8) else Color(0xFF3B4C8A),
         sleepLight = if (darkTheme) Color(0xFF9DB3FF) else Color(0xFF6F8DF5),
         sleepRem = if (darkTheme) Color(0xFF5BD6C4) else Color(0xFF2FA895),
-        sleepAwake = if (darkTheme) Color(0xFFE9B872) else Color(0xFFC98A3E)
+        sleepAwake = if (darkTheme) Color(0xFFE9B872) else Color(0xFFC98A3E),
+        workout = if (darkTheme) Color(0xFFF2A06A) else Color(0xFFDD7A3C)
     )
     CompositionLocalProvider(LocalZgPalette provides palette) {
         MaterialTheme(

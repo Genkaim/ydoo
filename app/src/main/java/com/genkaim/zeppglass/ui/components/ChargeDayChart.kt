@@ -52,10 +52,11 @@ fun ChargeDayChart(
     val tagStyle = TextStyle(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val grid = palette.grid
     // Two band colors only: one for the time that added Charge (sleep, nap),
-    // one for the time that spent it (workouts). Both stay light so the curve
-    // on top of them is still readable.
+    // one for the time that spent it (workouts). They have to be told apart at
+    // a glance — sleep reads blue, a workout reads warm. Both stay light so the
+    // curve on top of them is still readable.
     val plusColor = palette.sleepLight
-    val minusColor = MaterialTheme.colorScheme.tertiary
+    val minusColor = palette.workout
     val dotColor = MaterialTheme.colorScheme.surface
     val valueStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
@@ -161,18 +162,21 @@ fun ChargeDayChart(
             }
         }
 
-        // Workouts of the day.
+        // Workouts of the day: the same full-height band as sleep, in its own
+        // colour, so the two kinds of time never read as the same block. The
+        // tag goes at the bottom of the block because 睡眠 already owns the top.
         workouts.forEach { workout ->
             val from = maxOf(workout.startEpochSec, dayStart.toLong())
             val to = minOf(workout.endEpochSec, dayStart.toLong() + 86400L)
             if (to > from) {
                 val x0 = xOf(from.toFloat())
                 val x1 = xOf(to.toFloat())
-                val bandTop = topPad + plotHeight * 0.55f
+                val bandTop = 14.dp.toPx()
+                val bandHeight = (size.height - axisHeight - bandTop).coerceAtLeast(2f)
                 drawRoundRect(
                     color = minusColor.copy(alpha = 0.12f),
                     topLeft = Offset(x0, bandTop),
-                    size = Size((x1 - x0).coerceAtLeast(2f), plotHeight * 0.45f),
+                    size = Size((x1 - x0).coerceAtLeast(2f), bandHeight),
                     cornerRadius = CornerRadius(4.dp.toPx())
                 )
                 val text = "运动${deltaText(from, to)}"
@@ -183,7 +187,7 @@ fun ChargeDayChart(
                     tagStyle,
                     ((x0 + x1) / 2f - layout.size.width / 2f)
                         .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
-                    (bandTop - layout.size.height - 2.dp.toPx()).coerceAtLeast(0f)
+                    (bandTop + bandHeight - layout.size.height - 2.dp.toPx()).coerceAtLeast(0f)
                 )
             }
         }

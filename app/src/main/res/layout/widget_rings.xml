@@ -14,7 +14,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_rings_bg"
     android:forceDarkAllowed="false"
-    android:gravity="center_vertical"
+    android:gravity="top"
     android:orientation="vertical"
     android:padding="12dp">
 

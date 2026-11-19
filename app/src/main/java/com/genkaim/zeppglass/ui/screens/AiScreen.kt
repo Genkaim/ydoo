@@ -65,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +87,7 @@ import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.TypingDots
+import kotlinx.coroutines.flow.collect
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -121,6 +123,18 @@ fun AiScreen(
     var showHistory by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // Keep following the newest content only while the reader is at the bottom.
+    // Dragging up during streaming must leave the page where the finger left it,
+    // otherwise every chunk would pull the list back down.
+    var followBottom by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
+            .collect { (scrolling, canScroll) ->
+                if (scrolling) followBottom = !canScroll
+            }
+    }
+    LaunchedEffect(AiChatSession.currentId) { followBottom = true }
+
     // Attach once, then (re)generate the starter questions whenever the list is
     // empty — the first visit, and right after 新对话 clears them — or when a
     // fresh data snapshot arrives after an earlier attempt failed.
@@ -131,6 +145,7 @@ fun AiScreen(
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content) {
         if (messages.isEmpty()) return@LaunchedEffect
+        if (!followBottom) return@LaunchedEffect
         // Pin the newest message's bottom edge to the viewport. Scrolling to
         // the item alone aligns its top, which overshoots for a long answer and
         // made the list flash while streaming.
@@ -148,6 +163,9 @@ fun AiScreen(
             onOpenSettings()
             return
         }
+        // A fresh question always lands at the bottom, even if the reader had
+        // scrolled up in the previous answer.
+        followBottom = true
         AiChatSession.send(settings, text, data)
     }
 

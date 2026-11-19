@@ -9,7 +9,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -79,6 +83,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -397,7 +402,8 @@ fun AiScreen(
                     SuggestionStrip(
                         suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
                         loading = AiChatSession.suggestionsLoading,
-                        onPick = { send(it) }
+                        onPick = { send(it) },
+                        onRefresh = { AiChatSession.loadSuggestions(settings, data, force = true) }
                     )
                 }
 
@@ -812,27 +818,40 @@ private fun EmptyTranscript(
 
 /**
  * Starter questions as one horizontally scrolling row of chips, parked right
- * above the composer where the next tap goes. The "still writing them" line
- * sits above the chips: it describes what is about to appear underneath.
+ * above the composer where the next tap goes. The set belongs to the logical
+ * day, so it is not rebuilt on every visit: the refresh key above the chips is
+ * how the user asks for a different four.
  */
 @Composable
 private fun SuggestionStrip(
     suggestions: List<String>,
     loading: Boolean,
-    onPick: (String) -> Unit
+    onPick: (String) -> Unit,
+    onRefresh: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-        AnimatedVisibility(
-            visible = loading,
-            enter = fadeIn(tween(200)) + expandVertically(tween(220), expandFrom = Alignment.Top),
-            exit = fadeOut(tween(140)) + shrinkVertically(tween(180), shrinkTowards = Alignment.Top)
+        // One fixed-height row: the "still writing them" line used to expand
+        // and collapse above the chips, which moved them under the finger that
+        // had just tapped refresh. Drawn beside the key it stays put.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 14.dp, bottom = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "正在根据最近的数据准备问题…",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp)
-            )
+            AnimatedVisibility(
+                visible = loading,
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(140))
+            ) {
+                Text(
+                    "正在根据最近的数据准备问题…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            RefreshSuggestionsKey(loading = loading, onClick = onRefresh)
         }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -858,6 +877,48 @@ private fun SuggestionStrip(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Refresh key for the starter questions. It turns while the model is writing:
+ * the answer takes a second or two, and without the spin the tap reads as
+ * having done nothing.
+ */
+@Composable
+private fun RefreshSuggestionsKey(loading: Boolean, onClick: () -> Unit) {
+    val spin = rememberInfiniteTransition(label = "suggestionRefresh")
+    val angle by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
+        label = "suggestionRefreshAngle"
+    )
+    Surface(
+        onClick = onClick,
+        enabled = !loading,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            Modifier
+                .height(28.dp)
+                .padding(start = 10.dp, end = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Rounded.Autorenew,
+                contentDescription = "刷新问题",
+                modifier = Modifier
+                    .size(14.dp)
+                    .rotate(if (loading) angle else 0f)
+            )
+            Spacer(Modifier.size(4.dp))
+            Text("换一批", style = MaterialTheme.typography.labelSmall)
         }
     }
 }

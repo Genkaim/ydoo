@@ -104,6 +104,29 @@ class AppSettings private constructor(context: Context) {
             .apply()
     }
 
+    /**
+     * Logical day (05:00 boundary) the starter questions in [KEY_SUGGESTIONS]
+     * were written for. Same rule as the daily summary: a set written at 01:00
+     * still belongs to the evening before.
+     */
+    var aiSuggestionsDay by mutableStateOf(prefs.getString(userKey(KEY_SUGGESTIONS_DAY), "") ?: "")
+        private set
+
+    fun savedSuggestions(): List<String> =
+        (prefs.getString(userKey(KEY_SUGGESTIONS), "") ?: "")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+
+    fun saveSuggestions(list: List<String>, day: String) {
+        aiSuggestionsDay = day
+        prefs.edit()
+            .putString(userKey(KEY_SUGGESTIONS), list.joinToString("\n"))
+            .putString(userKey(KEY_SUGGESTIONS_DAY), day)
+            .apply()
+    }
+
     val isLoggedIn: Boolean get() = !token.isNullOrBlank() && !userId.isNullOrBlank()
 
     fun visibleTabs(): List<AppTab> = tabOrder.filter { it !in hiddenTabs }.ifEmpty { listOf(AppTab.OVERVIEW) }
@@ -174,6 +197,7 @@ class AppSettings private constructor(context: Context) {
         dailySummaryText = prefs.getString(userKey(KEY_SUMMARY_TEXT), "") ?: ""
         dailySummaryDay = prefs.getString(userKey(KEY_SUMMARY_DAY), "") ?: ""
         dailySummaryAt = prefs.getLong(userKey(KEY_SUMMARY_AT), 0L)
+        aiSuggestionsDay = prefs.getString(userKey(KEY_SUGGESTIONS_DAY), "") ?: ""
     }
 
     fun updateTheme(mode: String) {
@@ -269,6 +293,8 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_SUMMARY_TEXT = "daily_summary_text"
         private const val KEY_SUMMARY_DAY = "daily_summary_day"
         private const val KEY_SUMMARY_AT = "daily_summary_at"
+        private const val KEY_SUGGESTIONS = "ai_suggestions"
+        private const val KEY_SUGGESTIONS_DAY = "ai_suggestions_day"
 
         @Volatile
         private var instance: AppSettings? = null

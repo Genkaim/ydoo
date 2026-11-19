@@ -86,6 +86,9 @@ object AiChatSession {
     private var job: Job? = null
     private var suggestionsJob: Job? = null
 
+    /** Logical day the questions in [suggestions] were written for. */
+    private var suggestionsDay = ""
+
     private var appContext: Context? = null
     private var loaded = false
 
@@ -261,13 +264,9 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         currentId = null
         messages.clear()
         draft = ""
-        // Fresh starter questions for a fresh conversation: the data may have
-        // changed since the last time they were written, and a failed attempt
-        // must not pin the defaults forever.
-        suggestionsJob?.cancel()
-        suggestionsJob = null
-        suggestionsLoading = false
-        suggestions.clear()
+        // Starter questions are a read of today's data, not of this
+        // conversation: a new chat keeps them, and the strip's refresh button
+        // is the one way to ask for a different set.
         rebuildList()
         write()
     }
@@ -337,6 +336,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         messages.clear()
         sessions.clear()
         suggestions.clear()
+        suggestionsDay = ""
         stored.clear()
         draft = ""
     }
@@ -533,10 +533,41 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         }
     }
 
-    /** Suggestions written by the model from the digest; defaults on failure. */
-    fun loadSuggestions(settings: AppSettings, data: HealthData?) {
-        if (suggestions.isNotEmpty() || suggestionsLoading || settings.aiApiKey.isBlank()) return
+    /**
+     * Starter questions written by the model from the digest.
+     *
+     * They belong to the logical day (05:00 boundary), not to the conversation:
+     * the same set stays on screen all day and survives a restart, so opening
+     * the tab with unchanged data costs no request. [force] is the refresh
+     * button on the strip and always asks the model again.
+     */
+    fun loadSuggestions(settings: AppSettings, data: HealthData?, force: Boolean = false) {
+        if (force) {
+            suggestionsJob?.cancel()
+            suggestionsJob = null
+            suggestionsLoading = false
+        } else {
+            if (suggestionsLoading) return
+            val today = DailySummary.dayKey()
+            // Already holding today's set: nothing to do. A set from before the
+            // 05:00 rollover is dropped, so an app left open overnight does not
+            // keep showing yesterday's questions.
+            if (suggestions.isNotEmpty() && suggestionsDay == today) return
+            // Written earlier today by a build that already asked: reuse it
+            // instead of spending a call on the same digest.
+            val saved = settings.savedSuggestions()
+            if (saved.size >= 2 && settings.aiSuggestionsDay == today) {
+                suggestions.clear()
+                suggestions.addAll(saved)
+                suggestionsDay = today
+                return
+            }
+        }
+        if (suggestionsLoading || settings.aiApiKey.isBlank()) return
         suggestionsLoading = true
+        // Pinned before the request: the answer is filed under the day it was
+        // asked on, even if midnight or the 05:00 rollover happens meanwhile.
+        val day = DailySummary.dayKey()
         suggestionsJob = scope.launch {
             val digest = AiContext.digest(data)
             val messages = listOf(
@@ -586,8 +617,16 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 .filter { line -> line.none { it.isDigit() } }
                 .distinct()
                 .take(4)
-            suggestions.clear()
-            suggestions.addAll(if (parsed.size >= 2) parsed else defaultPrompts)
+            // Only a usable set is filed for the day; a failed attempt leaves
+            // whatever is on screen alone and is retried on the next open.
+            if (parsed.size >= 2) {
+                suggestions.clear()
+                suggestions.addAll(parsed)
+                suggestionsDay = day
+                settings.saveSuggestions(parsed, day)
+            } else if (suggestions.isEmpty()) {
+                suggestions.addAll(defaultPrompts)
+            }
             suggestionsLoading = false
             suggestionsJob = null
         }

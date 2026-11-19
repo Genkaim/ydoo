@@ -16,8 +16,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,13 +28,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -75,6 +77,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AiChatSession
@@ -90,8 +93,11 @@ import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.TypingDots
 import kotlinx.coroutines.launch
 
-/** Floating tab bar (56 dp) plus its own margin, so the composer never hides it. */
-private val TabBarClearance = 74.dp
+/**
+ * Floating tab bar (76 dp) plus its own outer margin and a little air. The old
+ * 74 dp left the last two dp of the composer tucked under the bar.
+ */
+private val TabBarClearance = 86.dp
 
 /**
  * Chat page, laid out like a mainstream assistant client: a fixed title bar on
@@ -185,9 +191,13 @@ fun AiScreen(
         Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
     }
 
-    // The keyboard shrinks the whole page; the reserved space for the tab bar
-    // only makes sense while the keyboard is down.
+    // The keyboard replaces the tab-bar gap: while typing the composer sits just
+    // above the IME, and the floating tab bar is out of the way.
     val imeVisible = WindowInsets.isImeVisible
+    // Union, never a sum: the IME inset already covers the navigation bar, so
+    // padding both leaves a gap under the composer and makes it jump when the
+    // keyboard goes away. One value serves both states.
+    val bottomInsets = WindowInsets.navigationBars.union(WindowInsets.ime)
     val bottomClearance by animateDpAsState(
         targetValue = if (imeVisible) 8.dp else TabBarClearance,
         animationSpec = tween(180),
@@ -197,8 +207,7 @@ fun AiScreen(
     Column(
         modifier
             .fillMaxSize()
-            .navigationBarsPadding()
-            .imePadding()
+            .windowInsetsPadding(bottomInsets)
     ) {
         PageHeader(
             title = "AI 教练",
@@ -223,70 +232,65 @@ fun AiScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
-                verticalArrangement = if (messages.isEmpty()) {
-                    Arrangement.spacedBy(12.dp)
-                } else {
+            if (messages.isEmpty()) {
+                EmptyTranscript(
+                    configured = configured,
+                    onOpenSettings = onOpenSettings,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
                     // A short conversation sits at the bottom of the page, the
                     // way a chat should: sending grows it upward.
-                    Arrangement.spacedBy(14.dp, Alignment.Bottom)
-                }
-            ) {
-                if (!configured) {
-                    item(key = "setup") {
-                        EmptyCard(
-                            title = "先填入自己的 AI 接入点",
-                            body = "在设置里填兼容 OpenAI 的地址、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
-                            actionLabel = "去设置",
-                            onAction = onOpenSettings
-                        )
+                    verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom)
+                ) {
+                    itemsIndexed(
+                        items = messages,
+                        key = { index, message -> "$index-${message.role}" }
+                    ) { index, message ->
+                        val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
+                        if (message.role == "user") {
+                            UserBubble(message.content)
+                        } else {
+                            AssistantMessage(
+                                message = message,
+                                streaming = streamingHere,
+                                phase = if (streamingHere) phase else "",
+                                data = data,
+                                canRegenerate = !sending && index == messages.lastIndex,
+                                onRetry = { AiChatSession.retry(settings, data) },
+                                onRegenerate = { AiChatSession.regenerate(settings, data) },
+                                onCopy = { copy(message.content) }
+                            )
+                        }
                     }
                 }
-                if (messages.isEmpty()) {
-                    item(key = "intro") {
-                        IntroCard(
-                            suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
-                            loading = AiChatSession.suggestionsLoading,
-                            onPick = { send(it) }
-                        )
-                    }
-                }
-                itemsIndexed(
-                    items = messages,
-                    key = { index, message -> "$index-${message.role}" }
-                ) { index, message ->
-                    val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
-                    if (message.role == "user") {
-                        UserBubble(message.content)
-                    } else {
-                        AssistantMessage(
-                            message = message,
-                            streaming = streamingHere,
-                            phase = if (streamingHere) phase else "",
-                            data = data,
-                            canRegenerate = !sending && index == messages.lastIndex,
-                            onRetry = { AiChatSession.retry(settings, data) },
-                            onRegenerate = { AiChatSession.regenerate(settings, data) },
-                            onCopy = { copy(message.content) }
-                        )
-                    }
-                }
-            }
 
-            JumpToBottom(
-                visible = !followBottom && messages.isNotEmpty(),
-                onClick = {
-                    followBottom = true
-                    scope.launch {
-                        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 10.dp)
+                JumpToBottom(
+                    visible = !followBottom && messages.isNotEmpty(),
+                    onClick = {
+                        followBottom = true
+                        scope.launch {
+                            listState.animateScrollToItem(messages.lastIndex)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 10.dp)
+                )
+            }
+        }
+
+        // Starter questions belong next to the composer: they are shortcuts for
+        // what to type, not page content to scroll past.
+        if (messages.isEmpty() && configured) {
+            SuggestionStrip(
+                suggestions = AiChatSession.suggestions.ifEmpty { AiChatSession.defaultPrompts },
+                loading = AiChatSession.suggestionsLoading,
+                onPick = { send(it) }
             )
         }
 
@@ -360,7 +364,7 @@ private fun JumpToBottom(visible: Boolean, onClick: () -> Unit, modifier: Modifi
 /**
  * Composer: one muted capsule holding the growing text field and the send key.
  * While an answer streams the same key becomes a stop button.
- */@OptIn(ExperimentalLayoutApi::class)
+ */
 @Composable
 private fun Composer(
     value: String,
@@ -545,33 +549,62 @@ private fun MessageAction(label: String, icon: ImageVector, onClick: () -> Unit)
 }
 
 /**
- * Empty state: a line of context plus the starter questions as chips that wrap,
- * instead of a card that competes with the composer for attention.
+ * Nothing said yet: the greeting sits in the middle of the empty transcript,
+ * not pinned to the top of the page.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun IntroCard(suggestions: List<String>, loading: Boolean, onPick: (String) -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            "今天想聊点什么？",
-            style = MaterialTheme.typography.headlineSmall
-        )
-        Text(
-            "回答会直接引用本机的睡眠、负荷与饮食记录；点一句开始，或者自己输入。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(2.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+private fun EmptyTranscript(
+    configured: Boolean,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (!configured) {
+            EmptyCard(
+                title = "先填入自己的 AI 接入点",
+                body = "在设置里填兼容 OpenAI 的地址、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
+                modifier = Modifier.padding(horizontal = 20.dp),
+                actionLabel = "去设置",
+                onAction = onOpenSettings
+            )
+        } else {
+            Column(
+                Modifier.padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "今天想聊点什么？",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "回答会直接引用本机的睡眠、负荷与饮食记录；点下面的问题开始，或者自己输入。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Starter questions as one horizontally scrolling row of chips, parked right
+ * above the composer where the next tap goes.
+ */
+@Composable
+private fun SuggestionStrip(
+    suggestions: List<String>,
+    loading: Boolean,
+    onPick: (String) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            suggestions.forEach { text ->
+            items(suggestions) { text ->
                 Surface(
                     onClick = { onPick(text) },
                     shape = RoundedCornerShape(50),
@@ -582,8 +615,12 @@ private fun IntroCard(suggestions: List<String>, loading: Boolean, onPick: (Stri
                 ) {
                     Text(
                         text,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                        style = MaterialTheme.typography.labelLarge
+                        modifier = Modifier
+                            .widthIn(max = 240.dp)
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -592,7 +629,8 @@ private fun IntroCard(suggestions: List<String>, loading: Boolean, onPick: (Stri
             Text(
                 "正在根据最近的数据准备问题…",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, top = 6.dp)
             )
         }
     }

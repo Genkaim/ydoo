@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,7 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -42,7 +43,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -729,16 +729,30 @@ private fun DescriptionDialog(
 ) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        // decorFitsSystemWindows = false is what makes the keyboard inset
+        // reach these composables. Without it the card never moves, and the
+        // 估算 key sits behind the keyboard — which reads as "there is no
+        // confirm button at all".
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 60.dp),
+                .imePadding()
+                .padding(horizontal = 18.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
             FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    Modifier
+                        .heightIn(max = 560.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text("用文字描述这一餐", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "例如：一碗米饭、两个鸡腿、一份炒青菜、一杯无糖豆浆。份量没写就按常见一人份算。",
@@ -758,12 +772,17 @@ private fun DescriptionDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FlatButton(text = "取消", onClick = onDismiss, primary = false)
-                        FlatButton(
-                            text = "估算",
+                        RoundIconButton(
+                            icon = Icons.Rounded.Close,
+                            contentDescription = "取消",
+                            onClick = onDismiss
+                        )
+                        RoundIconButton(
+                            icon = Icons.Rounded.Check,
+                            contentDescription = "估算",
                             onClick = { onSubmit(text) },
-                            icon = Icons.Rounded.AutoAwesome,
-                            enabled = text.isNotBlank()
+                            enabled = text.isNotBlank(),
+                            primary = text.isNotBlank()
                         )
                     }
                 }
@@ -826,8 +845,9 @@ private class EditableFood(name: String, amount: String, kcal: String) {
 /**
  * The one card used both right after a photo and when editing a stored meal.
  * Foods are listed one per row — name on the left, portion and energy on the
- * right — and a row taps into a small editor. Delete sits bottom-left as a red
- * circle, cancel and confirm on the same line.
+ * right — and a row taps into a small editor. Adding a food opens that same
+ * editor with empty fields, so a blank row never enters the list. Delete sits
+ * bottom-left as a red circle, cancel and confirm on the same line.
  */
 @Composable
 private fun MealEditorCard(
@@ -845,16 +865,21 @@ private fun MealEditorCard(
         }
     }
     var editing by remember { mutableStateOf<Int?>(null) }
+    var adding by remember { mutableStateOf(false) }
     val total = rows.sumOf { it.kcal.toIntOrNull() ?: 0 }
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 40.dp),
+                .imePadding()
+                .padding(horizontal = 18.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
             FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
@@ -913,7 +938,9 @@ private fun MealEditorCard(
                             }
                         }
                     }
-                    TextButton(onClick = { rows.add(EditableFood("", "", "")) }) {
+                    TextButton(onClick = { adding = true }) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text("添加食物")
                     }
                     Spacer(Modifier.height(4.dp))
@@ -987,6 +1014,7 @@ private fun MealEditorCard(
         if (food != null) {
             FoodEditor(
                 initial = food,
+                title = "修改食物",
                 onDismiss = { editing = null },
                 onApply = {
                     rows[index] = it
@@ -995,12 +1023,28 @@ private fun MealEditorCard(
             )
         }
     }
+
+    if (adding) {
+        FoodEditor(
+            initial = EditableFood("", "", ""),
+            title = "添加食物",
+            onDismiss = { adding = false },
+            onApply = {
+                rows.add(it)
+                adding = false
+            }
+        )
+    }
 }
 
-/** Small editor for a single food row. */
+/**
+ * Small editor for a single food row. Fields are the same borderless capsules
+ * as the rest of the app, and the card lifts above the keyboard while typing.
+ */
 @Composable
 private fun FoodEditor(
     initial: EditableFood,
+    title: String,
     onDismiss: () -> Unit,
     onApply: (EditableFood) -> Unit
 ) {
@@ -1009,52 +1053,79 @@ private fun FoodEditor(
     var kcal by remember { mutableStateOf(initial.kcal) }
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 40.dp),
+                .imePadding()
+                .padding(horizontal = 32.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
             FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("修改食物", style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(
+                Column(
+                    Modifier
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(title, style = MaterialTheme.typography.titleSmall)
+                    FoodFieldLabel("名称")
+                    CapsuleField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("名称") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        placeholder = "米饭"
                     )
-                    OutlinedTextField(
+                    FoodFieldLabel("分量")
+                    CapsuleField(
                         value = amount,
                         onValueChange = { amount = it },
-                        label = { Text("分量") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        placeholder = "1 碗 / 150 g"
                     )
-                    OutlinedTextField(
+                    FoodFieldLabel("热量")
+                    CapsuleField(
                         value = kcal,
                         onValueChange = { text -> kcal = text.filter { it.isDigit() }.take(5) },
-                        label = { Text("热量 kcal") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
+                        placeholder = "kcal",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
+                    Spacer(Modifier.height(4.dp))
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(onClick = onDismiss) { Text("取消") }
-                        TextButton(
-                            onClick = { onApply(EditableFood(name, amount, kcal)) }
-                        ) { Text("确定") }
+                        RoundIconButton(
+                            icon = Icons.Rounded.Close,
+                            contentDescription = "取消",
+                            onClick = onDismiss
+                        )
+                        RoundIconButton(
+                            icon = Icons.Rounded.Check,
+                            contentDescription = "确定",
+                            onClick = { onApply(EditableFood(name.trim(), amount.trim(), kcal.trim())) },
+                            enabled = name.isNotBlank(),
+                            primary = name.isNotBlank()
+                        )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun FoodFieldLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 6.dp, top = 2.dp)
+    )
 }
 
 /** Reads the items array; accepts objects and the old plain strings. */

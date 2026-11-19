@@ -149,31 +149,37 @@ fun SettingsScreen(
                 }
             }
 
-            SectionTitle("外观")
+            // Title on the left, three icon-only keys on the right: the labels
+            // were only repeating the icons, so they are gone from the row.
             FlatPanel {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.Top
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ThemeChoice(
-                        icon = Icons.Rounded.BrightnessAuto,
-                        label = "跟随系统",
-                        selected = settings.themeMode == "system",
+                    Text(
+                        "颜色主题",
+                        style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f)
-                    ) { settings.updateTheme("system") }
-                    ThemeChoice(
-                        icon = Icons.Rounded.LightMode,
-                        label = "浅色",
-                        selected = settings.themeMode == "light",
-                        modifier = Modifier.weight(1f)
-                    ) { settings.updateTheme("light") }
-                    ThemeChoice(
-                        icon = Icons.Rounded.DarkMode,
-                        label = "深色",
-                        selected = settings.themeMode == "dark",
-                        modifier = Modifier.weight(1f)
-                    ) { settings.updateTheme("dark") }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeChoice(
+                            icon = Icons.Rounded.BrightnessAuto,
+                            label = "跟随系统",
+                            selected = settings.themeMode == "system"
+                        ) { settings.updateTheme("system") }
+                        ThemeChoice(
+                            icon = Icons.Rounded.LightMode,
+                            label = "浅色",
+                            selected = settings.themeMode == "light"
+                        ) { settings.updateTheme("light") }
+                        ThemeChoice(
+                            icon = Icons.Rounded.DarkMode,
+                            label = "深色",
+                            selected = settings.themeMode == "dark"
+                        ) { settings.updateTheme("dark") }
+                    }
                 }
             }
 
@@ -436,42 +442,31 @@ private fun FieldLabel(text: String) {
 }
 
 /**
- * Appearance switch: three circular keys. The selected one is filled with the
- * accent colour; the others are muted fills with no outline at all.
+ * Appearance switch: one circular icon per mode. The selected key is filled
+ * with the accent colour; the others are muted fills with no outline at all.
+ * The mode name lives in the content description, not in a caption.
  */
 @Composable
 private fun ThemeChoice(
     icon: ImageVector,
     label: String,
     selected: Boolean,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Column(
-        modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(42.dp),
+        shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        Surface(
-            onClick = onClick,
-            shape = CircleShape,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
-            }
+        Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (selected) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 

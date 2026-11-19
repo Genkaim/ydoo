@@ -502,7 +502,9 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                         .trim()
                         .trim('"', '\'', '“', '”', '「', '」', '《', '》')
                 }
-                .filter { it.length in 6..30 }
+                // A chatty model sometimes answers with a whole document
+                // instead of four questions; heading lines are not questions.
+                .filter { it.length in 6..30 && !it.startsWith("#") && !it.contains("**") }
                 .distinct()
                 .take(4)
             suggestions.clear()

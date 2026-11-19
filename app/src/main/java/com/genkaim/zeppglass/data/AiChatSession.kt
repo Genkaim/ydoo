@@ -570,53 +570,50 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         val day = DailySummary.dayKey()
         suggestionsJob = scope.launch {
             val digest = AiContext.digest(data)
-            val messages = listOf(
-                ChatMessage(
-                    "system",
-                    "你在帮用户想接下来可以问健康助手的问题。只输出 4 行中文问题，每行一个，不带编号、符号或解释，" +
-                        "每条 8–16 个字，要短，像用户随口说的一句话。" +
-                        // Chips are a prompt to type, not a report: naming exact
-                        // numbers made every starter question a paragraph.
-                        "硬性要求：不要写出任何具体数字、日期或数值，也不要点名某个指标的读数；" +
-                        "用「最近」「这段时间」「上周」这类模糊说法代替，" +
-                        "例如写「最近睡眠是不是有点浅」而不是「昨晚只睡 5 小时怎么办」。" +
-                        "四条分别覆盖睡眠、恢复或准备度、训练负荷、饮食里最值得关注的一两件事，不要四条都问同一个指标。" +
-                        "不要写“今天怎么样”“需要注意什么”“如何改善健康”这类放在谁身上都成立的空问题，" +
-                        "也不要做疾病诊断。"
-                ),
-                ChatMessage(
-                    "user",
-                    digest + "\n按上面的要求写出这位用户此刻会想知道的 4 个问题。"
+            // Everything the user has already seen today, plus what the chips
+            // are showing right now. "换一批" that hands back the same idea in
+            // different words is the one outcome the button must not produce,
+            // and the model does it often, so the ban list is enforced locally
+            // instead of trusted to the prompt.
+            val avoid = LinkedHashSet<String>()
+            avoid.addAll(suggestions)
+            if (settings.aiSuggestionsDay == day) avoid.addAll(settings.seenSuggestions())
+
+            var parsed = emptyList<String>()
+            // Two rounds at most: usually the first answer is clean once the
+            // model has seen the ban list; a second pass only happens when it
+            // still collided with something.
+            for (round in 0..1) {
+                val messages = listOf(
+                    ChatMessage("system", suggestionSystemPrompt(avoid)),
+                    ChatMessage(
+                        "user",
+                        digest + "\n按上面的要求写出这位用户此刻会想知道的 4 个问题。"
+                    )
                 )
-            )
-            // A reasoning model spends part of the budget before writing
-            // anything, so a small cap comes back empty; start high and retry
-            // once with more room instead of falling straight back to defaults.
-            var text = ""
-            for (budget in intArrayOf(1024, 2048)) {
-                text = runCatching {
-                    withContext(Dispatchers.IO) {
-                        AiClient(settings).complete(messages, maxTokens = budget)
-                    }
-                }.getOrDefault("")
-                if (text.isNotBlank()) break
-            }
-            val parsed = text.lines()
-                .map { line ->
-                    line.trim()
-                        .trimStart('-', '•', '*', '·')
-                        .replace(Regex("^\\d+[.、)）]\\s*"), "")
-                        .trim()
-                        .trim('"', '\'', '“', '”', '「', '」', '《', '》')
+                // A reasoning model spends part of the budget before writing
+                // anything, so a small cap comes back empty; start high and
+                // retry once with more room instead of falling straight back
+                // to defaults.
+                var text = ""
+                for (budget in intArrayOf(1024, 2048)) {
+                    text = runCatching {
+                        withContext(Dispatchers.IO) {
+                            AiClient(settings).complete(messages, maxTokens = budget)
+                        }
+                    }.getOrDefault("")
+                    if (text.isNotBlank()) break
                 }
-                // A chatty model sometimes answers with a whole document
-                // instead of four questions; heading lines are not questions.
-                .filter { it.length in 5..20 && !it.startsWith("#") && !it.contains("**") }
-                // Chips never quote numbers: the model drifts back to "睡 5
-                // 小时" no matter what the prompt says, so those lines go.
-                .filter { line -> line.none { it.isDigit() } }
-                .distinct()
-                .take(4)
+                val lines = parseSuggestionLines(text)
+                parsed = lines.filter { line -> avoid.none { isSameQuestion(line, it) } }
+                if (parsed.size >= 2) break
+                // Whatever it offered may not be offered again, so the second
+                // round starts from a strictly larger ban list.
+                if (round == 0) {
+                    avoid.addAll(lines)
+                    if (text.isBlank()) break
+                }
+            }
             // Only a usable set is filed for the day; a failed attempt leaves
             // whatever is on screen alone and is retried on the next open.
             if (parsed.size >= 2) {
@@ -625,12 +622,76 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 suggestionsDay = day
                 settings.saveSuggestions(parsed, day)
             } else if (suggestions.isEmpty()) {
-                suggestions.addAll(defaultPrompts)
+                suggestions.addAll(
+                    defaultPrompts.filter { line -> avoid.none { isSameQuestion(line, it) } }
+                        .ifEmpty { defaultPrompts }
+                )
             }
             suggestionsLoading = false
             suggestionsJob = null
         }
     }
+
+    /** The question-writing prompt, with today's already-seen chips banned. */
+    private fun suggestionSystemPrompt(avoid: Collection<String>): String {
+        val base = "你在帮用户想接下来可以问健康助手的问题。只输出 4 行中文问题，每行一个，不带编号、符号或解释，" +
+            "每条 8–16 个字，要短，像用户随口说的一句话。" +
+            // Chips are a prompt to type, not a report: naming exact numbers
+            // made every starter question a paragraph.
+            "硬性要求：不要写出任何具体数字、日期或数值，也不要点名某个指标的读数；" +
+            "用「最近」「这段时间」「上周」这类模糊说法代替，" +
+            "例如写「最近睡眠是不是有点浅」而不是「昨晚只睡 5 小时怎么办」。" +
+            "四条分别覆盖睡眠、恢复或准备度、训练负荷、饮食里最值得关注的一两件事，不要四条都问同一个指标。" +
+            "不要写“今天怎么样”“需要注意什么”“如何改善健康”这类放在谁身上都成立的空问题，" +
+            "也不要做疾病诊断。"
+        if (avoid.isEmpty()) return base
+        // Twelve is enough to convey the flavour of what has been asked; the
+        // whole ledger would bloat every refresh.
+        val banned = avoid.toList().takeLast(12).joinToString("\n") { "- $it" }
+        return base + "\n以下是今天已经问过、不能再出现的问题。既要换指标，也要换角度，" +
+            "不许换个说法重复同一条意思：\n" + banned
+    }
+
+    /**
+     * Model output to chips: one per line, no bullets, no numbering, no
+     * numbers inside the question, no headings.
+     */
+    private fun parseSuggestionLines(text: String): List<String> = text.lines()
+        .map { line ->
+            line.trim()
+                .trimStart('-', '•', '*', '·')
+                .replace(Regex("^\\d+[.、)）]\\s*"), "")
+                .trim()
+                .trim('"', '\'', '“', '”', '「', '」', '《', '》')
+        }
+        // A chatty model sometimes answers with a whole document instead of
+        // four questions; heading lines are not questions.
+        .filter { it.length in 5..20 && !it.startsWith("#") && !it.contains("**") }
+        // Chips never quote numbers: the model drifts back to "睡 5 小时" no
+        // matter what the prompt says, so those lines go.
+        .filter { line -> line.none { it.isDigit() } }
+        .distinct()
+        .take(4)
+
+    /**
+     * Same question in different words. Exact match after stripping punctuation
+     * catches most of it; the bigram overlap catches "最近睡眠有点浅" against
+     * "最近的睡眠是不是浅了一些".
+     */
+    internal fun isSameQuestion(a: String, b: String): Boolean {
+        val x = questionKey(a)
+        val y = questionKey(b)
+        if (x.isEmpty() || y.isEmpty()) return false
+        if (x == y) return true
+        if (x.contains(y) || y.contains(x)) return true
+        if (x.length < 4 || y.length < 4) return false
+        val left = x.windowed(2).toSet()
+        val right = y.windowed(2).toSet()
+        val shared = left.count { it in right }
+        return shared * 2f / (left.size + right.size) >= 0.62f
+    }
+
+    private fun questionKey(s: String): String = s.filter { it.isLetterOrDigit() }
 
     /**
      * Finds the `{"table":…}` query in a model reply. The parsing lives in

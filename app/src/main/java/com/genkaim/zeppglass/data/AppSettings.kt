@@ -119,10 +119,32 @@ class AppSettings private constructor(context: Context) {
             .filter { it.isNotBlank() }
             .toList()
 
+    /**
+     * Every starter question shown today, in the order it was shown.
+     *
+     * The refresh key is supposed to give a *different* four, and the model
+     * happily rewrites the same idea with different words, so the strip keeps
+     * a ledger of what the user has already seen and asks for material those
+     * lines do not cover. Ledger resets with the 05:00 rollover.
+     */
+    fun seenSuggestions(): List<String> =
+        (prefs.getString(userKey(KEY_SUGGESTIONS_SEEN), "") ?: "")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+
     fun saveSuggestions(list: List<String>, day: String) {
+        // Appended, not replaced: yesterday's questions would otherwise be
+        // forgotten by the first refresh of the new day.
+        val seen = if (aiSuggestionsDay == day) seenSuggestions() else emptyList()
         aiSuggestionsDay = day
         prefs.edit()
             .putString(userKey(KEY_SUGGESTIONS), list.joinToString("\n"))
+            .putString(
+                userKey(KEY_SUGGESTIONS_SEEN),
+                (seen + list).distinct().takeLast(MAX_SEEN_SUGGESTIONS).joinToString("\n")
+            )
             .putString(userKey(KEY_SUGGESTIONS_DAY), day)
             .apply()
     }
@@ -295,6 +317,10 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_SUMMARY_AT = "daily_summary_at"
         private const val KEY_SUGGESTIONS = "ai_suggestions"
         private const val KEY_SUGGESTIONS_DAY = "ai_suggestions_day"
+        private const val KEY_SUGGESTIONS_SEEN = "ai_suggestions_seen"
+
+        /** A day of refreshes is a dozen sets; older lines never matter again. */
+        private const val MAX_SEEN_SUGGESTIONS = 36
 
         @Volatile
         private var instance: AppSettings? = null

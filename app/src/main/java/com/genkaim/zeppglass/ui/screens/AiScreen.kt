@@ -9,11 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -22,6 +18,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,7 +80,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -92,6 +89,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -830,28 +829,39 @@ private fun SuggestionStrip(
     onRefresh: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-        // One fixed-height row: the "still writing them" line used to expand
-        // and collapse above the chips, which moved them under the finger that
-        // had just tapped refresh. Drawn beside the key it stays put.
+        // One fixed-height row: the header swaps in place, so the chips below
+        // never move under the finger that just tapped refresh. The refresh key
+        // sits at the left edge — the same spot the "writing them" line takes —
+        // so the two read as one control that changes state.
         Row(
             Modifier
                 .fillMaxWidth()
+                .height(28.dp)
                 .padding(start = 20.dp, end = 14.dp, bottom = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AnimatedVisibility(
-                visible = loading,
-                enter = fadeIn(tween(200)),
-                exit = fadeOut(tween(140))
-            ) {
-                Text(
-                    "正在根据最近的数据准备问题…",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            AnimatedContent(
+                targetState = loading,
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                label = "suggestionHeader"
+            ) { busy ->
+                if (busy) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "正在根据最近的数据准备问题",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                        // Three dots where the ellipsis used to be: a static
+                        // "…" read as finished text, this reads as working.
+                        Spacer(Modifier.size(6.dp))
+                        TypingDots(dotSize = 4.dp)
+                    }
+                } else {
+                    RefreshSuggestionsKey(onClick = onRefresh)
+                }
             }
-            Spacer(Modifier.weight(1f))
-            RefreshSuggestionsKey(loading = loading, onClick = onRefresh)
         }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -882,44 +892,32 @@ private fun SuggestionStrip(
 }
 
 /**
- * Refresh key for the starter questions. It turns while the model is writing:
- * the answer takes a second or two, and without the spin the tap reads as
- * having done nothing.
+ * "换一批" as plain text on the page background: it belongs to the header line,
+ * not to the chips it replaces. Hidden while the model is writing, because the
+ * loading line takes its place.
  */
 @Composable
-private fun RefreshSuggestionsKey(loading: Boolean, onClick: () -> Unit) {
-    val spin = rememberInfiniteTransition(label = "suggestionRefresh")
-    val angle by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
-        label = "suggestionRefreshAngle"
-    )
-    Surface(
-        onClick = onClick,
-        enabled = !loading,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+private fun RefreshSuggestionsKey(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .height(28.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier
-                .height(28.dp)
-                .padding(start = 10.dp, end = 11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Rounded.Autorenew,
-                contentDescription = "刷新问题",
-                modifier = Modifier
-                    .size(14.dp)
-                    .rotate(if (loading) angle else 0f)
-            )
-            Spacer(Modifier.size(4.dp))
-            Text("换一批", style = MaterialTheme.typography.labelSmall)
-        }
+        Icon(
+            Icons.Rounded.Autorenew,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(Modifier.size(5.dp))
+        Text(
+            "换一批",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.semantics { contentDescription = "刷新问题" }
+        )
     }
 }
 

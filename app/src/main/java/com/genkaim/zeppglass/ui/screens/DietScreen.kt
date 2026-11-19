@@ -57,6 +57,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -70,11 +71,13 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.BodyProfile
 import com.genkaim.zeppglass.data.ChatMessage
 import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.Meal
 import com.genkaim.zeppglass.data.MealItem
+import com.genkaim.zeppglass.data.WeightPoint
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.SettingsActivity
 import com.genkaim.zeppglass.ui.components.CapsuleField
@@ -90,7 +93,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -416,6 +421,19 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                 Modifier.weight(1f)
             )
         }
+    }
+
+    // 体重 / 体脂 / 骨骼肌 sit next to the calorie numbers because they are the
+    // other half of the same question: what goes in, and what it builds.
+    val bodyPoint = remember(data, day) {
+        data?.weights.orEmpty()
+            .filter {
+                Instant.ofEpochMilli(it.epochMs).atZone(ZoneId.systemDefault()).toLocalDate() <= day
+            }
+            .maxByOrNull { it.epochMs }
+    }
+    if (bodyPoint != null) {
+        BodyCompositionCard(bodyPoint, data?.body)
     }
 
     if (meals.isNotEmpty()) {
@@ -839,6 +857,138 @@ private fun DietStat(label: String, value: String, unit: String?, modifier: Modi
                     modifier = Modifier.padding(start = 3.dp, bottom = 3.dp)
                 )
             }
+        }
+    }
+}
+
+/**
+ * The scale numbers, next to the calorie ones: weight, body fat and skeletal
+ * muscle, each with a one-word rating in the colour of its band.
+ *
+ * Ratings use Chinese adult reference bands (BMI <18.5 偏轻, 18.5–24 正常,
+ * 24–28 偏高, ≥28 肥胖; body fat and muscle differ by sex). They describe the
+ * reading, not the person — a missing scale field shows `--` instead of a guess.
+ */
+@Composable
+private fun BodyCompositionCard(point: WeightPoint, body: BodyProfile?) {
+    val palette = LocalZgPalette.current
+    val male = body?.isMale
+    // Prefer the scale's own BMI (it knows the height it used); fall back to the
+    // profile height when the record is a hand-typed weight.
+    val bmi = point.bmi ?: run {
+        val h = body?.heightCm?.takeIf { it > 0 }?.toDouble()
+        val w = point.weightKg
+        if (h != null && w != null) w / ((h / 100) * (h / 100)) else null
+    }
+
+    val weightVerdict = when {
+        bmi == null -> null
+        bmi < 18.5 -> "偏轻" to palette.warn
+        bmi < 24.0 -> "正常" to MaterialTheme.colorScheme.primary
+        bmi < 28.0 -> "偏高" to palette.warn
+        else -> "肥胖" to palette.critical
+    }
+    val fat = point.bodyFatPct
+    val fatVerdict = when {
+        fat == null -> null
+        // Bands differ by sex: 10–20% is normal for men, 18–28% for women.
+        male == true -> when {
+            fat < 10.0 -> "偏低" to palette.warn
+            fat <= 20.0 -> "正常" to MaterialTheme.colorScheme.primary
+            fat <= 25.0 -> "偏高" to palette.warn
+            else -> "偏高" to palette.critical
+        }
+        male == false -> when {
+            fat < 18.0 -> "偏低" to palette.warn
+            fat <= 28.0 -> "正常" to MaterialTheme.colorScheme.primary
+            fat <= 34.0 -> "偏高" to palette.warn
+            else -> "偏高" to palette.critical
+        }
+        else -> if (fat in 15.0..25.0) "正常" to MaterialTheme.colorScheme.primary
+        else "偏离" to palette.warn
+    }
+    val muscle = point.skeletalMusclePct
+    val muscleVerdict = when {
+        muscle == null -> null
+        // Skeletal muscle has a floor rather than a ceiling: more is fine.
+        muscle < (if (male == false) 35.0 else 40.0) -> "偏低" to palette.warn
+        else -> "正常" to MaterialTheme.colorScheme.primary
+    }
+
+    FlatPanel {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BodyStat(
+                    "体重",
+                    point.weightKg?.let { Fmt.oneDecimal(it) } ?: "--",
+                    "kg",
+                    MaterialTheme.colorScheme.primary,
+                    weightVerdict,
+                    Modifier.weight(1f)
+                )
+                BodyStat(
+                    "体脂",
+                    fat?.let { Fmt.oneDecimal(it) } ?: "--",
+                    "%",
+                    palette.workout,
+                    fatVerdict,
+                    Modifier.weight(1f)
+                )
+                BodyStat(
+                    "骨骼肌",
+                    muscle?.let { Fmt.oneDecimal(it) } ?: "--",
+                    "%",
+                    palette.sleepRem,
+                    muscleVerdict,
+                    Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                if (bmi != null) "BMI ${Fmt.oneDecimal(bmi)} · ${Fmt.dayAndTime(point.epochMs)} 称重"
+                else "${Fmt.dayAndTime(point.epochMs)} 称重",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** One column of the body-composition card: label, coloured value, verdict. */
+@Composable
+private fun BodyStat(
+    label: String,
+    value: String,
+    unit: String,
+    tint: Color,
+    verdict: Pair<String, Color>?,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, style = MaterialTheme.typography.titleLarge, color = tint, maxLines = 1)
+            Text(
+                unit,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
+            )
+        }
+        if (verdict != null) {
+            Text(
+                verdict.first,
+                style = MaterialTheme.typography.labelSmall,
+                color = verdict.second
+            )
         }
     }
 }

@@ -180,7 +180,15 @@ data class WeightPoint(
     val epochMs: Long,
     val weightKg: Double?,
     val bmi: Double?,
-    val bodyFatPct: Double?
+    val bodyFatPct: Double?,
+    /**
+     * Skeletal muscle share of body weight, in percent.
+     *
+     * Zepp publishes this as `muscleRate` on scale readings; the scale reports
+     * it as the share of skeletal muscle, not total muscle mass. Manual weight
+     * entries carry no impedance data, so it stays null there.
+     */
+    val skeletalMusclePct: Double? = null
 )
 
 data class Workout(

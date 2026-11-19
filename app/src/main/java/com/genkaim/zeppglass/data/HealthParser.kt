@@ -563,7 +563,13 @@ object HealthParser {
                     bmi = summary.anyNumber("bmi"),
                     bodyFatPct = summary.anyNumber("bodyFatRate")
                         ?: summary.anyNumber("fatRate")
-                        ?: summary.anyNumber("bodyFat")
+                        ?: summary.anyNumber("bodyFat"),
+                    // Scale-only field: present on impedance readings, absent on
+                    // hand-typed weights, so it is read leniently.
+                    skeletalMusclePct = summary.anyNumber("skeletalMuscleRate")
+                        ?: summary.anyNumber("skeletalMuscle")
+                        ?: summary.anyNumber("muscleRate")
+                        ?: summary.anyNumber("muscle")
                 )
             )
         }

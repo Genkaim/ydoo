@@ -2,13 +2,22 @@
 <!--
   4x2 by default. Resizable in both directions so the launchers that let a
   widget sit on a 5- or 6-column grid (MIUI, HyperOS, ColorOS) still get a
-  sensible frame; the content stays centred and scales with fitCenter.
+  sensible frame; the rings scale with the cell span reported in the options
+  bundle.
+
+  previewLayout is what Android 12+ pickers draw; previewImage is the fallback
+  for older launchers and OEM pickers that ignore previewLayout.
+  minResize* stops those launchers from squeezing the card below the point where
+  three rings still fit.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_rings_description"
     android:initialLayout="@layout/widget_rings"
-    android:minHeight="120dp"
+    android:minHeight="110dp"
+    android:minResizeHeight="96dp"
+    android:minResizeWidth="170dp"
     android:minWidth="250dp"
+    android:previewImage="@drawable/widget_preview"
     android:previewLayout="@layout/widget_rings"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="2"

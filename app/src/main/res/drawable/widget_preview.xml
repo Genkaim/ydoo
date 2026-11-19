@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static preview for launchers that predate previewLayout (Android 11 and
+  below, plus several OEM pickers that ignore it). A plain rendition of the
+  card's three rings, so the picker never shows a bare app icon.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="500dp"
+    android:height="220dp"
+    android:viewportWidth="500"
+    android:viewportHeight="220">
+
+    <path
+        android:pathData="M28,0 H472 A28,28 0 0 1 500,28 V192 A28,28 0 0 1 472,220 H28 A28,28 0 0 1 0,192 V28 A28,28 0 0 1 28,0 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 睡眠: track, then 250° of progress from twelve o'clock -->
+    <path
+        android:pathData="M102,120 a38,38 0 1 0 76,0 a38,38 0 1 0 -76,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#EDEDF0"
+        android:strokeWidth="11" />
+    <path
+        android:pathData="M140,82 A38,38 0 1 1 104.3,133"
+        android:fillColor="#00000000"
+        android:strokeColor="#6F8DF5"
+        android:strokeLineCap="round"
+        android:strokeWidth="11" />
+
+    <!-- Charge -->
+    <path
+        android:pathData="M204,120 a46,46 0 1 0 92,0 a46,46 0 1 0 -92,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#EDEDF0"
+        android:strokeWidth="11" />
+    <path
+        android:pathData="M250,74 A46,46 0 1 1 206.8,135.7"
+        android:fillColor="#00000000"
+        android:strokeColor="#0E8A63"
+        android:strokeLineCap="round"
+        android:strokeWidth="11" />
+
+    <!-- 负荷 -->
+    <path
+        android:pathData="M322,120 a38,38 0 1 0 76,0 a38,38 0 1 0 -76,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#EDEDF0"
+        android:strokeWidth="11" />
+    <path
+        android:pathData="M360,82 A38,38 0 1 1 324.3,133"
+        android:fillColor="#00000000"
+        android:strokeColor="#3D5AFE"
+        android:strokeLineCap="round"
+        android:strokeWidth="11" />
+</vector>

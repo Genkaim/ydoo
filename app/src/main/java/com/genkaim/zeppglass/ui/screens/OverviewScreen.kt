@@ -1011,7 +1011,7 @@ private fun StrainRingCell(
         Spacer(Modifier.height(8.dp))
         Box(Modifier.size(88.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
-                val stroke = 6.dp.toPx()
+                val stroke = 88.dp.toPx() * 0.095f
                 val inset = stroke / 2
                 val topLeft = Offset(inset, inset)
                 val arcSize = Size(size.width - stroke, size.height - stroke)
@@ -1103,7 +1103,9 @@ private fun RingCell(
         ProgressRing(
             progress.coerceIn(0f, 1f),
             Modifier.size(size),
-            strokeWidth = 6.dp,
+            // Thicker than the old 6dp: the number inside carries the reading,
+            // and a thin arc read as a hairline next to the cards below.
+            strokeWidth = size * 0.095f,
             color = tint,
             trackColor = tint.copy(alpha = 0.16f)
         ) {

@@ -144,7 +144,7 @@ fun DetailScreen(
                 DetailKind.LOAD -> LoadDetail(data, target.date)
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date)
-                DetailKind.SPO2 -> NightSpo2Detail(data, target.date)
+                DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
                 DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store)
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
                 DetailKind.VO2 -> Vo2Detail(data)
@@ -2491,16 +2491,45 @@ private fun MorningChargeDetail(data: HealthData?, date: LocalDate?) {
 
 // ---------------- night blood oxygen ----------------
 
+/** One line of the day-statistics card: label on the left, value on the right. */
 @Composable
-private fun NightSpo2Detail(data: HealthData?, date: LocalDate?) {
+private fun Spo2StatRow(label: String, value: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: Boolean = false) {
     val source = data ?: run {
         Missing("还没有血氧数据")
         return
     }
+    // The samples inside one night's sleep window; the day's stats and the
+    // headline average both come from this same set, so they always agree.
+    fun pointsOn(target: LocalDate): List<Int> {
+        val night = source.nightOn(target) ?: return emptyList()
+        return source.spo2
+            .filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
+            .map { it.value }
+    }
     fun averageOn(target: LocalDate): Int? {
-        val night = source.nightOn(target) ?: return null
-        val points = source.spo2.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
-        return if (points.isEmpty()) null else points.map { it.value }.average().roundToInt()
+        val points = pointsOn(target)
+        return if (points.isEmpty()) null else points.average().roundToInt()
     }
     val day = date ?: source.nights.maxByOrNull { it.date }?.date
     if (day == null) {
@@ -2548,6 +2577,22 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?) {
             }
             Spacer(Modifier.height(4.dp))
             Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+        }
+    }
+
+    if (withDayStats) {
+        val points = pointsOn(day)
+        if (points.isNotEmpty()) {
+            SectionTitle("日统计")
+            FlatPanel {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    Spo2StatRow("日平均值", "${points.average().roundToInt()}%")
+                    Rule(Modifier.padding(horizontal = 16.dp))
+                    Spo2StatRow("日最高值", "${points.max()}%")
+                    Rule(Modifier.padding(horizontal = 16.dp))
+                    Spo2StatRow("日最低值", "${points.min()}%")
+                }
+            }
         }
     }
 

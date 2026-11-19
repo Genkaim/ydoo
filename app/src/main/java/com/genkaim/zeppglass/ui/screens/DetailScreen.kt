@@ -217,21 +217,6 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
 // ---------------- sleep ----------------
 
 @Composable
-private fun SleepStat(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace)
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 private fun SleepDetail(data: HealthData?, date: LocalDate?) {
     val palette = LocalZgPalette.current
     val night = (date?.let { data?.nightOn(it) } ?: data?.latestNight())
@@ -256,17 +241,30 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
             caption = "睡眠分 / 100",
             color = palette.sleepLight
         )
-        Spacer(Modifier.height(16.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            SleepStat(Fmt.hoursMinutes(night.totalMinutes), "时长")
-            SleepStat(Fmt.timeSec(night.startEpochSec), "入睡")
-            SleepStat(Fmt.timeSec(night.endEpochSec), "醒来")
-        }
         Spacer(Modifier.height(18.dp))
     }
+
+    // One card holds the night's shape: when it started, how long it lasted and
+    // how the stages split. It sits above the timeline so the numbers read first
+    // and the picture explains them.
+    fun stageShare(minutes: Int?, total: Int? = night.totalMinutes): String {
+        if (minutes == null) return "--"
+        if (total == null || total <= 0) return Fmt.hoursMinutes(minutes)
+        return "${Fmt.hoursMinutes(minutes)} · ${(minutes * 100.0 / total).roundToInt()}%"
+    }
+    FlatPanel {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            DataRow("时长", Fmt.hoursMinutes(night.totalMinutes))
+            DataRow("入睡", Fmt.timeSec(night.startEpochSec))
+            DataRow("醒来", Fmt.timeSec(night.endEpochSec))
+            Spacer(Modifier.height(6.dp))
+            DataRow("深睡", stageShare(night.deepMinutes))
+            DataRow("浅睡", stageShare(night.lightMinutes))
+            DataRow("REM", stageShare(night.remMinutes))
+            DataRow("清醒", stageShare(night.awakeMinutes))
+        }
+    }
+    Spacer(Modifier.height(12.dp))
 
     var picked by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }
     var pickedNap by remember(night.date) { mutableStateOf<SleepStageSlice?>(null) }
@@ -318,32 +316,35 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
                 val napStart = night.napStartEpochSec
                 val napEnd = night.napEndEpochSec
                 if (night.napStages.size > 1 && napStart != null && napEnd != null) {
-                    Spacer(Modifier.height(14.dp))
+                    fun napStage(name: String): Int? = night.napStages
+                        .filter { it.stage == name }
+                        .sumOf { ((it.endEpochSec - it.startEpochSec) / 60).toInt() }
+                        .takeIf { it > 0 }
+                    val napDeep = napStage("deep")
+                    val napLight = napStage("light")
+                    val napRem = napStage("rem")
+                    val napAwake = napStage("awake")
                     val napNight = SleepNight(
                         date = night.date,
                         startEpochSec = napStart,
                         endEpochSec = napEnd,
                         score = null,
-                        deepMinutes = night.napStages
-                            .filter { it.stage == "deep" }
-                            .sumOf { ((it.endEpochSec - it.startEpochSec) / 60).toInt() }
-                            .takeIf { it > 0 },
-                        lightMinutes = night.napStages
-                            .filter { it.stage == "light" }
-                            .sumOf { ((it.endEpochSec - it.startEpochSec) / 60).toInt() }
-                            .takeIf { it > 0 },
-                        remMinutes = night.napStages
-                            .filter { it.stage == "rem" }
-                            .sumOf { ((it.endEpochSec - it.startEpochSec) / 60).toInt() }
-                            .takeIf { it > 0 },
-                        awakeMinutes = night.napStages
-                            .filter { it.stage == "awake" }
-                            .sumOf { ((it.endEpochSec - it.startEpochSec) / 60).toInt() }
-                            .takeIf { it > 0 },
+                        deepMinutes = napDeep,
+                        lightMinutes = napLight,
+                        remMinutes = napRem,
+                        awakeMinutes = napAwake,
                         wakeCount = null,
                         restingHr = null,
                         stages = night.napStages
                     )
+                    Spacer(Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        DataRow("深睡", stageShare(napDeep, napMinutes))
+                        DataRow("浅睡", stageShare(napLight, napMinutes))
+                        DataRow("REM", stageShare(napRem, napMinutes))
+                        DataRow("清醒", stageShare(napAwake, napMinutes))
+                    }
+                    Spacer(Modifier.height(12.dp))
                     SleepStageChart(
                         night = napNight,
                         modifier = Modifier.fillMaxWidth(),
@@ -360,9 +361,11 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
         MetricTile("睡眠心率", (readiness?.sleepRhr ?: night.restingHr)?.toString() ?: "--", "bpm", Modifier.weight(1f))
         MetricTile("睡眠 HRV", readiness?.sleepHrv?.toString() ?: "--", "ms", Modifier.weight(1f))
     }
+    val inBedSeconds = (night.endEpochSec - night.startEpochSec).coerceAtLeast(1)
+    val efficiency = (night.totalMinutes * 60.0 / inBedSeconds * 100).roundToInt().coerceIn(0, 100)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         MetricTile("夜醒", night.wakeCount?.toString() ?: "--", "次", Modifier.weight(1f))
-        MetricTile("总时长", Fmt.minutes(night.totalMinutes), null, Modifier.weight(1f))
+        MetricTile("睡眠效率", efficiency.toString(), "%", Modifier.weight(1f))
     }
     val spo2 = data?.spo2?.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
     if (!spo2.isNullOrEmpty()) {

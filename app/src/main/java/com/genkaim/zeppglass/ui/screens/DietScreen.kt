@@ -1001,7 +1001,7 @@ private fun BodyStat(
             Text(
                 unit,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
             )
             if (verdict != null) {

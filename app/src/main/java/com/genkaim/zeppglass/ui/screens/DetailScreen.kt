@@ -522,7 +522,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
             onClick = { onOpen(DetailTarget(DetailKind.SLEEP_RR, night.date)) }
         )
     }
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(16.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val apnea = breathing?.apneaIndex
         SleepVitalTile(
@@ -544,28 +544,40 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
             value = readiness?.sleepHrv?.toString() ?: "--",
             unit = "ms",
             tint = palette.sleepDeep,
-            verdict = null,
+            verdict = readiness?.hrvScore?.let {
+                when {
+                    it >= 75 -> "正常" to MaterialTheme.colorScheme.onSurface
+                    it >= 50 -> "一般" to palette.warn
+                    else -> "偏低" to palette.critical
+                }
+            },
             modifier = Modifier.weight(1f),
             onClick = null
         )
     }
     val spo2 = data?.spo2?.filter { it.epochMs / 1000 in night.startEpochSec..night.endEpochSec }
     if (!spo2.isNullOrEmpty()) {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val average = spo2.map { it.value }.average().roundToInt()
             MetricTile(
-                "夜间血氧均值",
-                spo2.map { it.value }.average().roundToInt().toString(),
-                "%",
-                Modifier.weight(1f)
+                label = "夜间血氧均值",
+                value = average.toString(),
+                unit = "%",
+                verdict = when {
+                    average >= 95 -> "正常" to MaterialTheme.colorScheme.onSurface
+                    average >= 90 -> "偏低" to palette.warn
+                    else -> "低" to palette.critical
+                },
+                modifier = Modifier.weight(1f)
             )
         }
     }
 
     val nights = data?.nights?.takeLast(14).orEmpty()
     if (nights.size > 1) {
-        SectionTitle("睡眠规律性", trailing = "近 14 晚")
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("睡眠规律性")
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             FlatPanel {
                 Column(Modifier.padding(16.dp)) {
                     val rhythm = sleepRhythm(nights)
@@ -725,22 +737,25 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
     }
 
     // Zepp leads with the latest 5-minute sample, not the daily average; this is
-    // also the number the home card shows.
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            current.second.toString(),
-            style = MaterialTheme.typography.displayMedium
-        )
-        Text(
-            "${Fmt.date(day.date)} ${Fmt.time(current.first)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    // also the number the home card shows. It sits in the same white card as the
+    // rest of the page's readings.
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 18.dp, horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                current.second.toString(),
+                style = MaterialTheme.typography.displayMedium
+            )
+            Text(
+                "${Fmt.date(day.date)} ${Fmt.time(current.first)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 
     FlatPanel {
@@ -1925,23 +1940,35 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
+            val rhrVerdict = when {
+                day.rhrScore == null -> null
+                day.rhrScore >= 80 -> "优秀" to MaterialTheme.colorScheme.onSurface
+                day.rhrScore >= 60 -> "良好" to MaterialTheme.colorScheme.onSurface
+                day.rhrScore >= 40 -> "一般" to LocalZgPalette.current.warn
+                else -> "偏低" to LocalZgPalette.current.critical
+            }
             Row(verticalAlignment = Alignment.Bottom) {
+                val abnormal = rhrVerdict != null && rhrVerdict.first in setOf("一般", "偏低")
                 Text(
                     value.toString(),
-                    style = MaterialTheme.typography.displayMedium
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (abnormal) rhrVerdict.second else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     " 次/分",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) rhrVerdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
+                if (rhrVerdict != null) {
+                    Text(
+                        rhrVerdict.first,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = rhrVerdict.second,
+                        modifier = Modifier.padding(start = 6.dp, bottom = 9.dp)
+                    )
+                }
             }
-            Text(
-                readinessRating(day.rhrScore),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
             Spacer(Modifier.height(16.dp))
             BaselineRow("基线", day.rhrBaseline, "次/分", value)
         }
@@ -2254,7 +2281,7 @@ private fun SleepVitalTile(
                 Text(
                     " $unit",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 3.dp)
                 )
                 if (verdict != null) {
@@ -2365,28 +2392,35 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
         value >= 50 -> "一般" to palette.warn
         else -> "偏低" to palette.critical
     }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            Fmt.date(day.date),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(value.toString(), style = MaterialTheme.typography.displayMedium)
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 18.dp, horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text(
-                " 分",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
+                Fmt.date(day.date),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(6.dp))
+            val abnormal = verdict.first != "正常"
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    value.toString(),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    " 分",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
         }
-        Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
     }
 
     val recent = (0..6).map { day.date.minusDays(6L - it) }

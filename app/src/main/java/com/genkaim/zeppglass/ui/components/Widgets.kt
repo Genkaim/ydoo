@@ -211,6 +211,7 @@ fun MetricTile(
     tint: Color = MaterialTheme.colorScheme.primary,
     caption: String? = null,
     modifier: Modifier = Modifier,
+    verdict: Pair<String, Color>? = null,
     onClick: (() -> Unit)? = null
 ) {
     // A tile showing "--" has nothing behind it, so it must not open a page:
@@ -246,6 +247,20 @@ fun MetricTile(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 3.dp, bottom = 3.dp)
+                    )
+                }
+                if (verdict != null) {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        verdict.first,
+                        style = MaterialTheme.typography.labelSmall,
+                        // Normal reads as part of the number; only an abnormal
+                        // band gets its colour.
+                        color = if (verdict.first == "正常") {
+                            MaterialTheme.colorScheme.onSurface
+                        } else verdict.second,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
                     )
                 }
             }

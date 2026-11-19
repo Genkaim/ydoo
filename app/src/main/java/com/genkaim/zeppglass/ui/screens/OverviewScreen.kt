@@ -308,6 +308,16 @@ fun OverviewScreen(
                                 onClick = { onOpenDetail(DetailTarget(DetailKind.DIET, date)) }
                             )
 
+                            val ink = MaterialTheme.colorScheme.onSurface
+                            val warnTone = LocalZgPalette.current.warn
+                            val criticalTone = LocalZgPalette.current.critical
+                            fun scoreVerdict(score: Int?): Pair<String, Color>? = when {
+                                score == null -> null
+                                score >= 75 -> "正常" to ink
+                                score >= 50 -> "一般" to warnTone
+                                else -> "偏低" to criticalTone
+                            }
+
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 MetricTile(
                                     label = "晨起 Charge",
@@ -315,7 +325,14 @@ fun OverviewScreen(
                                     unit = null,
                                     icon = Icons.Rounded.Bolt,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    verdict = morningCharge?.let {
+                                        when {
+                                            it >= 70 -> "正常" to ink
+                                            it >= 50 -> "偏低" to warnTone
+                                            else -> "偏低" to criticalTone
+                                        }
+                                    }
                                 )
                                 MetricTile(
                                     label = "静息心率",
@@ -324,6 +341,7 @@ fun OverviewScreen(
                                     icon = Icons.Rounded.Favorite,
                                     tint = LocalZgPalette.current.sleepRem,
                                     modifier = Modifier.weight(1f),
+                                    verdict = scoreVerdict(readiness?.rhrScore),
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.RHR, date)) }
                                 )
                             }
@@ -336,6 +354,9 @@ fun OverviewScreen(
                                     icon = Icons.Rounded.ShowChart,
                                     tint = LocalZgPalette.current.accent,
                                     modifier = Modifier.weight(1f),
+                                    verdict = pai?.total?.let {
+                                        if (it >= 100.0) "达标" to ink else "未达标" to warnTone
+                                    },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.PAI, date)) }
                                 )
                                 MetricTile(
@@ -344,18 +365,28 @@ fun OverviewScreen(
                                     unit = "ms",
                                     icon = Icons.Rounded.MonitorHeart,
                                     modifier = Modifier.weight(1f),
+                                    verdict = scoreVerdict(readiness?.hrvScore),
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.HRV, date)) }
                                 )
                             }
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                val stressNow = stress?.curve?.lastOrNull()?.second
                                 MetricTile(
                                     label = "压力",
-                                    value = stress?.curve?.lastOrNull()?.second?.toString() ?: "--",
+                                    value = stressNow?.toString() ?: "--",
                                     unit = null,
                                     icon = Icons.Rounded.SelfImprovement,
                                     tint = LocalZgPalette.current.sleepAwake,
                                     modifier = Modifier.weight(1f),
+                                    verdict = stressNow?.let {
+                                        when {
+                                            it < 40 -> "放松" to ink
+                                            it < 60 -> "正常" to ink
+                                            it < 80 -> "偏高" to warnTone
+                                            else -> "很高" to criticalTone
+                                        }
+                                    },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.STRESS, date)) }
                                 )
                                 MetricTile(
@@ -365,7 +396,8 @@ fun OverviewScreen(
                                     icon = Icons.Rounded.Thermostat,
                                     tint = LocalZgPalette.current.warn,
                                     modifier = Modifier.weight(1f),
-                                    onClick = { onOpenDetail(DetailTarget(DetailKind.READINESS, date)) }
+                                    verdict = scoreVerdict(readiness?.skinTempScore),
+                                    onClick = { onOpenDetail(DetailTarget(DetailKind.SKIN_TEMP, date)) }
                                 )
                             }
 
@@ -380,17 +412,33 @@ fun OverviewScreen(
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                val bmi = weight?.bmi
                                 MetricTile(
                                     label = "体重",
                                     value = weight?.weightKg?.let { Fmt.oneDecimal(it) } ?: "--",
                                     unit = "kg",
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    verdict = bmi?.let {
+                                        when {
+                                            it < 18.5 -> "偏轻" to warnTone
+                                            it < 24.0 -> "正常" to ink
+                                            it < 28.0 -> "偏高" to warnTone
+                                            else -> "肥胖" to criticalTone
+                                        }
+                                    }
                                 )
                                 MetricTile(
                                     label = "血氧",
                                     value = spo2?.value?.toString() ?: "--",
                                     unit = "%",
                                     modifier = Modifier.weight(1f),
+                                    verdict = spo2?.value?.let {
+                                        when {
+                                            it >= 95 -> "正常" to ink
+                                            it >= 90 -> "偏低" to warnTone
+                                            else -> "低" to criticalTone
+                                        }
+                                    },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.SPO2, date)) }
                                 )
                             }
@@ -941,7 +989,6 @@ private fun StrainRingCell(
             )
         }
         Spacer(Modifier.height(8.dp))
-        val markerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
         Box(Modifier.size(88.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val stroke = 6.dp.toPx()
@@ -985,20 +1032,6 @@ private fun StrainRingCell(
                         style = strokeStyle
                     )
                 }
-                // The 15 mark: a short horizontal line laid on the ring at the
-                // angle that corresponds to 15 / 21 of the circle.
-                val angle = Math.toRadians((-90f + thresholdSweep).toDouble())
-                val radius = size.minDimension / 2 - inset
-                val cx = size.width / 2 + (radius * kotlin.math.cos(angle)).toFloat()
-                val cy = size.height / 2 + (radius * kotlin.math.sin(angle)).toFloat()
-                val half = stroke * 1.15f
-                drawLine(
-                    color = markerColor,
-                    start = Offset(cx - half, cy),
-                    end = Offset(cx + half, cy),
-                    strokeWidth = 1.6.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
             }
             Text(
                 value?.let { String.format("%.1f", it) } ?: "--",

@@ -425,15 +425,29 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
 
     // 体重 / 体脂 / 骨骼肌 sit next to the calorie numbers because they are the
     // other half of the same question: what goes in, and what it builds.
-    val bodyPoint = remember(data, day) {
-        data?.weights.orEmpty()
-            .filter {
-                Instant.ofEpochMilli(it.epochMs).atZone(ZoneId.systemDefault()).toLocalDate() <= day
-            }
-            .maxByOrNull { it.epochMs }
+    val weightsUpToDay = remember(data, day) {
+        data?.weights.orEmpty().filter {
+            Instant.ofEpochMilli(it.epochMs).atZone(ZoneId.systemDefault()).toLocalDate() <= day
+        }
+    }
+    val bodyPoint = weightsUpToDay.maxByOrNull { it.epochMs }
+    // The newest reading is often a plain weight (phone sync, hand entry) with no
+    // impedance, while an older scale reading still has fat/muscle. Take those two
+    // numbers from the newest reading that actually carries them.
+    val compositionPoint = remember(weightsUpToDay) {
+        val withComposition = weightsUpToDay.filter {
+            it.bodyFatPct != null || it.skeletalMusclePct != null
+        }
+        // A shared scale can store another person's much lighter reading; keep the
+        // composition of a body close to the current weight, then take the newest.
+        val latestKg = weightsUpToDay.maxByOrNull { it.epochMs }?.weightKg
+        val sameBody = if (latestKg == null) withComposition else withComposition.filter {
+            it.weightKg == null || kotlin.math.abs(it.weightKg - latestKg) <= 8.0
+        }
+        (sameBody.ifEmpty { withComposition }).maxByOrNull { it.epochMs }
     }
     if (bodyPoint != null) {
-        BodyCompositionCard(bodyPoint, data?.body)
+        BodyCompositionCard(bodyPoint, compositionPoint, data?.body)
     }
 
     if (meals.isNotEmpty()) {
@@ -863,14 +877,19 @@ private fun DietStat(label: String, value: String, unit: String?, modifier: Modi
 
 /**
  * The scale numbers, next to the calorie ones: weight, body fat and skeletal
- * muscle, each with a one-word rating in the colour of its band.
+ * muscle, each with a one-word rating to the right of the number.
  *
  * Ratings use Chinese adult reference bands (BMI <18.5 偏轻, 18.5–24 正常,
- * 24–28 偏高, ≥28 肥胖; body fat and muscle differ by sex). They describe the
+ * 24–28 偏高, ≥28 肥胖; body fat and muscle differ by sex). Normal readings stay
+ * in ink; only a reading outside its band is coloured. They describe the
  * reading, not the person — a missing scale field shows `--` instead of a guess.
  */
 @Composable
-private fun BodyCompositionCard(point: WeightPoint, body: BodyProfile?) {
+private fun BodyCompositionCard(
+    point: WeightPoint,
+    composition: WeightPoint?,
+    body: BodyProfile?
+) {
     val palette = LocalZgPalette.current
     val male = body?.isMale
     // Prefer the scale's own BMI (it knows the height it used); fall back to the
@@ -880,84 +899,79 @@ private fun BodyCompositionCard(point: WeightPoint, body: BodyProfile?) {
         val w = point.weightKg
         if (h != null && w != null) w / ((h / 100) * (h / 100)) else null
     }
+    val normalInk = MaterialTheme.colorScheme.onSurface
 
     val weightVerdict = when {
         bmi == null -> null
         bmi < 18.5 -> "偏轻" to palette.warn
-        bmi < 24.0 -> "正常" to MaterialTheme.colorScheme.primary
+        bmi < 24.0 -> "正常" to normalInk
         bmi < 28.0 -> "偏高" to palette.warn
         else -> "肥胖" to palette.critical
     }
-    val fat = point.bodyFatPct
+    val fat = composition?.bodyFatPct
     val fatVerdict = when {
         fat == null -> null
         // Bands differ by sex: 10–20% is normal for men, 18–28% for women.
         male == true -> when {
             fat < 10.0 -> "偏低" to palette.warn
-            fat <= 20.0 -> "正常" to MaterialTheme.colorScheme.primary
+            fat <= 20.0 -> "正常" to normalInk
             fat <= 25.0 -> "偏高" to palette.warn
             else -> "偏高" to palette.critical
         }
         male == false -> when {
             fat < 18.0 -> "偏低" to palette.warn
-            fat <= 28.0 -> "正常" to MaterialTheme.colorScheme.primary
+            fat <= 28.0 -> "正常" to normalInk
             fat <= 34.0 -> "偏高" to palette.warn
             else -> "偏高" to palette.critical
         }
-        else -> if (fat in 15.0..25.0) "正常" to MaterialTheme.colorScheme.primary
+        else -> if (fat in 15.0..25.0) "正常" to normalInk
         else "偏离" to palette.warn
     }
-    val muscle = point.skeletalMusclePct
+    val muscle = composition?.skeletalMusclePct
     val muscleVerdict = when {
         muscle == null -> null
         // Skeletal muscle has a floor rather than a ceiling: more is fine.
         muscle < (if (male == false) 35.0 else 40.0) -> "偏低" to palette.warn
-        else -> "正常" to MaterialTheme.colorScheme.primary
+        else -> "正常" to normalInk
     }
 
     FlatPanel {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                BodyStat(
-                    "体重",
-                    point.weightKg?.let { Fmt.oneDecimal(it) } ?: "--",
-                    "kg",
-                    MaterialTheme.colorScheme.primary,
-                    weightVerdict,
-                    Modifier.weight(1f)
-                )
-                BodyStat(
-                    "体脂",
-                    fat?.let { Fmt.oneDecimal(it) } ?: "--",
-                    "%",
-                    palette.workout,
-                    fatVerdict,
-                    Modifier.weight(1f)
-                )
-                BodyStat(
-                    "骨骼肌",
-                    muscle?.let { Fmt.oneDecimal(it) } ?: "--",
-                    "%",
-                    palette.sleepRem,
-                    muscleVerdict,
-                    Modifier.weight(1f)
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                if (bmi != null) "BMI ${Fmt.oneDecimal(bmi)} · ${Fmt.dayAndTime(point.epochMs)} 称重"
-                else "${Fmt.dayAndTime(point.epochMs)} 称重",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            BodyStat(
+                "体重",
+                point.weightKg?.let { Fmt.oneDecimal(it) } ?: "--",
+                "kg",
+                MaterialTheme.colorScheme.primary,
+                weightVerdict,
+                Modifier.weight(1f)
+            )
+            BodyStat(
+                "体脂",
+                fat?.let { Fmt.oneDecimal(it) } ?: "--",
+                "%",
+                palette.workout,
+                fatVerdict,
+                Modifier.weight(1f)
+            )
+            BodyStat(
+                "骨骼肌",
+                muscle?.let { Fmt.oneDecimal(it) } ?: "--",
+                "%",
+                palette.sleepRem,
+                muscleVerdict,
+                Modifier.weight(1f)
             )
         }
     }
 }
 
-/** One column of the body-composition card: label, coloured value, verdict. */
+/** One column of the body-composition card: label, then value with the verdict
+ *  sitting to its right. */
 @Composable
 private fun BodyStat(
     label: String,
@@ -974,6 +988,7 @@ private fun BodyStat(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1
         )
+        Spacer(Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.Bottom) {
             Text(value, style = MaterialTheme.typography.titleLarge, color = tint, maxLines = 1)
             Text(
@@ -982,13 +997,16 @@ private fun BodyStat(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
             )
-        }
-        if (verdict != null) {
-            Text(
-                verdict.first,
-                style = MaterialTheme.typography.labelSmall,
-                color = verdict.second
-            )
+            if (verdict != null) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    verdict.first,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = verdict.second,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
+                )
+            }
         }
     }
 }

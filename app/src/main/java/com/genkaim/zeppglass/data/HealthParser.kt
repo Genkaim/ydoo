@@ -565,10 +565,11 @@ object HealthParser {
                         ?: summary.anyNumber("fatRate")
                         ?: summary.anyNumber("bodyFat"),
                     // Scale-only field: present on impedance readings, absent on
-                    // hand-typed weights, so it is read leniently.
-                    skeletalMusclePct = summary.anyNumber("skeletalMuscleRate")
-                        ?: summary.anyNumber("skeletalMuscle")
-                        ?: summary.anyNumber("muscleRate")
+                    // hand-typed weights. `muscleRate` is the share of skeletal
+                    // muscle; `skeletalMuscle` is a weight in kg, so it cannot be
+                    // shown as a percentage.
+                    skeletalMusclePct = summary.anyNumber("muscleRate")
+                        ?: summary.anyNumber("skeletalMuscleRate")
                         ?: summary.anyNumber("muscle")
                 )
             )

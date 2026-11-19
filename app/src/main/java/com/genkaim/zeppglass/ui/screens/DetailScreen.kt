@@ -153,6 +153,7 @@ fun DetailScreen(
                 DetailKind.SLEEP_HR -> SleepMetricDetail(data, target.date, SleepMetric.HEART_RATE)
                 DetailKind.SLEEP_RR -> SleepMetricDetail(data, target.date, SleepMetric.RESPIRATION)
                 DetailKind.SLEEP_APNEA -> SleepMetricDetail(data, target.date, SleepMetric.APNEA)
+                DetailKind.SKIN_TEMP -> SkinTempDetail(data, target.date)
             }
         }
 
@@ -207,6 +208,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.SLEEP_HR -> "睡眠心率"
     DetailKind.SLEEP_RR -> "呼吸率"
     DetailKind.SLEEP_APNEA -> "低通气"
+    DetailKind.SKIN_TEMP -> "皮肤温度"
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -228,6 +230,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.SLEEP_HR -> target.date?.let(Fmt::date) ?: "最近一晚的睡眠心率，近 7 天趋势"
     DetailKind.SLEEP_RR -> target.date?.let(Fmt::date) ?: "每夜平均呼吸率，近 7 天趋势"
     DetailKind.SLEEP_APNEA -> target.date?.let(Fmt::date) ?: "夜间低通气指数，近 7 天趋势"
+    DetailKind.SKIN_TEMP -> target.date?.let(Fmt::date) ?: "手表评分，近 7 天趋势"
 }
 
 // ---------------- sleep ----------------
@@ -314,7 +317,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                 ).mapNotNull { it }.sum()
                 fun share(minutes: Int?): Double? =
                     if (minutes == null || sleepTotal == null) null else minutes * 100.0 / sleepTotal
-                val normalColor = MaterialTheme.colorScheme.primary
+                val normalColor = MaterialTheme.colorScheme.onSurface
                 val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
                 fun verdict(pct: Double?, low: Double, high: Double): Pair<String, Color> = when {
                     pct == null -> "无数据" to mutedColor
@@ -562,76 +565,70 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
     val nights = data?.nights?.takeLast(14).orEmpty()
     if (nights.size > 1) {
         SectionTitle("睡眠规律性", trailing = "近 14 晚")
-        FlatPanel {
-            Column(Modifier.padding(16.dp)) {
-                val rhythm = sleepRhythm(nights)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    RhythmBlock(
-                        Modifier.weight(1f),
-                        "平均入睡",
-                        rhythm?.averageOnset?.let { Fmt.clock(it) } ?: "--",
-                        palette.sleepLight
-                    )
-                    RhythmBlock(
-                        Modifier.weight(1f),
-                        "平均醒来",
-                        rhythm?.averageWake?.let { Fmt.clock(it) } ?: "--",
-                        palette.sleepAwake
-                    )
-                    RhythmBlock(
-                        Modifier.weight(1f),
-                        "规律性",
-                        rhythm?.score?.let { "$it%" } ?: "--",
-                        when {
-                            rhythm?.score == null -> palette.sleepLight
-                            rhythm.score >= 85 -> MaterialTheme.colorScheme.primary
-                            rhythm.score >= 70 -> palette.warn
-                            else -> palette.critical
-                        },
-                        verdict = rhythm?.score?.let {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlatPanel {
+                Column(Modifier.padding(16.dp)) {
+                    val rhythm = sleepRhythm(nights)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RhythmBlock(
+                            Modifier.weight(1f),
+                            "平均入睡",
+                            rhythm?.averageOnset?.let { Fmt.clock(it) } ?: "--",
+                            palette.sleepLight
+                        )
+                        RhythmBlock(
+                            Modifier.weight(1f),
+                            "平均醒来",
+                            rhythm?.averageWake?.let { Fmt.clock(it) } ?: "--",
+                            palette.sleepAwake
+                        )
+                        RhythmBlock(
+                            Modifier.weight(1f),
+                            "规律性",
+                            rhythm?.score?.let { "$it%" } ?: "--",
                             when {
-                                it >= 85 -> "正常"
-                                it >= 70 -> "一般"
-                                else -> "偏低"
+                                rhythm?.score == null -> palette.sleepLight
+                                rhythm.score >= 85 -> MaterialTheme.colorScheme.primary
+                                rhythm.score >= 70 -> palette.warn
+                                else -> palette.critical
+                            },
+                            verdict = rhythm?.score?.let {
+                                when {
+                                    it >= 85 -> "正常"
+                                    it >= 70 -> "一般"
+                                    else -> "偏低"
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "规律性 = 100 − 最近 ${nights.size} 晚入睡时刻的标准差（分钟）：每晚都在同一时间躺下得满分，" +
-                        "作息每波动一小时就扣约十分。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
-        }
-        Spacer(Modifier.height(14.dp))
-        FlatPanel {
-            Column(Modifier.padding(16.dp)) {
-                // The bars answer "when did each night start and end"; the blue
-                // times on the newest bar spell out its two ends.
-                SleepWindowChart(
-                    nights = nights,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(210.dp)
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        Fmt.date(nights.first().date),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            FlatPanel {
+                Column(Modifier.padding(16.dp)) {
+                    // The bars answer "when did each night start and end"; the blue
+                    // times on the newest bar spell out its two ends.
+                    SleepWindowChart(
+                        nights = nights,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(210.dp)
                     )
-                    Text(
-                        Fmt.date(nights.last().date),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            Fmt.date(nights.first().date),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            Fmt.date(nights.last().date),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -2175,13 +2172,25 @@ private fun StageBlock(
             )
         }
         Spacer(Modifier.height(5.dp))
-        // The number wears the stage's own colour: 深睡 blue, REM teal, 清醒 amber.
-        Text(value, style = MaterialTheme.typography.titleLarge, color = tint)
-        Text(
-            verdict.first,
-            style = MaterialTheme.typography.labelSmall,
-            color = verdict.second
-        )
+        // Value and verdict share one line: the rating reads as a gloss on the
+        // number instead of adding a second row that makes cards uneven.
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                verdict.first,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (verdict.first == "正常") {
+                    MaterialTheme.colorScheme.onSurface
+                } else verdict.second,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
+            )
+        }
     }
 }
 
@@ -2221,14 +2230,20 @@ private fun SleepVitalTile(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 3.dp)
                 )
-            }
-            if (verdict != null) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    verdict.first,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = verdict.second
-                )
+                if (verdict != null) {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        verdict.first,
+                        style = MaterialTheme.typography.labelSmall,
+                        // A normal reading stays in ink; only an abnormal one
+                        // wears its warning colour.
+                        color = if (verdict.first == "正常") {
+                            MaterialTheme.colorScheme.onSurface
+                        } else verdict.second,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
+                    )
+                }
             }
         }
     }
@@ -2251,13 +2266,18 @@ private fun RhythmBlock(
             maxLines = 1
         )
         Spacer(Modifier.height(4.dp))
-        Text(value, style = MaterialTheme.typography.titleLarge, color = tint)
-        if (verdict != null) {
-            Text(
-                verdict,
-                style = MaterialTheme.typography.labelSmall,
-                color = tint
-            )
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+            if (verdict != null) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    verdict,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (verdict == "正常") MaterialTheme.colorScheme.onSurface else tint,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
+                )
+            }
         }
     }
 }
@@ -2294,6 +2314,89 @@ private fun sleepRhythm(nights: List<SleepNight>): SleepRhythm? {
         averageWake = toClock(wakes.average().roundToInt()),
         score = (100 - sd).roundToInt().coerceIn(0, 100)
     )
+}
+
+// ---------------- skin temperature ----------------
+
+@Composable
+private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
+    val source = data ?: run {
+        Missing("还没有皮肤温度数据")
+        return
+    }
+    val day = date?.let { d ->
+        source.readiness.firstOrNull { it.date == d && it.skinTempScore != null }
+    } ?: source.readiness.lastOrNull { it.skinTempScore != null }
+    val value = day?.skinTempScore
+    if (day == null || value == null) {
+        Missing("手表还没有给出皮肤温度")
+        return
+    }
+    val palette = LocalZgPalette.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val verdict = when {
+        value >= 75 -> "正常" to ink
+        value >= 50 -> "一般" to palette.warn
+        else -> "偏低" to palette.critical
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            Fmt.date(day.date),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value.toString(), style = MaterialTheme.typography.displayMedium)
+            Text(
+                " 分",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+        Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+    }
+
+    val recent = (0..6).map { day.date.minusDays(6L - it) }
+    val series = recent.map { d ->
+        source.readiness.firstOrNull { it.date == d }?.skinTempScore?.toFloat()
+    }
+    if (series.count { it != null } > 1) {
+        SectionTitle("近 7 天")
+        FlatPanel {
+            TrendLineChart(
+                values = series,
+                labels = recent.map { Fmt.weekdayShort(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(170.dp),
+                color = palette.warn
+            )
+        }
+    }
+
+    SectionTitle("这个分数")
+    FlatPanel {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "皮肤温度分是手表把夜间手腕温度和自己的基线比较后给出的 0–100 分：越接近满分，说明当晚越贴近个人基线；" +
+                    "明显偏高或偏低时分数会下降。它是相对评分，不是绝对体温。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "手表没有记录时显示 --，不会用 0 顶替。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 // ---------------- sleep vitals with a 7-day trend ----------------
@@ -2407,16 +2510,11 @@ private fun SleepMetricDetail(data: HealthData?, date: LocalDate?, metric: Sleep
                     SleepMetric.HEART_RATE ->
                         "睡眠心率是整晚心跳的平均值，通常比清醒静息心率再低几次。熬夜、酒精、生病或高强度训练后它会偏高。"
                     SleepMetric.RESPIRATION ->
-                        "呼吸率是每分钟呼吸次数，由手表的逐分钟呼吸数据取当晚平均。成年人静息时多在 12–20 次/分。"
+                        "呼吸率是每分钟呼吸次数，由手表的逐分钟呼吸数据取当晚平均。"
                     SleepMetric.APNEA ->
-                        "低通气指数是每小时呼吸变浅或暂停的次数，来自手表的夜间血氧记录（AHI，取不到时退回 ODI）。低于 5 次/时属于正常范围。"
+                        "低通气指数是每小时呼吸变浅或暂停的次数，来自手表的夜间血氧记录（AHI，取不到时退回 ODI）。"
                 },
                 style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "评级用通用范围，不代替个人基线；手表没有记录时不显示数值，也不用 0 顶替。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

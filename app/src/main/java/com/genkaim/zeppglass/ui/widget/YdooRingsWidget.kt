@@ -190,7 +190,7 @@ class YdooRingsWidget : AppWidgetProvider() {
             )
 
         private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
-            val views = RemoteViews(context.packageName, R.layout.widget_rings)
+            val views = RemoteViews(context.packageName, R.layout.widget_rings_v2)
             val density = context.resources.displayMetrics.density
             fun px(dp: Int): Int = (dp * density).toInt()
             // Spacing is pushed as actions, not baked into the XML: a launcher

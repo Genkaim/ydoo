@@ -6,8 +6,8 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -17,7 +17,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -264,6 +264,9 @@ fun AiScreen(
     // list is emptied (new chat, deleted session).
     var settled by remember(AiChatSession.sessionEpoch) { mutableIntStateOf(messages.size) }
     LaunchedEffect(messages.size) { if (messages.size < settled) settled = messages.size }
+    // Which rows have already played their entrance. Without this a row that
+    // scrolls out of view and back would fade in again.
+    val playedEntrance = remember(AiChatSession.sessionEpoch) { mutableSetOf<String>() }
 
     Column(
         modifier
@@ -299,7 +302,10 @@ fun AiScreen(
             var deckPx by remember { mutableIntStateOf(0) }
             val deckSpace = with(density) { deckPx.toDp() }
 
-            if (messages.isEmpty()) {
+            // Greeting and transcript cross-fade instead of swapping in one
+            // frame, so the first message lands while the empty state is still
+            // leaving instead of cutting it off.
+            FadeLayer(visible = messages.isEmpty()) {
                 EmptyTranscript(
                     configured = configured,
                     onOpenSettings = onOpenSettings,
@@ -307,7 +313,9 @@ fun AiScreen(
                         .fillMaxSize()
                         .padding(bottom = deckSpace)
                 )
-            } else {
+            }
+
+            FadeLayer(visible = messages.isNotEmpty()) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -326,9 +334,17 @@ fun AiScreen(
                         key = { index, message -> "$index-${message.role}" }
                     ) { index, message ->
                         val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
+                        // A row gets its entrance exactly once. The answer waits
+                        // a beat after the question so the pair does not climb
+                        // in unison while the suggestions are still folding up.
+                        val rowKey = "$index-${message.role}"
+                        val fresh = index >= settled && playedEntrance.add(rowKey)
                         AppearFromBelow(
-                            animate = index >= settled,
-                            modifier = Modifier.animateItem()
+                            animate = fresh,
+                            delayMillis = if (fresh && message.role == "assistant") 70 else 0,
+                            // Placement only: the default item fade would run on
+                            // top of the alpha this composable drives itself.
+                            modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
                         ) {
                             if (message.role == "user") {
                                 UserBubble(message.content)
@@ -347,26 +363,25 @@ fun AiScreen(
                         }
                     }
                 }
-
-                JumpToBottom(
-                    visible = !followBottom && messages.isNotEmpty(),
-                    onClick = {
-                        followBottom = true
-                        scope.launch {
-                            listState.animateScrollToItem(messages.lastIndex)
-                        }
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = deckSpace + 6.dp)
-                )
             }
+
+            JumpToBottom(
+                visible = !followBottom && messages.isNotEmpty(),
+                onClick = {
+                    followBottom = true
+                    scope.launch {
+                        listState.animateScrollToItem(messages.lastIndex)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = deckSpace + 6.dp)
+            )
 
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .onSizeChanged { deckPx = it.height }
             ) {
                 // Starter questions belong next to the composer: they are
                 // shortcuts for what to type, not page content to scroll past.
@@ -386,16 +401,27 @@ fun AiScreen(
                     )
                 }
 
-                Composer(
-                    value = input,
-                    onValueChange = { AiChatSession.draft = it },
-                    sending = sending,
-                    enabled = configured,
-                    onSend = { send(input) },
-                    onStop = { AiChatSession.stop() },
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
-                )
-                Spacer(Modifier.height(bottomSpace))
+                // Only the composer and the air under it are measured. The
+                // suggestion row folds away on its own: letting it feed the
+                // measured height would shrink the transcript's bottom padding
+                // frame by frame and drag the list down while the new bubble is
+                // still rising — the two animations fighting each other.
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { deckPx = it.height }
+                ) {
+                    Composer(
+                        value = input,
+                        onValueChange = { AiChatSession.draft = it },
+                        sending = sending,
+                        enabled = configured,
+                        onSend = { send(input) },
+                        onStop = { AiChatSession.stop() },
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
+                    )
+                    Spacer(Modifier.height(bottomSpace))
+                }
             }
         }
     }
@@ -546,13 +572,36 @@ private fun Composer(
 }
 
 /**
- * A message that arrived while the page was open rises into place from below
- * the composer, growing upward as it fades in. Messages that were already
- * there when the page opened are simply drawn.
+ * Fade wrapper for the two states of the transcript area. It exists as its own
+ * composable so [AnimatedVisibility] resolves to the plain version instead of
+ * the ColumnScope one inherited from the page column, which cannot be called
+ * from inside the Box.
+ */
+@Composable
+private fun FadeLayer(visible: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(130))
+    ) {
+        content()
+    }
+}
+
+/**
+ * A message that arrived while the page was open fades in and rises a few dp
+ * into place. Messages that were already there when the page opened are simply
+ * drawn.
+ *
+ * Only opacity and offset move: the row is measured at its final height from the
+ * first frame, so the bubble never grows and nothing above it gets bumped while
+ * it settles. [delayMillis] staggers the user bubble and the answer it triggers
+ * so the two do not climb at the same instant.
  */
 @Composable
 private fun AppearFromBelow(
     animate: Boolean,
+    delayMillis: Int = 0,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -560,15 +609,23 @@ private fun AppearFromBelow(
         Box(modifier) { content() }
         return
     }
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
-    AnimatedVisibility(
-        visible = shown,
-        modifier = modifier,
-        enter = fadeIn(tween(200)) +
-            slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 3 } +
-            expandVertically(tween(280, easing = FastOutSlowInEasing), expandFrom = Alignment.Bottom),
-        exit = ExitTransition.None
+    val rise = with(LocalDensity.current) { 18.dp.toPx() }
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = 240,
+                delayMillis = delayMillis,
+                easing = FastOutSlowInEasing
+            )
+        )
+    }
+    Box(
+        modifier.graphicsLayer {
+            alpha = appear.value
+            translationY = rise * (1f - appear.value)
+        }
     ) {
         content()
     }

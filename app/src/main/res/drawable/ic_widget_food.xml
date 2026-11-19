@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Diet button icon: a flat drumstick. Single colour so the widget can tint it
+  Diet button icon: fork and knife. Single colour so the widget can tint it
   with the current theme's text colour.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -8,17 +8,10 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-
-    <!-- meat -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M9,2 C13,2 15.4,5.6 14.2,9.3 C13.2,12.6 9.8,14.6 6.8,13.4 C3.6,12.1 2.6,8.2 4.4,5.5 C5.6,3.7 7.1,2 9,2 Z" />
-    <!-- bone shaft -->
+        android:pathData="M11,9 H9 V2 H7 v7 H5 V2 H3 v7 c0,2.12 1.66,3.84 3.75,3.97 V22 h2.5 v-9.03 C11.34,12.84 13,11.12 13,9 V2 h-2 V9 Z" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M12.6,12.2 L18.4,18 L16.6,19.8 L10.8,14 Z" />
-    <!-- bone knob -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M16,20.4 a2.4,2.4 0 1 0 4.8,0 a2.4,2.4 0 1 0 -4.8,0 Z" />
+        android:pathData="M16,6 v8 h2.5 v8 H21 V2 C18.24,2 16,4.24 16,6 Z" />
 </vector>

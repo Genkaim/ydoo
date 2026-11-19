@@ -201,7 +201,7 @@ class YdooRingsWidget : AppWidgetProvider() {
             val compact = heightDp(context, appWidgetId) < 96
             val views = RemoteViews(
                 context.packageName,
-                if (compact) R.layout.widget_rings_compact_v4 else R.layout.widget_rings_v4
+                if (compact) R.layout.widget_rings_compact_v5 else R.layout.widget_rings_v5
             )
             if (!compact) {
                 // Spacing is pushed as actions, not baked into the XML: a launcher
@@ -248,6 +248,21 @@ class YdooRingsWidget : AppWidgetProvider() {
                 R.id.widget_diet_button,
                 "setBackgroundResource",
                 if (dark) R.drawable.widget_diet_button_bg_dark else R.drawable.widget_diet_button_bg
+            )
+            // Vector glyphs are tinted through a bitmap, since RemoteViews has no
+            // way to hand an ImageView a new tint list.
+            views.setImageViewBitmap(
+                R.id.widget_diet_icon,
+                iconBitmap(context, R.drawable.ic_widget_food, px(26), onSurface)
+            )
+            views.setImageViewBitmap(
+                R.id.widget_diet_badge,
+                iconBitmap(context, R.drawable.ic_widget_edit, px(10), muted)
+            )
+            views.setInt(
+                R.id.widget_diet_badge,
+                "setBackgroundResource",
+                if (dark) R.drawable.widget_badge_bg_dark else R.drawable.widget_badge_bg
             )
             views.setOnClickPendingIntent(R.id.widget_diet_button, openDiet(context))
 
@@ -330,6 +345,18 @@ class YdooRingsWidget : AppWidgetProvider() {
 
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context))
             return views
+        }
+
+        /** A single-colour vector drawn at [sizePx], tinted with the theme colour. */
+        private fun iconBitmap(context: Context, res: Int, sizePx: Int, tint: Int): Bitmap {
+            val drawable = androidx.core.content.ContextCompat.getDrawable(context, res)
+                ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            val size = sizePx.coerceAtLeast(1)
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, size, size)
+            drawable.setTint(tint)
+            drawable.draw(Canvas(bitmap))
+            return bitmap
         }
 
         /** The brand mark drawn in the current text colour, at the given height. */

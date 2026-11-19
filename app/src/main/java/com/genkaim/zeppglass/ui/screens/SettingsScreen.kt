@@ -115,6 +115,13 @@ fun SettingsScreen(
     val widgetManager = remember { AppWidgetManager.getInstance(context) }
     val canPinWidget = remember { widgetManager?.isRequestPinAppWidgetSupported() == true }
 
+    // The widget picks its palette from the app theme, not from the system, so a
+    // theme change has to push a redraw; otherwise the card keeps the colours it
+    // was last drawn with.
+    fun refreshWidgetTheme() {
+        Thread { YdooRingsWidget.updateAll(context) }.start()
+    }
+
     val headerBackground = MaterialTheme.colorScheme.background
     Box(
         Modifier
@@ -193,17 +200,26 @@ fun SettingsScreen(
                             icon = Icons.Rounded.BrightnessAuto,
                             label = "跟随系统",
                             selected = settings.themeMode == "system"
-                        ) { settings.updateTheme("system") }
+                        ) {
+                            settings.updateTheme("system")
+                            refreshWidgetTheme()
+                        }
                         ThemeChoice(
                             icon = Icons.Rounded.LightMode,
                             label = "浅色",
                             selected = settings.themeMode == "light"
-                        ) { settings.updateTheme("light") }
+                        ) {
+                            settings.updateTheme("light")
+                            refreshWidgetTheme()
+                        }
                         ThemeChoice(
                             icon = Icons.Rounded.DarkMode,
                             label = "深色",
                             selected = settings.themeMode == "dark"
-                        ) { settings.updateTheme("dark") }
+                        ) {
+                            settings.updateTheme("dark")
+                            refreshWidgetTheme()
+                        }
                     }
                 }
             }

@@ -210,7 +210,14 @@ fun MetricTile(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
-    FlatPanel(modifier = modifier, shape = RoundedCornerShape(20.dp), onClick = onClick) {
+    // A tile showing "--" has nothing behind it, so it must not open a page:
+    // only a tile with a reading stays clickable.
+    val hasValue = value.isNotBlank() && value != "--"
+    FlatPanel(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        onClick = onClick.takeIf { hasValue }
+    ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) {

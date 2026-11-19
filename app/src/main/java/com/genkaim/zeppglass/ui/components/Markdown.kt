@@ -62,8 +62,10 @@ fun MarkdownView(
     val blocks = remember(text) { parseBlocks(text) }
     // A little more air between lines than Material's default: answers carry
     // lists and inline numbers, and tight leading made them run together.
-    val bodyStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 23.sp)
-    val quoteStyle = MaterialTheme.typography.bodySmall.copy(lineHeight = 20.sp)
+    // One step up from bodyMedium: answers are the main reading surface of the
+    // app and 14sp was small on a phone.
+    val bodyStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp)
+    val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         blocks.forEach { block ->
             when (block) {

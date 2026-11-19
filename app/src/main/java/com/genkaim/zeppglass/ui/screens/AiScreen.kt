@@ -654,7 +654,7 @@ private fun UserBubble(text: String) {
             Text(
                 text,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge
             )
         }
     }
@@ -696,7 +696,7 @@ private fun AssistantMessage(
             AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
                 Text(
                     message.content,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {

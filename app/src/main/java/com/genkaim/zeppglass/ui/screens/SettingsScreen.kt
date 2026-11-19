@@ -2,6 +2,11 @@ package com.genkaim.zeppglass.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -245,7 +250,16 @@ fun SettingsScreen(
                     )
                 }
             }
-            AnimatedVisibility(visible = aiOpen) {
+            // Both directions are anchored to the top. The default expandIn /
+            // shrinkOut align the content to the bottom of the animating box,
+            // which makes the first field slide down into place — reads as a
+            // height jump at the end of the animation. Grown from the top, the
+            // fields are simply uncovered.
+            AnimatedVisibility(
+                visible = aiOpen,
+                enter = fadeIn(tween(180)) + expandVertically(tween(220), expandFrom = Alignment.Top),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Top)
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     FieldLabel("Base URL")
                     CapsuleField(

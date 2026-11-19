@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -153,6 +154,10 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     var draft by remember { mutableStateOf<MealDraft?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var describeOpen by remember { mutableStateOf(false) }
+    // Tapping a capture button without an endpoint used to push an inline card
+    // into the page, which shoved everything below it down. A dialog asks the
+    // question without moving the page.
+    var setupPrompt by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
 
     fun analyze(file: File) {
@@ -256,7 +261,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
 
     fun takePhoto() {
         if (!configured) {
-            error = "先在设置里填好 AI 接入点和密钥，才能估算热量"
+            setupPrompt = true
             return
         }
         val file = DietStore.newPhotoFile()
@@ -275,7 +280,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
 
     fun pickPhoto() {
         if (!configured) {
-            error = "先在设置里填好 AI 接入点和密钥，才能估算热量"
+            setupPrompt = true
             return
         }
         galleryLauncher.launch(
@@ -285,7 +290,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
 
     fun describe() {
         if (!configured) {
-            error = "先在设置里填好 AI 接入点和密钥，才能估算热量"
+            setupPrompt = true
             return
         }
         describeOpen = true
@@ -313,7 +318,9 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp, bottom = 2.dp),
+            // Extra room below the verdict line: the weekly card used to sit
+            // right under it and the two blocks read as one.
+            .padding(top = 6.dp, bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -704,6 +711,25 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                     }
                 }
                 draft = null
+            }
+        )
+    }
+
+    if (setupPrompt) {
+        AlertDialog(
+            onDismissRequest = { setupPrompt = false },
+            title = { Text("还没有配置 AI 接入点") },
+            text = {
+                Text("拍照、相册和文字描述都要走你自己填的 AI 接入点，先在设置里填好地址、密钥和模型。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    setupPrompt = false
+                    context.startActivity(Intent(context, SettingsActivity::class.java))
+                }) { Text("去设置") }
+            },
+            dismissButton = {
+                TextButton(onClick = { setupPrompt = false }) { Text("取消") }
             }
         )
     }

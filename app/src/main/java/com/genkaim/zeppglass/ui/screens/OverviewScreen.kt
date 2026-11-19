@@ -890,7 +890,8 @@ private fun RingCell(
     Column(
         modifier
             .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
+            // Same rule as the tiles: no reading, no page to open.
+            .clickable(enabled = value != "--", onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

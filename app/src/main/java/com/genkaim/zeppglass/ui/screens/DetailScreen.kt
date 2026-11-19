@@ -253,7 +253,9 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?) {
                 color = palette.sleepLight
             )
         }
-        Spacer(Modifier.height(22.dp))
+        // Same breathing room the Charge / activity / load pages leave under
+        // their headline block: the ring was sitting almost on the first card.
+        Spacer(Modifier.height(34.dp))
 
         // When it started, how long it lasted: three columns, same shape as the
         // activity page's heart-rate row.

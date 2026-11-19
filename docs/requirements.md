@@ -206,4 +206,6 @@
 - ✅ 饮食目标选择改为三个圆形大按钮（减脂 / 维持 / 增肌，图标 + 文字，当前目标填充主题色），选中即写盘，之后在饮食页顶部胶囊可改
 - ✅ 桌面卡片 OEM 适配：标题文字换成 logo（按主题自动取黑/白）；补 previewImage（旧启动器）与 previewLayout（12+）；minResizeWidth/Height；根布局 forceDarkAllowed=false 防止厂商强制暗色反色；按启动器上报的格子尺寸缩放圆环（12+ 直接改 RemoteViews 尺寸）；应用同步后立即重绘 + 30 分钟心跳 + 每日 00:05 的 inexact 闹钟 + 开机 / 升级广播，绕开 MIUI、HyperOS 等对 updatePeriodMillis 的节流
 - ✅ 三个圆环加粗：首页睡眠/负荷环与 Charge 环按直径 9.5% 取线宽（原 6dp），负荷环双色段同步加粗；桌面卡片圆环线宽提到直径的 10%
+- ✅ 首页卡片高度收紧：活动卡、饮食卡、这一晚睡眠、身体电量、AI 摘要的上下留白减小，活动卡内环 92→84dp，电量曲线 72→64dp
+- ✅ 设置页新增「桌面小组件 · 今日概览」，支持一键添加（AppWidgetManager.requestPinAppWidget）；不支持 pin 的桌面直接提示入口路径。小米小部件中心只收录在其平台过审发布的小组件，标准 Android 小组件本就只在「安卓小部件」分区，无法用 manifest 改过去；且不可加 miuiWidget 标记，否则会从「安卓小部件」消失
 

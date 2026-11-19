@@ -16,7 +16,7 @@
     android:forceDarkAllowed="false"
     android:gravity="top"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -51,7 +51,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:paddingTop="4dp"
+        android:paddingTop="2dp"
         android:baselineAligned="false"
         android:gravity="center"
         android:orientation="horizontal">
@@ -73,8 +73,8 @@
 
             <FrameLayout
                 android:id="@+id/widget_sleep_frame"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
                 android:layout_marginTop="6dp">
 
                 <ImageView
@@ -113,8 +113,8 @@
 
             <FrameLayout
                 android:id="@+id/widget_charge_frame"
-                android:layout_width="66dp"
-                android:layout_height="66dp"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
                 android:layout_marginTop="2dp">
 
                 <ImageView
@@ -153,8 +153,8 @@
 
             <FrameLayout
                 android:id="@+id/widget_load_frame"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
                 android:layout_marginTop="6dp">
 
                 <ImageView

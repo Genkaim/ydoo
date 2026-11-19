@@ -196,8 +196,8 @@ class YdooRingsWidget : AppWidgetProvider() {
             // Spacing is pushed as actions, not baked into the XML: a launcher
             // that keeps the previously inflated views only reapplies actions,
             // so attribute-only changes would never reach an existing widget.
-            views.setViewPadding(R.id.widget_root, px(12), px(12), px(12), px(12))
-            views.setViewPadding(R.id.widget_rings_row, 0, px(4), 0, 0)
+            views.setViewPadding(R.id.widget_root, px(16), px(16), px(16), px(16))
+            views.setViewPadding(R.id.widget_rings_row, 0, px(2), 0, 0)
             val settings = AppSettings.get(context)
             val data = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
             val zone = ZoneId.systemDefault()
@@ -216,9 +216,9 @@ class YdooRingsWidget : AppWidgetProvider() {
 
             // Ring diameter follows the cell span the launcher reported.
             val scale = ringScale(context, appWidgetId)
-            val sleepDp = (56 * scale).toInt()
-            val chargeDp = (66 * scale).toInt()
-            val loadDp = (56 * scale).toInt()
+            val sleepDp = (50 * scale).toInt()
+            val chargeDp = (58 * scale).toInt()
+            val loadDp = (50 * scale).toInt()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // Only Android 12+ can resize a RemoteViews child directly; on
                 // older launchers the layout's own dp sizes are used.

@@ -190,14 +190,23 @@ class YdooRingsWidget : AppWidgetProvider() {
             )
 
         private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
-            val views = RemoteViews(context.packageName, R.layout.widget_rings_v2)
             val density = context.resources.displayMetrics.density
             fun px(dp: Int): Int = (dp * density).toInt()
-            // Spacing is pushed as actions, not baked into the XML: a launcher
-            // that keeps the previously inflated views only reapplies actions,
-            // so attribute-only changes would never reach an existing widget.
-            views.setViewPadding(R.id.widget_root, px(16), px(16), px(16), px(16))
-            views.setViewPadding(R.id.widget_rings_row, 0, px(2), 0, 0)
+            // A single row of cells gets the compact layout: at 70dp there is no
+            // room for a caption above each ring, so the labels give way and the
+            // rings shrink instead of the card clipping.
+            val compact = heightDp(context, appWidgetId) < 96
+            val views = RemoteViews(
+                context.packageName,
+                if (compact) R.layout.widget_rings_compact else R.layout.widget_rings_v2
+            )
+            if (!compact) {
+                // Spacing is pushed as actions, not baked into the XML: a launcher
+                // that keeps the previously inflated views only reapplies actions,
+                // so attribute-only changes would never reach an existing widget.
+                views.setViewPadding(R.id.widget_root, px(16), px(16), px(16), px(16))
+                views.setViewPadding(R.id.widget_rings_row, 0, px(2), 0, 0)
+            }
             val settings = AppSettings.get(context)
             val data = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
             val zone = ZoneId.systemDefault()
@@ -215,11 +224,11 @@ class YdooRingsWidget : AppWidgetProvider() {
             val loadBase = context.getColor(R.color.widget_tertiary)
 
             // Ring diameter follows the cell span the launcher reported.
-            val scale = ringScale(context, appWidgetId)
-            val sleepDp = (50 * scale).toInt()
-            val chargeDp = (58 * scale).toInt()
-            val loadDp = (50 * scale).toInt()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scale = if (compact) 1f else ringScale(context, appWidgetId)
+            val sleepDp = if (compact) 44 else (50 * scale).toInt()
+            val chargeDp = if (compact) 44 else (58 * scale).toInt()
+            val loadDp = if (compact) 44 else (50 * scale).toInt()
+            if (!compact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // Only Android 12+ can resize a RemoteViews child directly; on
                 // older launchers the layout's own dp sizes are used.
                 views.setViewLayoutWidth(R.id.widget_sleep_frame, sleepDp.toFloat(), android.util.TypedValue.COMPLEX_UNIT_DIP)
@@ -277,6 +286,14 @@ class YdooRingsWidget : AppWidgetProvider() {
 
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context))
             return views
+        }
+
+        /** Height the launcher reports for this placement, in dp. */
+        private fun heightDp(context: Context, appWidgetId: Int): Int {
+            val manager = AppWidgetManager.getInstance(context) ?: return 120
+            val options = runCatching { manager.getAppWidgetOptions(appWidgetId) }.getOrNull()
+                ?: return 120
+            return options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 120)
         }
 
         /**

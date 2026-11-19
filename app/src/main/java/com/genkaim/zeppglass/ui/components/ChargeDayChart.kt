@@ -188,9 +188,15 @@ fun ChargeDayChart(
             ?.let { it.epochMs / 1000 }
         fun measuredEnd(end: Long) = lastSampleSec?.let { minOf(end, it) } ?: end
 
-        // Grid
+        // The bands all start at this height, and the top grid line is pinned to
+        // it rather than to the plot top: a line floating a few dp above the
+        // tinted block reads as a separate border.
+        val bandTop = ChargeDayChartIconLift.toPx() + 17.dp.toPx()
+
+        // Grid: from the band top down to the baseline, in even steps.
+        val gridBottom = topPad + plotHeight
         for (i in 0..2) {
-            val y = topPad + plotHeight * i / 2f
+            val y = bandTop + (gridBottom - bandTop) * i / 2f
             drawLine(grid, Offset(0f, y), Offset(size.width, y), 1f)
         }
 
@@ -206,7 +212,6 @@ fun ChargeDayChart(
                 val x1 = xOf(to.toFloat())
                 val isWorkout = span.kind == ChargeSpanKind.WORKOUT
                 val tint = if (isWorkout) minusColor else plusColor
-                val bandTop = ChargeDayChartIconLift.toPx() + 17.dp.toPx()
                 drawRoundRect(
                     color = tint.copy(alpha = 0.12f),
                     topLeft = Offset(x0, bandTop),

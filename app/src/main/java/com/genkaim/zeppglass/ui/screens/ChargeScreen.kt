@@ -170,7 +170,9 @@ fun ChargeScreen(
                                         modifier = Modifier.padding(vertical = 12.dp)
                                     )
                                 } else {
-                                    spans.forEachIndexed { index, span ->
+                                    // Newest first: the stretch that just ended
+                                    // matters more than last night's.
+                                    spans.asReversed().forEachIndexed { index, span ->
                                         if (index > 0) {
                                             Box(
                                                 Modifier

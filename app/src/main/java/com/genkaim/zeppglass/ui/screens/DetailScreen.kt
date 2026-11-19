@@ -2555,20 +2555,25 @@ private fun SleepMetricDetail(data: HealthData?, date: LocalDate?, metric: Sleep
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
+            val abnormal = verdict.first != "正常"
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     Fmt.oneDecimal(value),
                     style = MaterialTheme.typography.displayMedium,
-                    color = color
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     " ${metric.unit}",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
-            Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+            Text(
+                verdict.first,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 

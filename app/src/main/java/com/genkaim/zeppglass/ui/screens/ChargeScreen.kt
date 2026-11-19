@@ -281,9 +281,9 @@ private fun ChargeHero(charge: ChargeDay) {
     // 体力 (right arc). The side gauges are separate from the centre ring, so
     // nothing sits on top of anything else.
     val crit = LocalZgPalette.current.critical
-    val physicalColor = if ((charge.physical ?: 100.0) <= 50.0) crit else MaterialTheme.colorScheme.primary
-    val mentalColor = if ((charge.mental ?: 100.0) <= 50.0) crit else MaterialTheme.colorScheme.tertiary
-    val totalColor = if ((charge.total ?: 100) <= 50) crit else MaterialTheme.colorScheme.primary
+    val physicalColor = if ((charge.physical ?: 100.0) <= 5.0) crit else MaterialTheme.colorScheme.primary
+    val mentalColor = if ((charge.mental ?: 100.0) <= 5.0) crit else MaterialTheme.colorScheme.tertiary
+    val totalColor = if ((charge.total ?: 100) <= 5) crit else MaterialTheme.colorScheme.primary
     Column(
         Modifier
             .fillMaxWidth()

@@ -372,7 +372,7 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "${goal.label}目标",
+                "目标",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -43,7 +43,16 @@ class HealthStore private constructor(
     private val zone: ZoneId = ZoneId.systemDefault()
     private val api = ZeppApi(settings)
 
-    /** Bumped by [reset] so a request that started before the logout is dropped. */
+    /**
+     * One refresh at a time. This is a transport-level flag, deliberately not
+     * the UI's [HealthUiState.loading]: after a sign-in the state starts out
+     * `loading = true` (there is nothing to show yet), and keying the guard on
+     * that flag refused the very refresh that would have cleared it — the page
+     * sat on its spinner and every pull-to-refresh was dropped on the floor.
+     */
+    private val inFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** Bumped whenever the account changes, so an old request cannot land. */
     private var generation = 0
 
     var state by mutableStateOf(loadInitialState())
@@ -82,7 +91,7 @@ class HealthStore private constructor(
 
     init {
         scope.launch {
-            if (settings.isLoggedIn) doRefreshSafely()
+            if (settings.isLoggedIn) refresh()
         }
         // Keep the three-hour rule while the app stays open.
         scope.launch {
@@ -101,15 +110,39 @@ class HealthStore private constructor(
         System.currentTimeMillis() - fetchedAt > STALE_WINDOW_MS
 
     fun refresh() {
-        if (state.loading || state.refreshing) return
+        // Only a refresh that is actually running may block another one. The UI
+        // flags are not used here: `loading` stays true until the first answer
+        // lands, which is exactly when the user wants a refresh to go out.
+        if (!inFlight.compareAndSet(false, true)) return
         if (!settings.isLoggedIn) {
-            state = state.copy(error = null, loading = false)
+            inFlight.set(false)
+            state = state.copy(error = null, loading = false, refreshing = false)
             return
         }
         // Flip the flag now, not inside the coroutine: the pull-to-refresh
         // gesture reads it on the same frame and returns the page at once.
         state = state.copy(refreshing = true)
-        scope.launch { doRefreshSafely() }
+        // Remember which account this run belongs to. A sign-in during the
+        // request bumps [generation] and clears the flag itself, so the old run
+        // must not unlock a newer one when it finally finishes.
+        val owner = generation
+        scope.launch {
+            try {
+                doRefreshSafely()
+                // A freshly captured token is sometimes not propagated on the
+                // first round, and the whole page comes back empty. One silent
+                // retry is cheaper than making the reader pull several times.
+                val deadToken = state.error?.contains("登录已失效") == true
+                if (owner == generation && state.data == null && !deadToken && settings.isLoggedIn) {
+                    delay(1200)
+                    if (owner == generation && state.data == null && settings.isLoggedIn) {
+                        doRefreshSafely()
+                    }
+                }
+            } finally {
+                if (owner == generation) inFlight.set(false)
+            }
+        }
     }
 
     /**
@@ -121,10 +154,27 @@ class HealthStore private constructor(
         // Requests that started before the switch must not write their answer
         // into the file of the account that is now open.
         generation++
+        // Whatever was in flight belongs to the previous account; let the new
+        // one refresh straight away instead of waiting for it to time out.
+        inFlight.set(false)
         workoutCache.clear()
         blanked = null
-        state = loadInitialState()
-        if (settings.isLoggedIn) refresh()
+        // Reading and parsing the snapshot is a few megabytes of JSON; doing it
+        // on the caller's thread is what made signing in feel like a freeze.
+        // The screen gets a plain loader, the file is read, then the network.
+        state = HealthUiState(loading = settings.isLoggedIn)
+        if (!settings.isLoggedIn) return
+        scope.launch {
+            val cached = withContext(Dispatchers.IO) { readSnapshot() }
+            if (cached != null && state.data == null) {
+                state = state.copy(
+                    data = cached.data,
+                    lastSyncedAt = cached.fetchedAt,
+                    stale = isStale(cached.data.fetchedAt)
+                )
+            }
+            refresh()
+        }
     }
 
     fun onLoginChanged() = switchUser()
@@ -156,6 +206,9 @@ class HealthStore private constructor(
     private suspend fun doRefreshSafely() {
         try {
             doRefresh()
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            // The page may have been left or the account switched: not an error.
+            throw c
         } catch (t: Throwable) {
             state = state.copy(
                 loading = false,
@@ -166,7 +219,13 @@ class HealthStore private constructor(
     }
 
     private suspend fun doRefresh() {
-        val userId = settings.userId ?: return
+        val userId = settings.userId
+        if (userId == null) {
+            // Signed out between the guard and the request: clear the loader
+            // instead of leaving the page spinning forever.
+            state = state.copy(loading = false, refreshing = false)
+            return
+        }
         val gen = generation
         val previous = state.data
         state = state.copy(loading = previous == null, refreshing = true, error = null)

@@ -249,6 +249,7 @@ fun OverviewScreen(
                         !settings.isLoggedIn -> ConnectCard(onLogin)
                         data == null -> EmptyStateCard(
                             hasError = state.error != null,
+                            loading = state.loading || state.refreshing,
                             error = state.error,
                             onRetry = { store.refresh() },
                             onLogin = onLogin
@@ -677,6 +678,7 @@ private fun ConnectCard(onLogin: () -> Unit) {
 @Composable
 private fun EmptyStateCard(
     hasError: Boolean,
+    loading: Boolean,
     error: String?,
     onRetry: () -> Unit,
     onLogin: () -> Unit
@@ -684,17 +686,31 @@ private fun EmptyStateCard(
     FlatPanel {
         Column(Modifier.padding(18.dp)) {
             Text(
-                if (hasError) "数据没能加载" else "还没有同步到数据",
+                when {
+                    // A first sync is not "no data": saying so sent readers to
+                    // the retry button while the request was still running.
+                    loading && !hasError -> "正在同步数据"
+                    hasError -> "数据没能加载"
+                    else -> "还没有同步到数据"
+                },
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                error ?: "同步在后台进行，完成后这里会自动更新；右上角的小圈表示正在刷新。",
+                when {
+                    loading && !hasError ->
+                        "第一次同步要拉 35 天的手环明细，通常几秒；完成后这里会自动更新。"
+                    else -> error
+                        ?: "同步在后台进行，完成后这里会自动更新；右上角的小圈表示正在刷新。"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row {
-                TextButton(onClick = onRetry) { Text("重试") }
+                // Nothing to retry while the first answer is on its way.
+                if (!loading || hasError) {
+                    TextButton(onClick = onRetry) { Text("重试") }
+                }
                 TextButton(onClick = onLogin) { Text("重新连接") }
             }
         }

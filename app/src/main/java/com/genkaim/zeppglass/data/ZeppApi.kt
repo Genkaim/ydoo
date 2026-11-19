@@ -23,11 +23,13 @@ class ZeppApi(
     private val overrideHost: String? = null
 ) {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
-        .build()
+    // The client lives in the companion: one instance created its own
+    // connection pool and dispatcher, and the sign-in flow builds a `ZeppApi`
+    // per candidate host — nine pools and their threads at the exact moment the
+    // phone is already busy. Timeouts are also tighter than the first build's
+    // 60 s: a refresh waits for every call, so one dead request used to hold
+    // the whole page on its spinner for a minute.
+    private val client: OkHttpClient get() = sharedClient
 
     val isConfigured: Boolean
         get() = settings.isLoggedIn && settings.token != null && settings.userId != null
@@ -62,39 +64,68 @@ class ZeppApi(
             .build()
 
         val startedAt = System.currentTimeMillis()
-        try {
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                Log.d(
+        // One retry for a dropped connection. A refresh fires a dozen calls and
+        // a single failure leaves a hole the user has to fix by pulling again;
+        // HTTP statuses are not retried — those carry a real answer.
+        var failure: java.io.IOException? = null
+        for (attempt in 0..1) {
+            try {
+                return execute(request, base, path, startedAt)
+            } catch (e: ZeppException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                failure = e
+                Log.w(
                     TAG,
-                    "GET $base$path -> ${response.code} in ${System.currentTimeMillis() - startedAt}ms"
+                    "GET $base$path attempt ${attempt + 1} failed: " +
+                        "${e.javaClass.simpleName}: ${e.message}"
                 )
-                if (!response.isSuccessful) {
-                    val code = response.code
-                    val message = when (code) {
-                        401, 403 -> "登录已失效，请重新连接 Zepp 账号"
-                        429 -> "请求太频繁，稍后再试"
-                        else -> "Zepp 返回 HTTP $code"
-                    }
-                    throw ZeppException(code, message)
-                }
-                if (body.isBlank()) throw ZeppException(response.code, "Zepp 返回了空响应")
-                return JSONObject(body)
+                if (attempt == 0) Thread.sleep(300)
             }
-        } catch (e: ZeppException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(
-                TAG,
-                "GET $base$path failed after ${System.currentTimeMillis() - startedAt}ms: " +
-                    "${e.javaClass.simpleName}: ${e.message}"
-            )
-            throw e
         }
+        throw failure ?: IllegalStateException("请求失败")
+    }
+
+    private fun execute(
+        request: Request,
+        base: String,
+        path: String,
+        startedAt: Long
+    ): JSONObject = client.newCall(request).execute().use { response ->
+        val body = response.body?.string().orEmpty()
+        Log.d(
+            TAG,
+            "GET $base$path -> ${response.code} in ${System.currentTimeMillis() - startedAt}ms"
+        )
+        if (!response.isSuccessful) {
+            val code = response.code
+            val message = when (code) {
+                401, 403 -> "登录已失效，请重新连接 Zepp 账号"
+                429 -> "请求太频繁，稍后再试"
+                else -> "Zepp 返回 HTTP $code"
+            }
+            throw ZeppException(code, message)
+        }
+        if (body.isBlank()) throw ZeppException(response.code, "Zepp 返回了空响应")
+        JSONObject(body)
     }
 
     private companion object {
         const val TAG = "ZeppApi"
+
+        /**
+         * Shared by every [ZeppApi]: one connection pool, one dispatcher, and
+         * connections that survive from the verification probes into the first
+         * refresh.
+         */
+        val sharedClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .callTimeout(25, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .build()
+        }
     }
 
     fun profile(userId: String): JSONObject = get("/users/$userId")

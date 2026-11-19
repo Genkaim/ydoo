@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ydoo</string>
+
+    <string name="widget_rings_title">今日概览</string>
+    <string name="widget_rings_sleep">睡眠</string>
+    <string name="widget_rings_charge">Charge</string>
+    <string name="widget_rings_load">负荷</string>
+    <string name="widget_rings_description">首页的睡眠、Charge、负荷三个圆环</string>
+    <string name="widget_rings_empty">还没同步数据</string>
+    <string name="widget_rings_stale">数据已过期</string>
 </resources>

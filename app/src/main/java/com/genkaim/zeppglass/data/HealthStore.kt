@@ -505,59 +505,19 @@ class HealthStore private constructor(
         carrySection("nightBreathing", nightBreathing)
 
         withContext(Dispatchers.IO) {
-            if (gen == generation) runCatching { cacheFile().writeText(snapshot.toString()) }
+            if (gen == generation) {
+                runCatching { cacheFile().writeText(snapshot.toString()) }
+                // The home-screen rings read this same file: redraw them now
+                // instead of waiting for the widget's own half-hour tick.
+                runCatching { com.genkaim.zeppglass.ui.widget.YdooRingsWidget.updateAll(appContext) }
+            }
         }
     }
 
     private class Cached(val data: HealthData, val fetchedAt: Long)
 
-    private fun readSnapshot(): Cached? {
-        if (!cacheFile().isFile) return null
-        return runCatching {
-            val json = JSONObject(cacheFile().readText())
-            val band = mutableListOf<JSONObject>()
-            json.optJSONArray("band")?.let { arr ->
-                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(band::add)
-            }
-            val parsed = band.map { HealthParser.parseBand(it, zone) }
-            val profile = json.optJSONObject("profile")
-            val nickname = profile?.let { HealthParser.parseProfile(it) }
-            val activityByDate = json.optJSONObject("dailyHealth")
-                ?.let { runCatching { HealthParser.parseDailyHealth(it, zone) }.getOrNull() }
-                .orEmpty()
-            val data = HealthData(
-                fetchedAt = json.optLong("fetchedAt"),
-                nickname = json.optString("nickname").ifBlank { nickname?.first },
-                avatarUrl = json.optString("avatarUrl").ifBlank { nickname?.second },
-                days = parsed.flatMap { it.days }.distinctBy { it.date }.sortedBy { it.date }
-                    .map { day ->
-                        day.copy(
-                            activityMinutes = activityByDate[day.date]?.minutes ?: day.activityMinutes,
-                            activityGoal = activityByDate[day.date]?.goal ?: day.activityGoal
-                        )
-                    },
-                nights = parsed.flatMap { it.nights }.distinctBy { it.date }.sortedBy { it.date },
-                chargeDays = json.optJSONObject("charge")?.let { HealthParser.parseCharge(it, zone) }.orEmpty(),
-                readiness = json.optJSONObject("readiness")?.let { HealthParser.parseReadiness(it, zone) }.orEmpty(),
-                pai = json.optJSONObject("pai")?.let { HealthParser.parsePai(it, zone) }.orEmpty(),
-                stress = json.optJSONObject("stress")?.let { HealthParser.parseStress(it, zone) }.orEmpty(),
-                spo2 = json.optJSONObject("spo2")?.let { HealthParser.parseSpo2(it) }.orEmpty(),
-                weights = json.optJSONObject("weights")?.let { HealthParser.parseWeights(it) }.orEmpty(),
-                workouts = json.optJSONObject("workouts")?.let { HealthParser.parseWorkouts(it) }.orEmpty(),
-                load = json.optJSONObject("load")?.let { HealthParser.parseLoad(it, zone) }.orEmpty(),
-                hrv = json.optJSONObject("hrv")?.let { HealthParser.parseHrv(it) }.orEmpty(),
-                respiration = json.optJSONObject("respiration")
-                    ?.let { HealthParser.parseRespiration(it, zone) }.orEmpty(),
-                nightBreathing = json.optJSONObject("nightBreathing")
-                    ?.let { HealthParser.parseNightBreathing(it, zone) }.orEmpty(),
-                vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
-                body = profile?.let { HealthParser.parseBodyProfile(it) } ?: BodyProfile(),
-                heartRate = parsed.flatMap { it.heartRate }.distinctBy { it.first }.sortedBy { it.first }
-            ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, zone)) }
-            if (data.days.isEmpty() && data.nights.isEmpty() && data.chargeDays.isEmpty()) null
-            else Cached(data, data.fetchedAt)
-        }.getOrNull()
-    }
+    private fun readSnapshot(): Cached? =
+        readSnapshotFile(cacheFile(), zone)?.let { Cached(it, it.fetchedAt) }
 
     companion object {
         /**
@@ -576,7 +536,70 @@ class HealthStore private constructor(
             instance ?: synchronized(this) {
                 instance ?: HealthStore(context, settings).also { instance = it }
             }
+
+        /**
+         * The snapshot the app opens with, for surfaces that run outside the
+         * app's own store — the home-screen widget reads this instead of
+         * spinning up [HealthStore] (which owns a network refresh loop).
+         */
+        fun readCached(context: Context, settings: AppSettings): HealthData? =
+            readSnapshotFile(
+                AccountScope.file(context, "health-snapshot", settings),
+                ZoneId.systemDefault()
+            )
     }
+}
+
+/**
+ * Turns the on-disk snapshot back into [HealthData]. Extracted from the store
+ * so the widget can read the same numbers the home page shows, and so both
+ * paths parse the file exactly one way.
+ */
+private fun readSnapshotFile(file: File, zone: ZoneId): HealthData? {
+    if (!file.isFile) return null
+    return runCatching {
+        val json = JSONObject(file.readText())
+        val band = mutableListOf<JSONObject>()
+        json.optJSONArray("band")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(band::add)
+        }
+        val parsed = band.map { HealthParser.parseBand(it, zone) }
+        val profile = json.optJSONObject("profile")
+        val nickname = profile?.let { HealthParser.parseProfile(it) }
+        val activityByDate = json.optJSONObject("dailyHealth")
+            ?.let { runCatching { HealthParser.parseDailyHealth(it, zone) }.getOrNull() }
+            .orEmpty()
+        val data = HealthData(
+            fetchedAt = json.optLong("fetchedAt"),
+            nickname = json.optString("nickname").ifBlank { nickname?.first },
+            avatarUrl = json.optString("avatarUrl").ifBlank { nickname?.second },
+            days = parsed.flatMap { it.days }.distinctBy { it.date }.sortedBy { it.date }
+                .map { day ->
+                    day.copy(
+                        activityMinutes = activityByDate[day.date]?.minutes ?: day.activityMinutes,
+                        activityGoal = activityByDate[day.date]?.goal ?: day.activityGoal
+                    )
+                },
+            nights = parsed.flatMap { it.nights }.distinctBy { it.date }.sortedBy { it.date },
+            chargeDays = json.optJSONObject("charge")?.let { HealthParser.parseCharge(it, zone) }.orEmpty(),
+            readiness = json.optJSONObject("readiness")?.let { HealthParser.parseReadiness(it, zone) }.orEmpty(),
+            pai = json.optJSONObject("pai")?.let { HealthParser.parsePai(it, zone) }.orEmpty(),
+            stress = json.optJSONObject("stress")?.let { HealthParser.parseStress(it, zone) }.orEmpty(),
+            spo2 = json.optJSONObject("spo2")?.let { HealthParser.parseSpo2(it) }.orEmpty(),
+            weights = json.optJSONObject("weights")?.let { HealthParser.parseWeights(it) }.orEmpty(),
+            workouts = json.optJSONObject("workouts")?.let { HealthParser.parseWorkouts(it) }.orEmpty(),
+            load = json.optJSONObject("load")?.let { HealthParser.parseLoad(it, zone) }.orEmpty(),
+            hrv = json.optJSONObject("hrv")?.let { HealthParser.parseHrv(it) }.orEmpty(),
+            respiration = json.optJSONObject("respiration")
+                ?.let { HealthParser.parseRespiration(it, zone) }.orEmpty(),
+            nightBreathing = json.optJSONObject("nightBreathing")
+                ?.let { HealthParser.parseNightBreathing(it, zone) }.orEmpty(),
+            vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
+            body = profile?.let { HealthParser.parseBodyProfile(it) } ?: BodyProfile(),
+            heartRate = parsed.flatMap { it.heartRate }.distinctBy { it.first }.sortedBy { it.first }
+        ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, zone)) }
+        if (data.days.isEmpty() && data.nights.isEmpty() && data.chargeDays.isEmpty()) null else data
+    }.getOrNull()
 }
 
 internal fun Throwable.friendly(): String = when (this) {

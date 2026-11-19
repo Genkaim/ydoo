@@ -2,5 +2,14 @@
 <resources>
     <!-- Near-white grey behind the black Zepp mark. -->
     <color name="ic_launcher_background">#F2F2F2</color>
-</resources>
 
+    <!-- Home-screen widget: the same tokens as the light theme. -->
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_on_surface">#16181D</color>
+    <color name="widget_muted">#5E6067</color>
+    <color name="widget_primary">#0E8A63</color>
+    <color name="widget_tertiary">#3D5AFE</color>
+    <color name="widget_sleep">#6F8DF5</color>
+    <color name="widget_warn">#E08A2B</color>
+    <color name="widget_critical">#C93C3C</color>
+</resources>

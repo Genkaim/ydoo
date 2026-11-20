@@ -446,9 +446,17 @@ private fun ChargeSideGauge(
             style = Stroke(stroke, cap = StrokeCap.Round)
         )
         if (animated > 0f) {
-            // Charging reads bottom → top, so the filled part grows upward.
+            // Charging reads bottom → top, so the filled part grows upward. A
+            // reported 0 still gets a thin sliver: an empty path read as "no
+            // reading" instead of "measured zero", which is a different claim.
             drawPath(
                 arcPath(1f - animated, 1f),
+                color = color,
+                style = Stroke(stroke, cap = StrokeCap.Round)
+            )
+        } else if (progress <= 0f) {
+            drawPath(
+                arcPath(0.985f, 1f),
                 color = color,
                 style = Stroke(stroke, cap = StrokeCap.Round)
             )
@@ -476,7 +484,12 @@ private fun SplitBar(label: String, value: Double?, color: Color) {
         ) {
             Box(
                 Modifier
-                    .fillMaxWidth((value ?: 0.0).toFloat().coerceIn(0f, 100f) / 100f)
+                    // A measured 0 keeps a hair of colour so it reads as a zero
+                    // value rather than a missing one.
+                    .fillMaxWidth(
+                        if (value == null) 0f
+                        else (value.toFloat().coerceIn(0f, 100f) / 100f).coerceAtLeast(0.02f)
+                    )
                     .height(5.dp)
                     .background(color, RoundedCornerShape(3.dp))
             )

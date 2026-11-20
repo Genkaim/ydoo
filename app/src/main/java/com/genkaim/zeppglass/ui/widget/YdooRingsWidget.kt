@@ -550,11 +550,11 @@ class YdooRingsWidget : AppWidgetProvider() {
             else -> base
         }
 
-        /** Charge turns red at 5 or below and amber below 50; from 50 it is primary. */
+        /** Same bands as the app: red below 5, amber below 30. */
         private fun chargeTint(score: Int?, primary: Int, warn: Int, critical: Int): Int = when {
             score == null -> primary
-            score <= 5 -> critical
-            score < 50 -> warn
+            score < 5 -> critical
+            score < 30 -> warn
             else -> primary
         }
 

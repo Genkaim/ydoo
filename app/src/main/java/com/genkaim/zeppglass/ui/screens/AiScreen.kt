@@ -102,11 +102,12 @@ import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.Fmt
+import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.LocalTabBarSpace
 import com.genkaim.zeppglass.ui.components.MarkdownView
 import com.genkaim.zeppglass.ui.components.PageHeader
+import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.RoundIconButton
-import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.TypingDots
 import kotlinx.coroutines.launch
 
@@ -275,23 +276,27 @@ fun AiScreen(
         modifier
             .fillMaxSize()
     ) {
-        PageHeader(
-            title = "AI 教练",
-            subtitle = if (configured) settings.aiModel.ifBlank { "默认模型" } else "未接入",
-            trailing = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { AiChatSession.newChat() }) {
-                        Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
-                    }
-                    IconButton(onClick = { showHistory = true }) {
-                        Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
+        // Same gradient as every other page: the header keeps an opaque backing
+        // that fades into the transcript.
+        PinnedPageHeader {
+            PageHeader(
+                title = "AI 教练",
+                subtitle = if (configured) settings.aiModel.ifBlank { "默认模型" } else "未接入",
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { AiChatSession.newChat() }) {
+                            Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
+                        }
+                        IconButton(onClick = { showHistory = true }) {
+                            Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
-            }
-        )
+            )
+        }
 
         // The transcript runs to the bottom edge of the window and the deck
         // (suggestions, composer, the gap under them) floats over it. Nothing
@@ -982,56 +987,67 @@ private fun HistorySheet(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
             )
         } else {
-            LazyColumn(Modifier.fillMaxWidth()) {
+            LazyColumn(
+                Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(sessions, key = { it.id }) { session ->
-                    Column {
+                    // One card per conversation: the whole card opens it, and the
+                    // delete key is a circle of its own so a long press near the
+                    // edge cannot remove a chat by accident.
+                    FlatPanel(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        onClick = { onOpen(session.id) }
+                    ) {
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 20.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+                                .padding(start = 16.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Surface(
-                                onClick = { onOpen(session.id) },
-                                color = Color.Transparent,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(Modifier.padding(vertical = 2.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    session.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (session.id == currentId) FontWeight.SemiBold
+                                    else FontWeight.Normal,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    "${Fmt.dayAndTime(session.updatedAt)} · ${session.count} 条" +
+                                        if (session.id == currentId) " · 当前" else "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (session.preview.isNotBlank()) {
                                     Text(
-                                        session.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (session.id == currentId) FontWeight.SemiBold
-                                        else FontWeight.Normal,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        "${Fmt.dayAndTime(session.updatedAt)} · ${session.count} 条" +
-                                            if (session.id == currentId) " · 当前" else "",
+                                        session.preview,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    if (session.preview.isNotBlank()) {
-                                        Text(
-                                            session.preview,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
                                 }
                             }
-                            IconButton(onClick = { onDelete(session.id) }) {
-                                Icon(
-                                    Icons.Rounded.DeleteOutline,
-                                    contentDescription = "删除对话",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Surface(
+                                onClick = { onDelete(session.id) },
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp
+                            ) {
+                                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Rounded.DeleteOutline,
+                                        contentDescription = "删除对话",
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
                             }
                         }
-                        Rule(Modifier.padding(start = 20.dp))
                     }
                 }
             }

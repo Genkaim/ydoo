@@ -558,7 +558,11 @@ fun OverviewScreen(
                 .drawBehind {
                     drawRect(
                         brush = Brush.verticalGradient(
-                            colors = listOf(pageBackground, pageBackground.copy(alpha = 0f)),
+                            colorStops = arrayOf(
+                                0f to pageBackground,
+                                0.62f to pageBackground,
+                                1f to pageBackground.copy(alpha = 0f)
+                            ),
                             startY = 0f,
                             endY = size.height
                         )

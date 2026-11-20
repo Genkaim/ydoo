@@ -62,11 +62,17 @@ fun PinnedPageHeader(
                 onHeight?.invoke(with(density) { it.height.toDp() })
             }
             // Opaque at the top, fully transparent at the bottom: content scrolls
-            // under the title and fades out instead of meeting a hard edge.
+            // under the title and fades out instead of meeting a hard edge. The
+            // solid part covers most of the header, so the title keeps a clean
+            // backing even when a card is directly under it.
             .drawBehind {
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colors = listOf(background, background.copy(alpha = 0f)),
+                        colorStops = arrayOf(
+                            0f to background,
+                            0.62f to background,
+                            1f to background.copy(alpha = 0f)
+                        ),
                         startY = 0f,
                         endY = size.height
                     )

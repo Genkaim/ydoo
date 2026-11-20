@@ -77,8 +77,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.drawBehind
@@ -229,18 +227,8 @@ fun OverviewScreen(
     var headerHeight by remember { mutableStateOf(52.dp) }
     val density = LocalDensity.current
     val pageBackground = MaterialTheme.colorScheme.background
-    val haptics = LocalHapticFeedback.current
     Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
-        // Buzz the moment the pull is far enough to release into a refresh, not
-        // when the refresh actually starts: the gesture answers at the threshold.
-        // Guarded on the drag itself, so a background refresh (widget alarm or
-        // opening the app) never vibrates.
-        val readyToRefresh = pullState.distanceFraction >= 1f &&
-            !pullState.isAnimating && !state.refreshing
-        LaunchedEffect(readyToRefresh) {
-            if (readyToRefresh) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = { store.refresh() },

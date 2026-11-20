@@ -187,7 +187,7 @@ fun DietDetail(
     // asking for a second confirmation would defeat it.
     val autoAdd = shoot || pendingPhoto != null
 
-    fun analyze(file: File) {
+    fun analyze(file: File, auto: Boolean = autoAdd) {
         flow = PhotoFlow.Loading(file)
         error = null
         scope.launch {
@@ -208,7 +208,7 @@ fun DietDetail(
                     fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
                     note = json.optString("note").takeIf { it.isNotBlank() }
                 )
-                if (autoAdd) {
+                if (auto) {
                     DietStore.add(
                         Meal(
                             id = UUID.randomUUID().toString(),
@@ -283,7 +283,9 @@ fun DietDetail(
     ) { saved ->
         val file = cameraFile
         cameraFile = null
-        if (saved && file != null) analyze(file) else file?.delete()
+        // A camera capture is logged as soon as the estimate lands: the photo is
+        // already the confirmation, so no draft card is shown for it.
+        if (saved && file != null) analyze(file, auto = true) else file?.delete()
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -342,7 +344,7 @@ fun DietDetail(
         if (pendingAnalysed) return@LaunchedEffect
         pendingAnalysed = true
         val file = File(path)
-        if (file.exists()) analyze(file)
+        if (file.exists()) analyze(file, auto = true)
     }
 
     fun pickPhoto() {

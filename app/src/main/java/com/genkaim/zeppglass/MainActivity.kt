@@ -13,6 +13,9 @@ import com.genkaim.zeppglass.ui.theme.applyZeppChrome
 import com.genkaim.zeppglass.ui.theme.resolveDark
 
 class MainActivity : ComponentActivity() {
+    /** One store for the activity, so onResume can ask the same instance to sync. */
+    private val store: HealthStore by lazy { HealthStore.get(this, AppSettings.get(this)) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val settings = AppSettings.get(this)
@@ -22,7 +25,7 @@ class MainActivity : ComponentActivity() {
         com.genkaim.zeppglass.data.DietStore.attach(this)
         // The snapshot is read once, before the first frame, so opening the app
         // draws the last data instead of flashing a "syncing" card.
-        HealthStore.get(this, settings)
+        store
         // Push a fresh RemoteViews set on every cold start: a launcher may still
         // be showing views inflated from an older build's layout.
         Thread { com.genkaim.zeppglass.ui.widget.YdooRingsWidget.updateAll(this) }.start()
@@ -46,5 +49,13 @@ class MainActivity : ComponentActivity() {
                 ZgApp()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Opening (or returning to) the app is a sync point. The one-minute
+        // guard keeps a quick tab switch from firing another request.
+        val last = store.state.lastSyncedAt ?: 0L
+        if (System.currentTimeMillis() - last > 60_000L) store.refresh()
     }
 }

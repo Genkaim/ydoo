@@ -61,7 +61,17 @@ fun PinnedPageHeader(
             .onSizeChanged {
                 onHeight?.invoke(with(density) { it.height.toDp() })
             }
-            .drawBehind { drawRect(background) },
+            // Opaque at the top, fully transparent at the bottom: content scrolls
+            // under the title and fades out instead of meeting a hard edge.
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(background, background.copy(alpha = 0f)),
+                        startY = 0f,
+                        endY = size.height
+                    )
+                )
+            },
         content = content
     )
 }

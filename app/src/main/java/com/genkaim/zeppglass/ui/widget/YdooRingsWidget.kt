@@ -145,7 +145,7 @@ class YdooRingsWidget : AppWidgetProvider() {
          */
         private const val ACTION_REFRESH = "com.genkaim.zeppglass.widget.REFRESH"
         private const val REQUEST_REFRESH = 7302
-        private const val REFRESH_PERIOD_MS = 2 * 60 * 60 * 1000L
+        private const val REFRESH_PERIOD_MS = 15 * 60 * 1000L
 
         /** 15 of 21 is the watch's "high load" threshold, as on the home ring. */
         private const val STRAIN_HIGH = 15f

@@ -25,6 +25,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Side-by-side with the release app: a .test package gets its own
+            // install, its own data directory and its own launcher entry.
+            applicationIdSuffix = ".test"
+        }
         release {
             isMinifyEnabled = false
             // Signed with the local debug key so a release build upgrades the

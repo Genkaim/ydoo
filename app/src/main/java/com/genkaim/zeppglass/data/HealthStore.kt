@@ -84,6 +84,15 @@ class HealthStore private constructor(
         scope.launch {
             if (settings.isLoggedIn) refresh()
         }
+        // A quarter-hour heartbeat while the app is alive. The widget has its own
+        // alarm for the hours when the app is closed; this one keeps an open app
+        // current without the reader pulling the page.
+        scope.launch {
+            while (true) {
+                delay(AUTO_SYNC_INTERVAL_MS)
+                if (settings.isLoggedIn) refresh()
+            }
+        }
     }
 
     fun refresh() {
@@ -495,6 +504,9 @@ class HealthStore private constructor(
     companion object {
         /** Fallback bucket for workouts whose history row had no `source`. */
         private const val DEFAULT_WORKOUT_SOURCE = "run.mifit.huami.com"
+
+        /** How often an open app refreshes on its own. */
+        private const val AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000L
 
         @Volatile
         private var instance: HealthStore? = null

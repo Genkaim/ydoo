@@ -26,6 +26,10 @@ class MainActivity : ComponentActivity() {
         // The snapshot is read once, before the first frame, so opening the app
         // draws the last data instead of flashing a "syncing" card.
         store
+        // A cold start is the only app-open sync point. Returning from another
+        // activity (settings, a detail page, the camera) deliberately does not
+        // pull again; the guard also absorbs an activity recreation.
+        store.refreshIfStale()
         // Push a fresh RemoteViews set on every cold start: a launcher may still
         // be showing views inflated from an older build's layout.
         Thread { com.genkaim.zeppglass.ui.widget.YdooRingsWidget.updateAll(this) }.start()
@@ -53,8 +57,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // The app-open sync point, throttled by the snapshot's own age: opening
-        // it twice in a row must not send twice. Manual pull is unaffected.
-        store.refreshIfStale()
+        // Nothing happens here on purpose: only a cold start syncs, so coming
+        // back from the camera or a detail page stays instant and quiet.
     }
 }

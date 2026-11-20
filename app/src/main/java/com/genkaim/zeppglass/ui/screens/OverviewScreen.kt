@@ -90,6 +90,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.DailySummary
 import com.genkaim.zeppglass.data.DietStore
@@ -166,7 +167,9 @@ fun OverviewScreen(
     // Today's load is the day still in progress: after midnight but before sleep
     // it is yesterday's, so the number does not drop to zero while the user is
     // still awake.
-    val strain = if (isToday) data?.let { it.strainOn(it.strainDateNow(zone)) } else data?.strainOn(date)
+    val strainDayDate = if (isToday) data?.let { it.strainDateNow(zone) } ?: today else date
+    val strain = data?.strainOn(strainDayDate)
+    val strainInProgress = isToday && strainDayDate != today
     val readiness = data?.readiness?.lastOrNull { it.date == date }
     val stress = data?.stress?.firstOrNull { it.date == date }
     val pai = data?.pai?.firstOrNull { it.date == date }
@@ -291,6 +294,7 @@ fun OverviewScreen(
                                 sleepScore = night?.score,
                                 chargeScore = charge?.total,
                                 strain = strain?.strain,
+                                strainInProgress = strainInProgress,
                                 onSleep = { onOpenDetail(DetailTarget(DetailKind.SLEEP, date)) },
                                 onCharge = { onOpenTab(AppTab.CHARGE) },
                                 onStrain = { onOpenDetail(DetailTarget(DetailKind.STRAIN, date)) }
@@ -1053,6 +1057,7 @@ private fun TopRings(
     sleepScore: Int?,
     chargeScore: Int?,
     strain: Double?,
+    strainInProgress: Boolean = false,
     onSleep: () -> Unit,
     onCharge: () -> Unit,
     onStrain: () -> Unit
@@ -1087,6 +1092,7 @@ private fun TopRings(
         StrainRingCell(
             modifier = Modifier.weight(1f),
             value = strain,
+            inProgress = strainInProgress,
             onClick = onStrain
         )
     }
@@ -1128,6 +1134,7 @@ private const val STRAIN_MAX = 21f
 private fun StrainRingCell(
     modifier: Modifier,
     value: Double?,
+    inProgress: Boolean = false,
     onClick: () -> Unit
 ) {
     val palette = LocalZgPalette.current
@@ -1158,6 +1165,18 @@ private fun StrainRingCell(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1
             )
+            if (inProgress) {
+                // The day only ends when the user sleeps, so before that the ring
+                // is still yesterday's; saying so avoids reading it as "today so
+                // far".
+                Text(
+                    " 进行中",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1
+                )
+            }
             Icon(
                 Icons.Rounded.ChevronRight,
                 contentDescription = null,

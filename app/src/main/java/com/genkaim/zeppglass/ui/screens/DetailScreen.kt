@@ -1958,6 +1958,19 @@ private fun StrainDetail(data: HealthData?, date: LocalDate?) {
             style = MaterialTheme.typography.titleSmall,
             color = ringColor
         )
+        // The day ends with the night, not at midnight, so before sleeping this
+        // is still yesterday's number growing.
+        val inProgress = (date == null || date == LocalDate.now()) &&
+            source.strainDateNow() != LocalDate.now()
+        if (inProgress) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "进行中 · 截至 " + java.time.LocalTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(Modifier.height(18.dp))
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

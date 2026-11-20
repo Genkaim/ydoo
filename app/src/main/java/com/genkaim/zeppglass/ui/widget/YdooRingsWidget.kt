@@ -295,7 +295,10 @@ class YdooRingsWidget : AppWidgetProvider() {
             // heartbeat, so the numbers do move without opening the app.
             val sleepScore = data?.nightOn(today)?.score
             val chargeScore = data?.chargeOn(today)?.total
-            val strain = data?.strainOn(today)?.strain
+            // Same rule as the app: the load day is still yesterday's until the
+            // user sleeps, so asking for the calendar day alone made the card show
+            // "--" while the app showed the ongoing value.
+            val strain = data?.let { it.strainOn(it.strainDateNow(zone))?.strain }
 
             fun col(light: Int, night: Int): Int = context.getColor(if (dark) night else light)
             val onSurface = col(R.color.widget_on_surface, R.color.widget_on_surface_dark)

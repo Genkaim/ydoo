@@ -233,7 +233,10 @@ fun OverviewScreen(
         val pullState = rememberPullToRefreshState()
         // Buzz the moment the pull is far enough to release into a refresh, not
         // when the refresh actually starts: the gesture answers at the threshold.
-        val readyToRefresh = pullState.distanceFraction >= 1f
+        // Guarded on the drag itself, so a background refresh (widget alarm or
+        // opening the app) never vibrates.
+        val readyToRefresh = pullState.distanceFraction >= 1f &&
+            !pullState.isAnimating && !state.refreshing
         LaunchedEffect(readyToRefresh) {
             if (readyToRefresh) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         }
@@ -326,7 +329,7 @@ fun OverviewScreen(
                                 target = DietStore.calorieTarget(raw, date, settings.dietGoalOrCut),
                                 intake = dietKcal,
                                 meals = dietMeals.size,
-                                onClick = { onOpenDetail(DetailTarget(DetailKind.DIET, date)) }
+                                onClick = { onOpenDetail(DetailTarget(DetailKind.DIET, dietDay)) }
                             )
 
                             val ink = MaterialTheme.colorScheme.onSurface

@@ -119,7 +119,8 @@ fun DetailScreen(
     target: DetailTarget,
     onClose: () -> Unit,
     onOpen: (DetailTarget) -> Unit = {},
-    shoot: Boolean = false
+    shoot: Boolean = false,
+    photoPath: String? = null
 ) {
     val data = store.displayData
     val palette = LocalZgPalette.current
@@ -158,7 +159,8 @@ fun DetailScreen(
                     data,
                     settings,
                     target.date ?: DietStore.logicalToday(),
-                    shoot = shoot
+                    shoot = shoot,
+                    pendingPhoto = photoPath
                 )
                 DetailKind.SLEEP_HR -> SleepMetricDetail(data, target.date, SleepMetric.HEART_RATE)
                 DetailKind.SLEEP_RR -> SleepMetricDetail(data, target.date, SleepMetric.RESPIRATION)
@@ -1718,17 +1720,6 @@ private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthSt
     // Every remaining raw field the detail payload carried, with the keys that
     // have a known meaning translated. Unknown keys are still shown under their
     // own name, so a new watch metric appears without a code change.
-    val rawFields = detail?.fields.orEmpty()
-    if (rawFields.isNotEmpty()) {
-        SectionTitle("详细数据", trailing = "${rawFields.size} 项")
-        FlatPanel {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                rawFields.forEach { (key, value) ->
-                    DataRow(workoutFieldLabel(key), workoutFieldValue(key, value))
-                }
-            }
-        }
-    }
 }
 
 /** Colour per curve; anything the watch adds later falls back to the muted ink. */
@@ -1933,8 +1924,12 @@ private fun StrainDetail(data: HealthData?, date: LocalDate?) {
     // Today is still in progress until the night ends: after midnight the load
     // keeps adding to the day being closed instead of resetting (see
     // HealthData.strainDateNow and StrainCalculator).
+    // The overview opens the day that is still accumulating (yesterday until the
+    // night ends), so opening from a card with today's date must look that day up
+    // rather than the empty calendar day — that mismatch was the "has a value but
+    // no samples" page.
     val strain = when {
-        date != null -> source.strainOn(date)
+        date != null && date != LocalDate.now() -> source.strainOn(date)
         else -> source.strainOn(source.strainDateNow())
     }
     if (strain == null || strain.strain == null) {

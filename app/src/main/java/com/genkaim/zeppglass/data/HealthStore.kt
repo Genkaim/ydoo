@@ -81,18 +81,20 @@ class HealthStore private constructor(
         get() = state.data
 
     init {
-        scope.launch {
-            if (settings.isLoggedIn) refresh()
-        }
-        // A quarter-hour heartbeat while the app is alive. The widget has its own
-        // alarm for the hours when the app is closed; this one keeps an open app
-        // current without the reader pulling the page.
-        scope.launch {
-            while (true) {
-                delay(AUTO_SYNC_INTERVAL_MS)
-                if (settings.isLoggedIn) refresh()
-            }
-        }
+        // No sync from here on purpose. The only automatic pulls are the widget's
+        // fifteen-minute alarm and opening the app, both routed through
+        // [refreshIfStale]; an unconditional pull on construction made every
+        // reopen fire a request even seconds after the last one.
+    }
+
+    /**
+     * The one entry point for automatic syncs: refreshes only when the snapshot
+     * is older than [minAgeMs]. A manual pull calls [refresh] directly, so it is
+     * never throttled.
+     */
+    fun refreshIfStale(minAgeMs: Long = 60_000L) {
+        val last = state.lastSyncedAt ?: 0L
+        if (System.currentTimeMillis() - last > minAgeMs) refresh()
     }
 
     fun refresh() {
@@ -505,8 +507,6 @@ class HealthStore private constructor(
         /** Fallback bucket for workouts whose history row had no `source`. */
         private const val DEFAULT_WORKOUT_SOURCE = "run.mifit.huami.com"
 
-        /** How often an open app refreshes on its own. */
-        private const val AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000L
 
         @Volatile
         private var instance: HealthStore? = null

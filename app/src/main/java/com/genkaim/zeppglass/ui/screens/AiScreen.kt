@@ -293,7 +293,13 @@ fun AiScreen(
             Modifier
                 .fillMaxSize()
         ) {
-            var deckPx by remember { mutableIntStateOf(0) }
+            // Seeded with an estimate of the deck (composer + the bar's space):
+            // starting at zero made the list sit lower for one frame, then jump
+            // up when the composer was measured — that was the "messages fly and
+            // come back" on entering a conversation.
+            var deckPx by remember {
+                mutableIntStateOf(with(density) { (bottomSpace + 68.dp).roundToPx() })
+            }
             val deckSpace = with(density) { deckPx.toDp() }
 
             // Greeting and transcript cross-fade instead of swapping in one
@@ -422,25 +428,29 @@ fun AiScreen(
 
         PinnedPageHeader(
             modifier = Modifier.align(Alignment.TopCenter),
-            onHeight = { headerHeight = it }
+            onHeight = { headerHeight = it },
+            // The AI page has no title line, so its fade stops earlier than the
+            // other pages': a long tail over the transcript washed out the first
+            // message.
+            tail = 8.dp
         ) {
-            PageHeader(
-                title = "AI 教练",
-                subtitle = if (configured) settings.aiModel.ifBlank { "默认模型" } else "未接入",
-                trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { AiChatSession.newChat() }) {
-                            Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
-                        }
-                        IconButton(onClick = { showHistory = true }) {
-                            Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
-                        }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
-                        }
-                    }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { AiChatSession.newChat() }) {
+                    Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
                 }
-            )
+                IconButton(onClick = { showHistory = true }) {
+                    Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
+                }
+            }
         }
     }
 

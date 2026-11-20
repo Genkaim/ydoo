@@ -482,13 +482,11 @@ class YdooRingsWidget : AppWidgetProvider() {
             PendingIntent.getActivity(
                 context,
                 1,
-                // The widget's fork-and-knife exists to log a meal, so it lands
-                // straight in the camera instead of the diet overview.
-                DetailActivity.intent(
-                    context,
-                    DetailTarget(DetailKind.DIET, com.genkaim.zeppglass.data.DietStore.logicalToday()),
-                    shoot = true
-                ),
+                // Straight to the camera: the trampoline captures the photo and
+                // then opens the diet page on the estimate, so the page never
+                // flashes in front of the viewfinder.
+                Intent(context, com.genkaim.zeppglass.ui.DietCameraActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 

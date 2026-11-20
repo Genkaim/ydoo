@@ -58,6 +58,7 @@ val TailFade = 22.dp
 fun PinnedPageHeader(
     modifier: Modifier = Modifier,
     onHeight: ((Dp) -> Unit)? = null,
+    tail: Dp = TailFade,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
 ) {
     val background = MaterialTheme.colorScheme.background
@@ -73,7 +74,7 @@ fun PinnedPageHeader(
             // fade runs past the header's own height (TailFade), so the solid
             // block does not end in a visible band under the title.
             .drawBehind {
-                val tail = TailFade.toPx()
+                val fade = tail.toPx()
                 drawRect(
                     brush = Brush.verticalGradient(
                         colorStops = arrayOf(
@@ -82,9 +83,9 @@ fun PinnedPageHeader(
                             1f to background.copy(alpha = 0f)
                         ),
                         startY = 0f,
-                        endY = size.height + tail
+                        endY = size.height + fade
                     ),
-                    size = androidx.compose.ui.geometry.Size(size.width, size.height + tail)
+                    size = androidx.compose.ui.geometry.Size(size.width, size.height + fade)
                 )
             },
         content = content

@@ -49,7 +49,8 @@ class DetailActivity : ComponentActivity() {
                         // A card inside a detail page opens its own page on top,
                         // so back returns to the sleep page rather than home.
                         onOpen = { startActivity(intent(this@DetailActivity, it)) },
-                        shoot = intent.getBooleanExtra(EXTRA_SHOOT, false)
+                        shoot = intent.getBooleanExtra(EXTRA_SHOOT, false),
+                        photoPath = intent.getStringExtra(EXTRA_PHOTO)
                     )
                 }
             }
@@ -68,17 +69,20 @@ class DetailActivity : ComponentActivity() {
         private const val EXTRA_DATE = "detail_date"
         private const val EXTRA_WORKOUT = "detail_workout"
         private const val EXTRA_SHOOT = "detail_shoot"
+        private const val EXTRA_PHOTO = "detail_photo"
 
         fun intent(
             context: android.content.Context,
             target: DetailTarget,
-            shoot: Boolean = false
+            shoot: Boolean = false,
+            photoPath: String? = null
         ): Intent =
             Intent(context, DetailActivity::class.java).apply {
                 putExtra(EXTRA_KIND, target.kind.name)
                 target.date?.let { putExtra(EXTRA_DATE, it.toString()) }
                 target.workoutId?.let { putExtra(EXTRA_WORKOUT, it) }
                 if (shoot) putExtra(EXTRA_SHOOT, true)
+                photoPath?.let { putExtra(EXTRA_PHOTO, it) }
             }
     }
 }

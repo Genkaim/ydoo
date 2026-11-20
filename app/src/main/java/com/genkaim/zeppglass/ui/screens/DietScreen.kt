@@ -153,7 +153,8 @@ fun DietDetail(
     data: HealthData?,
     settings: AppSettings,
     date: LocalDate = DietStore.logicalToday(),
-    shoot: Boolean = false
+    shoot: Boolean = false,
+    pendingPhoto: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -308,6 +309,18 @@ fun DietDetail(
             shotTaken = true
             takePhoto()
         }
+    }
+
+    // A photo taken through the widget's camera trampoline arrives as a path:
+    // it is analysed on arrival, so the page opens straight onto the estimate
+    // instead of making the user pick the picture again.
+    var pendingAnalysed by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingPhoto) {
+        val path = pendingPhoto ?: return@LaunchedEffect
+        if (pendingAnalysed) return@LaunchedEffect
+        pendingAnalysed = true
+        val file = File(path)
+        if (file.exists()) analyze(file)
     }
 
     fun pickPhoto() {

@@ -423,8 +423,13 @@ object HealthParser {
                 val sample = samples.optJSONObject(j) ?: continue
                 val offset = sample.anyNumber("s")?.toLong() ?: 0L
                 val total = sample.anyNumber("total")?.roundToInt()?.takeIf { it in 0..100 }
-                val physical = sample.anyNumber("physical")?.takeIf { it in 0.0..100.0 }
-                val mental = sample.anyNumber("mental")?.takeIf { it in 0.0..100.0 }
+                // Only 255 means "not computed". A negative reading is a real
+                // value — the tank is empty — so it is shown as it is instead of
+                // being folded to zero or dropped.
+                val physical = sample.anyNumber("physical")
+                    ?.takeIf { it != 255.0 && it > -1000.0 }
+                val mental = sample.anyNumber("mental")
+                    ?.takeIf { it != 255.0 && it > -1000.0 }
                 if (total == null && physical == null && mental == null) continue
                 // A Charge item starts at 08:00 and runs to 07:55 next day, so the
                 // item's start date is wrong for the early-morning half. Group each
@@ -437,14 +442,16 @@ object HealthParser {
         }
         return grouped.map { (date, samples) ->
             val sorted = samples.sortedBy { it.epochMs }
-            // The last sample that still carries a real score. Zepp uses 255 as
-            // "watch did not compute a value", which is already filtered out.
-            val latest = sorted.lastOrNull { it.total != null }
+            // Each of the three numbers takes its own last real sample. Tying all
+            // of them to the last sample that had a total threw the other two
+            // away: after midnight the watch often reports total 255 (not
+            // computed) while physical and mental are still perfectly valid, and
+            // the page then showed "--" for both.
             ChargeDay(
                 date = date,
-                total = latest?.total,
-                physical = latest?.physical,
-                mental = latest?.mental,
+                total = sorted.lastOrNull { it.total != null }?.total,
+                physical = sorted.lastOrNull { it.physical != null }?.physical,
+                mental = sorted.lastOrNull { it.mental != null }?.mental,
                 samples = sorted
             )
         }.sortedBy { it.date }

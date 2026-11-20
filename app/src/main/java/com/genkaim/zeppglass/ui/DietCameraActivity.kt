@@ -34,6 +34,7 @@ class DietCameraActivity : ComponentActivity() {
     private var launched = false
 
     private val capture = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        android.util.Log.i("YdooCamera", "capture result saved=$saved photo=${photo?.name}")
         val shot = photo
         photo = null
         if (saved && shot != null && shot.exists()) {
@@ -98,6 +99,7 @@ class DietCameraActivity : ComponentActivity() {
             openDietPage()
             return
         }
+        android.util.Log.i("YdooCamera", "launching system camera uri=$uri")
         runCatching { capture.launch(uri) }.onFailure {
             // No camera app, or the intent was refused: land on the diet page
             // rather than leaving the user on a blank screen that vanishes.

@@ -182,12 +182,8 @@ fun DietDetail(
     }
     val goal = settings.dietGoalOrCut
 
-    // Photos that arrive from the camera-first flow (widget) are logged as soon
-    // as the AI answers: that path exists to capture a meal in one gesture, so
-    // asking for a second confirmation would defeat it.
-    val autoAdd = shoot || pendingPhoto != null
-
-    fun analyze(file: File, auto: Boolean = autoAdd) {
+    fun analyze(file: File, auto: Boolean = false) {
+        android.util.Log.i("YdooDiet", "analyze auto=$auto shoot=$shoot pending=$pendingPhoto file=${file.name}")
         flow = PhotoFlow.Loading(file)
         error = null
         scope.launch {
@@ -208,23 +204,11 @@ fun DietDetail(
                     fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
                     note = json.optString("note").takeIf { it.isNotBlank() }
                 )
-                if (auto) {
-                    DietStore.add(
-                        Meal(
-                            id = UUID.randomUUID().toString(),
-                            epochMs = estimated.epochMs,
-                            photoPath = estimated.photoPath,
-                            calories = estimated.items.sumOf { it.kcal ?: 0 },
-                            proteinG = estimated.proteinG,
-                            carbsG = estimated.carbsG,
-                            fatG = estimated.fatG,
-                            items = estimated.items,
-                            note = estimated.note
-                        )
-                    )
-                } else {
-                    draft = estimated
-                }
+                // Every capture lands on the editable list before anything is
+                // written: the AI's estimate is a proposal, and the reader
+                // confirms (or fixes) the foods there.
+                android.util.Log.i("YdooDiet", "estimate done items=${estimated.items.size}")
+                draft = estimated
                 flow = null
             } catch (e: Exception) {
                 // The failure belongs to the photo card, not to the page.

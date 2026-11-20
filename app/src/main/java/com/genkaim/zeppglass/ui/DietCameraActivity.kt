@@ -1,26 +1,36 @@
 package com.genkaim.zeppglass.ui
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
+import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.DietStore
+import com.genkaim.zeppglass.ui.theme.ZeppGlassTheme
 import java.io.File
 
 /**
- * A camera trampoline with no UI. The home-screen widget opens this instead of
- * the diet page, so tapping the fork-and-knife goes straight to the camera: the
- * diet page would otherwise appear for a frame, launch the camera, and wait
- * underneath while the photo is taken.
+ * A plain themed page whose only job is to open the camera. The home-screen
+ * widget's fork-and-knife opens this instead of the diet page, so the tap goes
+ * straight to the viewfinder: no diet page appears first, and when the camera
+ * closes the diet page opens on the photo it just took.
  *
- * On a successful capture the diet page opens with the photo path, analyses it,
- * and the user lands on the estimate exactly as if they had used the in-page
- * camera button.
+ * The page itself is intentionally empty. It is painted with the app's own
+ * background colour (light or dark, following the theme setting), which is what
+ * shows for the instant before the camera activity comes up — an empty white
+ * window in dark mode was the thing that looked like a stray page.
  */
 class DietCameraActivity : ComponentActivity() {
 
     private var photo: File? = null
+    private var launched = false
 
     private val capture = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val shot = photo
@@ -44,6 +54,32 @@ class DietCameraActivity : ComponentActivity() {
         // A configuration change while the camera is open must not retake the
         // photo: the contract restores its own result.
         if (savedInstanceState != null) return
+
+        val settings = AppSettings.get(this)
+        setContent {
+            val systemDark = isSystemInDarkTheme()
+            val dark = when (settings.themeMode) {
+                "light" -> false
+                "dark" -> true
+                else -> systemDark
+            }
+            ZeppGlassTheme(darkTheme = dark) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) { }
+            }
+            // Launched from composition so the background is laid out before the
+            // camera takes over, instead of a bare window flashing first.
+            LaunchedEffect(Unit) {
+                if (launched) return@LaunchedEffect
+                launched = true
+                openCamera()
+            }
+        }
+    }
+
+    private fun openCamera() {
         val file = DietStore.newPhotoFile()
         photo = file
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)

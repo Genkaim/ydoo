@@ -480,10 +480,33 @@ fun OverviewScreen(
             }
         }
 
+        // The date menu is a layer of its own, hung under the header: opening it
+        // covers the first cards instead of inserting a block that pushes the
+        // whole page down.
+        AnimatedVisibility(
+            visible = calendarOpen,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = headerHeight)
+        ) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+                MonthCalendar(
+                    selected = date,
+                    today = today,
+                    onPick = {
+                        selectedText = it.toString()
+                        calendarOpen = false
+                    }
+                )
+            }
+        }
+
         // The header floats over the list, the same gradient every other page
         // uses: opaque at the top edge, fully transparent at its lower edge.
         // Its measured height becomes the list's top inset, so the first card
-        // still starts below it and opening the calendar pushes content down.
+        // still starts below it.
         Column(
             Modifier
                 .align(Alignment.TopCenter)
@@ -510,20 +533,6 @@ fun OverviewScreen(
                 onLogin = onLogin,
                 onOpenSettings = onOpenSettings
             )
-            AnimatedVisibility(
-                visible = calendarOpen,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                MonthCalendar(
-                    selected = date,
-                    today = today,
-                    onPick = {
-                        selectedText = it.toString()
-                        calendarOpen = false
-                    }
-                )
-            }
         }
     }
 }

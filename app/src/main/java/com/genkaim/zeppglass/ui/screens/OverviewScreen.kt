@@ -491,7 +491,15 @@ fun OverviewScreen(
                 .align(Alignment.TopCenter)
                 .padding(top = headerHeight)
         ) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp)
+                    // A menu needs a surface: without one the month floats over
+                    // the cards and reads as page text.
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                    .padding(vertical = 6.dp)
+            ) {
                 MonthCalendar(
                     selected = date,
                     today = today,
@@ -555,7 +563,7 @@ private fun PullDial(progress: Float?, modifier: Modifier = Modifier) {
     val surface = MaterialTheme.colorScheme.surface
     Box(
         modifier
-            .size(46.dp)
+            .size(38.dp)
             .graphicsLayer {
                 alpha = presence
                 scaleX = 0.82f + 0.18f * presence
@@ -566,14 +574,14 @@ private fun PullDial(progress: Float?, modifier: Modifier = Modifier) {
     ) {
         if (progress == null) {
             CircularProgressIndicator(
-                modifier = Modifier.size(26.dp),
-                strokeWidth = 2.5.dp
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.2.dp
             )
         } else {
             CircularProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.size(26.dp),
-                strokeWidth = 2.5.dp,
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.2.dp,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f + 0.55f * progress),
                 trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
             )

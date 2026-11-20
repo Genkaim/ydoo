@@ -102,7 +102,6 @@ import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.Fmt
-import com.genkaim.zeppglass.ui.components.EmptyCard
 import com.genkaim.zeppglass.ui.components.LocalTabBarSpace
 import com.genkaim.zeppglass.ui.components.MarkdownView
 import com.genkaim.zeppglass.ui.components.PageHeader
@@ -797,13 +796,41 @@ private fun EmptyTranscript(
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
         if (!configured) {
-            EmptyCard(
-                title = "先填入自己的 AI 接入点",
-                body = "在设置里填兼容 OpenAI 的地址、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
-                modifier = Modifier.padding(horizontal = 20.dp),
-                actionLabel = "去设置",
-                onAction = onOpenSettings
-            )
+            // No card surface here: on an empty page a panel reads as content
+            // that failed to load. Plain centred text plus one pill reads as a
+            // first-run hint instead.
+            Column(
+                modifier = Modifier.padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "先填入自己的 AI 接入点",
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "在设置里填兼容 OpenAI 的地址、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(18.dp))
+                Surface(
+                    onClick = onOpenSettings,
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primary,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Text(
+                        "去设置",
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
         } else {
             Text(
                 "今天想聊点什么？",

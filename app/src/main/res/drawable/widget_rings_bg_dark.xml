@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget card in the app's dark theme: translucent dark surface. -->
+<!-- Plain card, dark theme: opaque, no glass rim. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#E617181C" />
+    <solid android:color="@color/widget_surface_dark" />
     <corners android:radius="40dp" />
 </shape>

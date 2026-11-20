@@ -311,7 +311,13 @@ class AppSettings private constructor(context: Context) {
                 // The app's own numbers have definitions the model cannot guess.
                 "负荷是本机计算的 0–21 分：按一天的心率、步数与脑力负荷合成，" +
                 "再按 HRV 与静息心率对基线的偏离调整，不是手表给出的分数。" +
-                "饮食记录是本机估算（拍照识别，用户可改），讨论摄入和缺口时说明是估算值。"
+                "饮食记录是本机估算（拍照识别，用户可改），讨论摄入和缺口时说明是估算值。" +
+                // Numbers that look alike but are not the same reading.
+                "Hybrid Charge 的「晨起」是刚醒时的读数，「当前」是此刻的读数：说晨起只能用晨起值，" +
+                "手表没给晨起就说没有，不要用当前值或前一天的末尾值代替。" +
+                "准备度只在数据里确实出现「准备度」评分时才算存在；只有 HRV 分、静息心率分这类分项时，" +
+                "不要说成准备度。" +
+                "睡眠阶段用占比描述（深睡、浅睡、REM 各占多少），清醒说次数，不只报时长。"
 
         /** Built-in only: the prompt is not user-editable by design. */
         const val DEFAULT_AI_PROMPT = SYSTEM_PROMPT

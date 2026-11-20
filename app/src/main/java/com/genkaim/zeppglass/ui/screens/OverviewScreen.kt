@@ -134,9 +134,9 @@ fun OverviewScreen(
 
     val state = store.state
     val raw = state.data
-    // A past day is history: it does not go stale. Today's snapshot follows the
-    // three-hour rule and falls back to "--" until a fresh sync lands.
-    val data = if (isToday) store.displayData else raw
+    // The snapshot is shown as it stands, however old: the last real reading is
+    // still a reading, and blanking it to "--" only hid data the user had.
+    val data = raw
     val zone = remember { ZoneId.systemDefault() }
     fun dateOf(epochMs: Long): LocalDate =
         Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
@@ -180,8 +180,8 @@ fun OverviewScreen(
     LaunchedEffect(Unit) { DailySummary.attach(settings) }
 
     // One summary per logical day (05:00 boundary), and only for today.
-    LaunchedEffect(raw?.fetchedAt, state.stale, settings.aiApiKey, isToday) {
-        if (raw != null && !state.stale && isToday && settings.aiApiKey.isNotBlank()) {
+    LaunchedEffect(raw?.fetchedAt, settings.aiApiKey, isToday) {
+        if (raw != null && isToday && settings.aiApiKey.isNotBlank()) {
             DailySummary.ensureToday(settings, raw)
         }
     }
@@ -255,9 +255,6 @@ fun OverviewScreen(
                     Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    if (settings.isLoggedIn && isToday && data != null && state.stale) {
-                        StaleBanner(onRefresh = { store.refresh() })
-                    }
                     when {
                         !settings.isLoggedIn -> ConnectCard(onLogin)
                         data == null -> EmptyStateCard(
@@ -289,7 +286,6 @@ fun OverviewScreen(
                                     error = DailySummary.error,
                                     generatedAt = DailySummary.generatedAt,
                                     configured = settings.aiApiKey.isNotBlank(),
-                                    stale = state.stale,
                                     onRefresh = { DailySummary.regenerate(settings, raw) },
                                     onOpenSettings = onOpenSettings
                                 )
@@ -335,7 +331,7 @@ fun OverviewScreen(
                                     verdict = morningCharge?.let {
                                         when {
                                             it >= 80 -> "优秀" to ink
-                                            it >= 60 -> "偏低" to warnTone
+                                            it >= 60 -> "一般" to warnTone
                                             else -> "偏低" to criticalTone
                                         }
                                     },
@@ -781,34 +777,6 @@ private fun EmptyStateCard(
     }
 }
 
-/** Tells the reader why every number is `--` and offers the fix. */
-@Composable
-private fun StaleBanner(onRefresh: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Rounded.Schedule,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(15.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            "数据超过 3 小时没更新，数值先显示 --",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
-        )
-        TextButton(onClick = onRefresh) { Text("刷新") }
-    }
-}
-
 /**
  * Daily AI paragraph under the rings: generated once per 05:00-based day, with
  * a manual refresh, an error retry and an animated "still writing" state.
@@ -820,7 +788,6 @@ private fun AiSummaryCard(
     error: String?,
     generatedAt: Long,
     configured: Boolean,
-    stale: Boolean,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -851,14 +818,14 @@ private fun AiSummaryCard(
                     Modifier
                         .size(24.dp)
                         .clip(CircleShape)
-                        .clickable(enabled = configured && !stale) { onRefresh() },
+                        .clickable(enabled = configured) { onRefresh() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Rounded.Refresh,
                         contentDescription = "重新生成摘要",
                         modifier = Modifier.size(17.dp),
-                        tint = if (configured && !stale) MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (configured) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )
                 }
@@ -881,7 +848,6 @@ private fun AiSummaryCard(
                 Text(
                     when {
                         !configured -> "配置 AI 接入点后，每天 5 点后打开 App 会自动生成一条摘要。"
-                        stale -> "等这次同步完成后再生成今天的摘要。"
                         else -> "今天的摘要还没生成，点右上角刷新可以马上生成。"
                     },
                     style = MaterialTheme.typography.bodySmall,

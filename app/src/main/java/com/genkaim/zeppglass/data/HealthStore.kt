@@ -24,9 +24,7 @@ data class HealthUiState(
     val refreshing: Boolean = false,
     val data: HealthData? = null,
     val error: String? = null,
-    val lastSyncedAt: Long? = null,
-    /** The snapshot is older than three hours: numbers are shown as `--`. */
-    val stale: Boolean = false
+    val lastSyncedAt: Long? = null
 )
 
 /**
@@ -70,45 +68,23 @@ class HealthStore private constructor(
         return HealthUiState(
             loading = settings.isLoggedIn,
             data = cached.data,
-            lastSyncedAt = cached.fetchedAt,
-            stale = isStale(cached.data.fetchedAt)
+            lastSyncedAt = cached.fetchedAt
         )
     }
 
     /**
-     * What screens and the AI should read: the raw snapshot while it is fresh,
-     * the same shape with every reading removed once it is older than three
-     * hours. Workout history is never blanked.
+     * What screens and the AI read: the cached snapshot as it stands. There is
+     * no age limit — an old reading is still the last real reading, and blanking
+     * it to `--` only hid data the user already had.
      */
-    private var blanked: Pair<HealthData, HealthData>? = null
     val displayData: HealthData?
-        get() {
-            val current = state
-            val data = current.data ?: return null
-            if (!current.stale) return data
-            blanked?.let { if (it.first === data) return it.second }
-            return data.withoutValues().also { blanked = data to it }
-        }
+        get() = state.data
 
     init {
         scope.launch {
             if (settings.isLoggedIn) refresh()
         }
-        // Keep the three-hour rule while the app stays open.
-        scope.launch {
-            while (true) {
-                delay(60_000)
-                val current = state
-                val data = current.data
-                if (data != null && !current.stale && isStale(data.fetchedAt)) {
-                    state = current.copy(stale = true)
-                }
-            }
-        }
     }
-
-    private fun isStale(fetchedAt: Long): Boolean =
-        System.currentTimeMillis() - fetchedAt > STALE_WINDOW_MS
 
     fun refresh() {
         // Only a refresh that is actually running may block another one. The UI
@@ -159,7 +135,6 @@ class HealthStore private constructor(
         // one refresh straight away instead of waiting for it to time out.
         inFlight.set(false)
         workoutCache.clear()
-        blanked = null
         // Reading and parsing the snapshot is a few megabytes of JSON; doing it
         // on the caller's thread is what made signing in feel like a freeze.
         // The screen gets a plain loader, the file is read, then the network.
@@ -170,8 +145,7 @@ class HealthStore private constructor(
             if (cached != null && state.data == null) {
                 state = state.copy(
                     data = cached.data,
-                    lastSyncedAt = cached.fetchedAt,
-                    stale = isStale(cached.data.fetchedAt)
+                    lastSyncedAt = cached.fetchedAt
                 )
             }
             refresh()
@@ -463,8 +437,7 @@ class HealthStore private constructor(
             refreshing = false,
             data = data,
             error = if (coreOk) null else (warnings.firstOrNull() ?: "手环明细没有取到"),
-            lastSyncedAt = if (coreOk) now else state.lastSyncedAt,
-            stale = !coreOk || isStale(fetchedAt)
+            lastSyncedAt = if (coreOk) now else state.lastSyncedAt
         )
 
         // Keep whatever this run could not fetch from the previous snapshot, so
@@ -520,12 +493,6 @@ class HealthStore private constructor(
         readSnapshotFile(cacheFile(), zone)?.let { Cached(it, it.fetchedAt) }
 
     companion object {
-        /**
-         * A reading older than this is not shown as current: the UI switches
-         * to `--` until a fresh sync lands. Workout history is exempt.
-         */
-        private const val STALE_WINDOW_MS = 3 * 60 * 60 * 1000L
-
         /** Fallback bucket for workouts whose history row had no `source`. */
         private const val DEFAULT_WORKOUT_SOURCE = "run.mifit.huami.com"
 

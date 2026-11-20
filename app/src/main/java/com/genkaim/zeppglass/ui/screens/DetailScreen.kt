@@ -326,6 +326,10 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                 ).mapNotNull { it }.sum()
                 fun share(minutes: Int?): Double? =
                     if (minutes == null || sleepTotal == null) null else minutes * 100.0 / sleepTotal
+                // The number alone does not say whether a stage is short, so the
+                // share of the night sits right after it.
+                fun withShare(minutes: Int?): String =
+                    Fmt.hoursMinutes(minutes) + (share(minutes)?.let { " · ${it.roundToInt()}%" } ?: "")
                 val normalColor = MaterialTheme.colorScheme.onSurface
                 val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
                 fun verdict(pct: Double?, low: Double, high: Double): Pair<String, Color> = when {
@@ -342,7 +346,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         Modifier.weight(1f),
                         Icons.Rounded.DarkMode,
                         "深睡",
-                        Fmt.hoursMinutes(night.deepMinutes),
+                        withShare(night.deepMinutes),
                         palette.sleepDeep,
                         verdict(share(night.deepMinutes), 13.0, 23.0)
                     )
@@ -350,7 +354,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         Modifier.weight(1f),
                         Icons.Rounded.LightMode,
                         "浅睡",
-                        Fmt.hoursMinutes(night.lightMinutes),
+                        withShare(night.lightMinutes),
                         palette.sleepLight,
                         verdict(share(night.lightMinutes), 40.0, 60.0)
                     )
@@ -364,7 +368,7 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         Modifier.weight(1f),
                         Icons.Rounded.AutoAwesome,
                         "REM",
-                        Fmt.hoursMinutes(night.remMinutes),
+                        withShare(night.remMinutes),
                         palette.sleepRem,
                         verdict(share(night.remMinutes), 18.0, 25.0)
                     )
@@ -372,7 +376,10 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         Modifier.weight(1f),
                         Icons.Rounded.Visibility,
                         "清醒",
-                        Fmt.hoursMinutes(night.awakeMinutes),
+                        // Awakenings are counted, not timed: how often the night
+                        // broke matters more than the minutes spent awake.
+                        night.wakeCount?.let { "$it 次" }
+                            ?: Fmt.hoursMinutes(night.awakeMinutes),
                         palette.sleepAwake,
                         verdict(
                             if (night.awakeMinutes == null || inBed <= 0) null
@@ -2373,30 +2380,39 @@ private fun RhythmBlock(
 private class SleepRhythm(
     val averageOnset: Int,
     val averageWake: Int,
-    /** 100 minus the standard deviation of the onset, in minutes. */
+    /** 100 minus the typical distance from the average bedtime. */
     val score: Int
 )
 
+/** Minutes of deviation that take the regularity score to zero. */
+private const val REGULARITY_TOLERANCE_MIN = 110.0
+
 private fun sleepRhythm(nights: List<SleepNight>): SleepRhythm? {
-    if (nights.isEmpty()) return null
+    // A nap or a broken recording is not a bedtime: under three hours the row
+    // is left out instead of dragging the average.
+    val usable = nights.filter { it.totalMinutes >= 180 }
+    if (usable.isEmpty()) return null
     val zone = ZoneId.systemDefault()
     fun minutesSinceEvening(epochSec: Long): Int {
         val time = Instant.ofEpochSecond(epochSec).atZone(zone).toLocalTime()
         return ((time.hour * 60 + time.minute) - 18 * 60 + 1440) % 1440
     }
-    val onsets = nights.map { minutesSinceEvening(it.startEpochSec) }
+    val onsets = usable.map { minutesSinceEvening(it.startEpochSec) }
     // Wake times past 18:00 belong to the next evening; add a day so an early
     // riser and a late one land on the same scale.
-    val wakes = nights.map { minutesSinceEvening(it.endEpochSec) }
+    val wakes = usable.map { minutesSinceEvening(it.endEpochSec) }
     val onsetMean = onsets.average()
-    val sd = kotlin.math.sqrt(onsets.sumOf { (it - onsetMean) * (it - onsetMean) } / onsets.size)
+    // Mean absolute distance, not standard deviation: squaring made one late
+    // night dominate the whole week, so a steady sleeper who stayed up once
+    // read as irregular. Each night now contributes its own share.
+    val spread = onsets.sumOf { kotlin.math.abs(it - onsetMean) } / onsets.size
     // Back to clock minutes for display: the offset was only there to keep the
     // arithmetic monotonic across midnight.
     fun toClock(minutesSinceEvening: Int): Int = (minutesSinceEvening + 18 * 60) % 1440
     return SleepRhythm(
         averageOnset = toClock(onsetMean.roundToInt()),
         averageWake = toClock(wakes.average().roundToInt()),
-        score = (100 - sd).roundToInt().coerceIn(0, 100)
+        score = (100 - spread * 100.0 / REGULARITY_TOLERANCE_MIN).roundToInt().coerceIn(0, 100)
     )
 }
 
@@ -2424,7 +2440,7 @@ private fun MorningChargeDetail(data: HealthData?, date: LocalDate?) {
     val ink = MaterialTheme.colorScheme.onSurface
     val verdict = when {
         value >= 80 -> "优秀" to ink
-        value >= 60 -> "偏低" to palette.warn
+        value >= 60 -> "一般" to palette.warn
         else -> "偏低" to palette.critical
     }
     FlatPanel {

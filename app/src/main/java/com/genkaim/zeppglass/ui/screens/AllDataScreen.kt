@@ -86,7 +86,6 @@ fun AllDataScreen(
                 lastSyncedAt = state.lastSyncedAt,
                 data = data,
                 raw = state.data,
-                stale = state.stale,
                 warnings = data?.warnings.orEmpty(),
                 error = state.error
             )
@@ -119,7 +118,6 @@ private fun SyncSection(
     lastSyncedAt: Long?,
     data: HealthData?,
     raw: HealthData?,
-    stale: Boolean,
     warnings: List<String>,
     error: String?
 ) {
@@ -128,10 +126,7 @@ private fun SyncSection(
         Column(Modifier.padding(16.dp)) {
             DataRow("账号", if (connected) "已连接" else "未连接")
             DataRow("上次同步", lastSyncedAt?.let { Fmt.dayAndTime(it) } ?: "--")
-            DataRow(
-                "数据状态",
-                if (stale) "超过 3 小时，数值已显示为 --" else if (data != null) "正常" else "还没有数据"
-            )
+            DataRow("数据状态", if (data != null) "正常" else "还没有数据")
             DataRow("每日活动", raw?.days?.size?.toString() ?: "--")
             DataRow("睡眠", raw?.nights?.size?.toString() ?: "--")
             DataRow("Charge", raw?.chargeDays?.size?.toString() ?: "--")

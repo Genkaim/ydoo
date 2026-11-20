@@ -456,21 +456,29 @@ object AiContext {
         if (nights.isNotEmpty()) {
             builder.appendLine("\n睡眠：")
             nights.forEach { n ->
+                val sleepTotal = listOfNotNull(n.deepMinutes, n.lightMinutes, n.remMinutes)
+                    .sum().takeIf { it > 0 }
+                fun pct(minutes: Int?): String? =
+                    if (minutes == null || sleepTotal == null) null
+                    else "（${minutes * 100 / sleepTotal}%）"
                 builder.appendLine(
                     "- ${n.date}: 总 ${hoursMinutes(n.totalMinutes)}" +
                         (n.score?.let { "，评分 $it" } ?: "") +
-                        (n.deepMinutes?.let { "，深睡 ${hoursMinutes(it)}" } ?: "") +
-                        (n.remMinutes?.let { "，REM ${hoursMinutes(it)}" } ?: "") +
-                        (n.awakeMinutes?.let { "，清醒 ${hoursMinutes(it)}" } ?: "") +
+                        (n.deepMinutes?.let { "，深睡 ${hoursMinutes(it)}${pct(it) ?: ""}" } ?: "") +
+                        (n.lightMinutes?.let { "，浅睡 ${hoursMinutes(it)}${pct(it) ?: ""}" } ?: "") +
+                        (n.remMinutes?.let { "，REM ${hoursMinutes(it)}${pct(it) ?: ""}" } ?: "") +
+                        (n.wakeCount?.let { "，清醒 $it 次" }
+                            ?: n.awakeMinutes?.let { "，清醒 ${hoursMinutes(it)}" } ?: "") +
                         (n.restingHr?.let { "，睡眠心率 $it" } ?: "")
                 )
             }
         }
 
         val readiness = data.readiness.takeLast(days)
-        if (readiness.isNotEmpty()) {
-            builder.appendLine("\n准备度（手表评分，1-100）：")
-            readiness.forEach { r ->
+        val scoredReadiness = readiness.filter { it.officialScore != null }
+        if (scoredReadiness.isNotEmpty()) {
+            builder.appendLine("\n准备度（手表给出的评分，1-100；没有评分的日子不在这里）：")
+            scoredReadiness.forEach { r ->
                 builder.appendLine(
                     "- ${r.date}: " + buildList {
                         r.officialScore?.let { add("准备度 $it") }
@@ -483,13 +491,40 @@ object AiContext {
                 )
             }
         }
+        // Rows without a 准备度 score are still useful (HRV, resting heart rate)
+        // but they are not a readiness reading; saying so keeps the model from
+        // reporting a score the watch never gave.
+        val recoveryOnly = readiness.filter {
+            it.officialScore == null &&
+                (it.sleepHrv != null || it.sleepRhr != null || it.skinTempScore != null)
+        }
+        if (recoveryOnly.isNotEmpty()) {
+            builder.appendLine("\n恢复指标（以下日子手表没有给出准备度评分，这些不是准备度）：")
+            recoveryOnly.forEach { r ->
+                builder.appendLine(
+                    "- ${r.date}: " + buildList {
+                        r.sleepHrv?.let { add("睡眠 HRV $it ms") }
+                        r.sleepRhr?.let { add("睡眠静息心率 $it bpm") }
+                        r.skinTempScore?.let { add("皮肤温度分 $it") }
+                    }.joinToString("，")
+                )
+            }
+        }
 
         val charge = data.chargeDays.takeLast(days)
         if (charge.isNotEmpty()) {
-            builder.appendLine("\nHybrid Charge（体力/精神，0-100）：")
+            builder.appendLine("\nHybrid Charge（0-100；晨起是刚醒来时的读数，当前是此刻的读数，两者不是一个数）：")
             charge.forEach { c ->
                 builder.appendLine(
-                    "- ${c.date}: 总分 ${c.total ?: "?"}，体力 ${c.physical?.toInt() ?: "?"}，精神 ${c.mental?.toInt() ?: "?"}"
+                    "- ${c.date}: " + buildList {
+                        val morning = c.morningScore(data.nightOn(c.date)?.endEpochSec)
+                        add("晨起 ${morning ?: "未给出"}")
+                        if (c.date == today) {
+                            add("当前 ${c.total ?: "未给出"}")
+                            c.physical?.let { add("当前体力 ${it.toInt()}") }
+                            c.mental?.let { add("当前精神 ${it.toInt()}") }
+                        }
+                    }.joinToString("，")
                 )
             }
         }

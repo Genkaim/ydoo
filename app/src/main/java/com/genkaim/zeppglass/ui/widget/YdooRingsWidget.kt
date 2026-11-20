@@ -31,10 +31,9 @@ import kotlin.math.min
  * Home-screen widget with the three rings from the top of the home page.
  *
  * It reads the same on-disk snapshot the app opens with and applies the same
- * rules: today's numbers, the three-hour freshness window, the score bands for
- * 睡眠 / Charge, and the 15-of-21 split on 负荷. Missing data stays `--`, never
- * a zero. Colours resolve through resources with `-night` variants, so the card
- * follows the system light/dark setting.
+ * rules: today's numbers, the score bands for 睡眠 / Charge, and the 15-of-21
+ * split on 负荷. Missing data stays `--`, never a zero. Colours follow the app's
+ * own theme setting (see buildViews).
  *
  * OEM notes (why the card is built the way it is):
  * - The rings are bitmaps, not vector drawables in RemoteViews: launchers
@@ -61,11 +60,13 @@ class YdooRingsWidget : AppWidgetProvider() {
         // Keep the midnight wake-up alive even on OEMs that never re-send
         // onEnabled after the first placement.
         scheduleDaily(app)
-        // A widget provider's onUpdate runs on the main thread; parsing the
-        // snapshot and drawing bitmaps must not happen there.
+        scheduleRefresh(app)
+        // A widget provider's onUpdate runs on the main thread; the snapshot
+        // parse, the sync request and the bitmap drawing all belong elsewhere.
         val pending = goAsync()
         Thread({
             try {
+                maybeRefresh(app)
                 appWidgetIds.forEach { id ->
                     appWidgetManager.updateAppWidget(id, buildViews(app, id))
                 }
@@ -100,6 +101,7 @@ class YdooRingsWidget : AppWidgetProvider() {
     /** First widget placed: start the once-a-day refresh. */
     override fun onEnabled(context: Context) {
         scheduleDaily(context)
+        scheduleRefresh(context)
     }
 
     /** Last widget removed: nothing left to wake up for. */
@@ -116,9 +118,11 @@ class YdooRingsWidget : AppWidgetProvider() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 scheduleDaily(context)
-                updateAll(context)
+                scheduleRefresh(context)
+                Thread { maybeRefresh(context); updateAll(context) }.start()
             }
-            ACTION_DAILY -> updateAll(context)
+            ACTION_DAILY -> Thread { maybeRefresh(context); updateAll(context) }.start()
+            ACTION_REFRESH -> Thread { maybeRefresh(context); updateAll(context) }.start()
         }
     }
 
@@ -134,12 +138,37 @@ class YdooRingsWidget : AppWidgetProvider() {
         private const val ACTION_DAILY = "com.genkaim.zeppglass.widget.DAILY_REFRESH"
         private const val REQUEST_DAILY = 7301
 
-        /** Same rule as the home page: older than three hours reads as `--`. */
-        private const val STALE_WINDOW_MS = 3 * 60 * 60 * 1000L
+        /**
+         * Data heartbeat, separate from the day rollover. `updatePeriodMillis`
+         * is throttled or dropped entirely on several OEM power managers, so a
+         * two-hourly alarm is what actually keeps the numbers moving.
+         */
+        private const val ACTION_REFRESH = "com.genkaim.zeppglass.widget.REFRESH"
+        private const val REQUEST_REFRESH = 7302
+        private const val REFRESH_PERIOD_MS = 2 * 60 * 60 * 1000L
 
         /** 15 of 21 is the watch's "high load" threshold, as on the home ring. */
         private const val STRAIN_HIGH = 15f
         private const val STRAIN_MAX = 21f
+
+        /** How often the card is allowed to pull new data on its own. */
+        private const val REFRESH_INTERVAL_MS = 15 * 60 * 1000L
+
+        /**
+         * The widget's heartbeat also fetches: redrawing the last snapshot is
+         * not a refresh, and a phone left in a pocket would show yesterday's
+         * numbers until the app was opened. The store serialises its requests,
+         * so a burst of alarms cannot stack several syncs.
+         */
+        private fun maybeRefresh(context: Context) {
+            val settings = AppSettings.get(context)
+            if (!settings.isLoggedIn) return
+            val cached = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
+            val age = System.currentTimeMillis() - (cached?.fetchedAt ?: 0L)
+            if (cached == null || age > REFRESH_INTERVAL_MS) {
+                runCatching { HealthStore.get(context, settings).refresh() }
+            }
+        }
 
         /** Redraw every placed widget from the current snapshot. */
         fun updateAll(context: Context) {
@@ -192,6 +221,26 @@ class YdooRingsWidget : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+        /** Two-hourly data heartbeat; see [ACTION_REFRESH]. */
+        fun scheduleRefresh(context: Context) {
+            val app = context.applicationContext
+            val manager = app.getSystemService(android.app.AlarmManager::class.java) ?: return
+            val intent = PendingIntent.getBroadcast(
+                app,
+                REQUEST_REFRESH,
+                Intent(app, YdooRingsWidget::class.java).setAction(ACTION_REFRESH),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            runCatching {
+                manager.setInexactRepeating(
+                    android.app.AlarmManager.RTC,
+                    System.currentTimeMillis() + 10 * 60 * 1000L,
+                    REFRESH_PERIOD_MS,
+                    intent
+                )
+            }
+        }
+
         private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
             val density = context.resources.displayMetrics.density
             fun px(dp: Int): Int = (dp * density).toInt()
@@ -214,11 +263,13 @@ class YdooRingsWidget : AppWidgetProvider() {
             val data = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
             val zone = ZoneId.systemDefault()
             val today = LocalDate.now(zone)
-            val fresh = data != null && System.currentTimeMillis() - data.fetchedAt <= STALE_WINDOW_MS
 
-            val sleepScore = if (fresh) data?.nightOn(today)?.score else null
-            val chargeScore = if (fresh) data?.chargeOn(today)?.total else null
-            val strain = if (fresh) data?.strainOn(today)?.strain else null
+            // No age rule: the last real reading stays on the card until a new
+            // one lands. The sync itself is kicked off on the provider's own
+            // heartbeat, so the numbers do move without opening the app.
+            val sleepScore = data?.nightOn(today)?.score
+            val chargeScore = data?.chargeOn(today)?.total
+            val strain = data?.strainOn(today)?.strain
 
             // The card follows the app's own 深色/浅色 setting, not the system
             // one: 跟随系统 defers to the system configuration, the other two are
@@ -335,11 +386,7 @@ class YdooRingsWidget : AppWidgetProvider() {
             // The logo replaced the title; only an exception gets a word here.
             views.setTextViewText(
                 R.id.widget_status,
-                when {
-                    data == null -> context.getString(R.string.widget_rings_empty)
-                    !fresh -> context.getString(R.string.widget_rings_stale)
-                    else -> ""
-                }
+                if (data == null) context.getString(R.string.widget_rings_empty) else ""
             )
             views.setTextColor(R.id.widget_status, muted)
 

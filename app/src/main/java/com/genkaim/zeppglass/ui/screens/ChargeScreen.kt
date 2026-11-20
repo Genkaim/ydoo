@@ -162,12 +162,19 @@ fun ChargeScreen(
                         FlatPanel {
                             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                                 if (spans.isEmpty()) {
-                                    Text(
-                                        "今天还没有记录到睡眠或运动。",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(vertical = 12.dp)
-                                    )
+                                    // Same inset as the rows below it, so the
+                                    // empty card has the width of every other card.
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 14.dp)
+                                    ) {
+                                        Text(
+                                            "暂无今日活动",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 } else {
                                     // Newest first: the stretch that just ended
                                     // matters more than last night's.

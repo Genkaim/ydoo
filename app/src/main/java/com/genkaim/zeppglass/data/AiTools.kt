@@ -96,9 +96,13 @@ object AiTools {
                 rows.put(
                     JSONObject().apply {
                         put("date", c.date.toString())
-                        c.total?.let { put("total", it) }
-                        c.physical?.let { put("physical", "%.1f".format(it)) }
-                        c.mental?.let { put("mental", "%.1f".format(it)) }
+                        // 晨起 is the value at waking; total is the value now. They
+                        // are different readings and must not be swapped.
+                        c.morningScore(data.nightOn(c.date)?.endEpochSec)?.let { put("morning", it) }
+                            ?: put("morning", JSONObject.NULL)
+                        c.total?.let { put("now_total", it) }
+                        c.physical?.let { put("now_physical", "%.1f".format(it)) }
+                        c.mental?.let { put("now_mental", "%.1f".format(it)) }
                     }
                 )
             }
@@ -106,6 +110,8 @@ object AiTools {
                 rows.put(
                     JSONObject().apply {
                         put("date", r.date.toString())
+                        // Only a day the watch actually scored has a 准备度;
+                        // HRV/RHR rows without one are not a score.
                         r.officialScore?.let { put("score", it) }
                         r.hrvScore?.let { put("hrv_score", it) }
                         r.rhrScore?.let { put("rhr_score", it) }
@@ -115,6 +121,7 @@ object AiTools {
                         r.mentalScore?.let { put("mental", it) }
                         r.ahiScore?.let { put("breathing", it) }
                         r.skinTempScore?.let { put("skin_temp", it) }
+                        if (r.officialScore == null) put("score_given", false)
                     }
                 )
             }

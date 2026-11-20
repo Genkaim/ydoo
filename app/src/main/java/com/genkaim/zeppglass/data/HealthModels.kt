@@ -88,19 +88,30 @@ data class ChargeDay(
 )
 
 /**
- * Charge at waking: the reading closest to the moment the band recorded waking
- * up. Falls back to the day's last score when there is no sleep record.
+ * Charge at waking: the reading the band recorded around the moment the night
+ * ended.
+ *
+ * Without a sleep record there is no "waking" reading at all. Falling back to
+ * the day's last sample meant that after midnight the card showed the current
+ * evening value as if it were the morning one, so the fallback is gone: a
+ * missing morning reading stays missing.
  */
 fun ChargeDay.morningSample(wakeEpochSec: Long?): ChargeSample? {
+    val wake = wakeEpochSec ?: return null
     val valid = samples.filter { it.total != null }
     if (valid.isEmpty()) return null
-    if (wakeEpochSec == null) return valid.lastOrNull()
-    val target = wakeEpochSec * 1000
-    return valid.minByOrNull { kotlin.math.abs(it.epochMs - target) }
+    val wakeMs = wake * 1000L
+    // Anywhere from an hour before waking to three hours after: the watch drops
+    // the reading somewhere in that window, and nothing later belongs to it.
+    val from = wakeMs - 60 * 60 * 1000L
+    val to = wakeMs + 3 * 60 * 60 * 1000L
+    return valid
+        .filter { it.epochMs in from..to }
+        .minByOrNull { kotlin.math.abs(it.epochMs - wakeMs) }
 }
 
 fun ChargeDay.morningScore(wakeEpochSec: Long?): Int? =
-    morningSample(wakeEpochSec)?.total ?: total
+    morningSample(wakeEpochSec)?.total
 
 data class ReadinessDay(
     val date: LocalDate,

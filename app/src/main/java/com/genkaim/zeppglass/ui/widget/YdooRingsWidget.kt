@@ -25,6 +25,7 @@ import com.genkaim.zeppglass.data.HealthStore
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
+import kotlinx.coroutines.runBlocking
 import kotlin.math.min
 
 /**
@@ -66,7 +67,9 @@ class YdooRingsWidget : AppWidgetProvider() {
         val pending = goAsync()
         Thread({
             try {
-                maybeRefresh(app)
+                // Wait for the sync (when one runs) before drawing, so the card
+                // shows the data this alarm just fetched.
+                runCatching { maybeRefresh(app)?.let { job -> runBlocking { job.join() } } }
                 appWidgetIds.forEach { id ->
                     appWidgetManager.updateAppWidget(id, buildViews(app, id))
                 }
@@ -119,11 +122,30 @@ class YdooRingsWidget : AppWidgetProvider() {
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 scheduleDaily(context)
                 scheduleRefresh(context)
-                Thread { maybeRefresh(context); updateAll(context) }.start()
+                launchWork(context)
             }
-            ACTION_DAILY -> Thread { maybeRefresh(context); updateAll(context) }.start()
-            ACTION_REFRESH -> Thread { maybeRefresh(context); updateAll(context) }.start()
+            ACTION_DAILY -> launchWork(context)
+            ACTION_REFRESH -> launchWork(context)
         }
+    }
+
+    /**
+     * Runs one alarm's sync-and-redraw on a background thread, held alive with
+     * goAsync: without it the process can be reclaimed mid-request and the card
+     * keeps its old picture with no retry until the next alarm.
+     */
+    private fun launchWork(context: Context) {
+        val app = context.applicationContext
+        val pending = goAsync()
+        Thread({
+            try {
+                syncThenUpdate(app)
+            } catch (t: Throwable) {
+                Log.w(TAG, "alarm work failed", t)
+            } finally {
+                pending.finish()
+            }
+        }, "ydoo-widget-alarm").start()
     }
 
     companion object {
@@ -165,15 +187,30 @@ class YdooRingsWidget : AppWidgetProvider() {
          * not a refresh, and a phone left in a pocket would show yesterday's
          * numbers until the app was opened. The store serialises its requests,
          * so a burst of alarms cannot stack several syncs.
+         *
+         * Returns the running job (or null when the snapshot is fresh), so the
+         * caller can rebuild the card after the new data is actually on disk.
          */
-        private fun maybeRefresh(context: Context) {
+        private fun maybeRefresh(context: Context): kotlinx.coroutines.Job? {
             val settings = AppSettings.get(context)
-            if (!settings.isLoggedIn) return
+            if (!settings.isLoggedIn) return null
             val cached = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
             val age = System.currentTimeMillis() - (cached?.fetchedAt ?: 0L)
-            if (cached == null || age > REFRESH_INTERVAL_MS) {
-                runCatching { HealthStore.get(context, settings).refresh() }
+            return if (cached == null || age > REFRESH_INTERVAL_MS) {
+                runCatching { HealthStore.get(context, settings).refresh() }.getOrNull()
+            } else {
+                null
             }
+        }
+
+        /**
+         * One alarm's work: sync if the snapshot is stale, wait for it to land,
+         * then redraw. Redrawing before the sync finished was why a fresh number
+         * only appeared one alarm (fifteen minutes) late.
+         */
+        private fun syncThenUpdate(context: Context) {
+            runCatching { maybeRefresh(context)?.let { job -> runBlocking { job.join() } } }
+            updateAll(context)
         }
 
         /** Redraw every placed widget from the current snapshot. */

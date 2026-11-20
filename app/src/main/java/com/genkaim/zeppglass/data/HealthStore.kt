@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -97,15 +98,20 @@ class HealthStore private constructor(
         if (System.currentTimeMillis() - last > minAgeMs) refresh()
     }
 
-    fun refresh() {
+    /**
+     * Starts a full refresh and hands back the job. Callers that draw the result
+     * (the widget) wait on it, so the new snapshot is on disk before the card is
+     * rebuilt; the UI ignores the return value.
+     */
+    fun refresh(): Job? {
         // Only a refresh that is actually running may block another one. The UI
         // flags are not used here: `loading` stays true until the first answer
         // lands, which is exactly when the user wants a refresh to go out.
-        if (!inFlight.compareAndSet(false, true)) return
+        if (!inFlight.compareAndSet(false, true)) return null
         if (!settings.isLoggedIn) {
             inFlight.set(false)
             state = state.copy(error = null, loading = false, refreshing = false)
-            return
+            return null
         }
         // Flip the flag now, not inside the coroutine: the pull-to-refresh
         // gesture reads it on the same frame and returns the page at once.
@@ -114,7 +120,7 @@ class HealthStore private constructor(
         // request bumps [generation] and clears the flag itself, so the old run
         // must not unlock a newer one when it finally finishes.
         val owner = generation
-        scope.launch {
+        return scope.launch {
             try {
                 doRefreshSafely()
                 // A freshly captured token is sometimes not propagated on the

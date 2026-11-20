@@ -1,5 +1,6 @@
 package com.genkaim.zeppglass.ui
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -54,6 +55,10 @@ class DietCameraActivity : ComponentActivity() {
         // A configuration change while the camera is open must not retake the
         // photo: the contract restores its own result.
         if (savedInstanceState != null) return
+        // The widget can start this activity in a fresh process, where nothing has
+        // attached the diet store yet; without it the photo file has no directory
+        // and the FileProvider URI throws.
+        DietStore.attach(this)
 
         val settings = AppSettings.get(this)
         setContent {
@@ -80,23 +85,48 @@ class DietCameraActivity : ComponentActivity() {
     }
 
     private fun openCamera() {
+        photo?.delete()
         val file = DietStore.newPhotoFile()
         photo = file
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val uri = runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        }.getOrNull()
+        if (uri == null) {
+            // The provider refused the path: do not leave the user on a blank page.
+            file.delete()
+            photo = null
+            openDietPage()
+            return
+        }
         runCatching { capture.launch(uri) }.onFailure {
             // No camera app, or the intent was refused: land on the diet page
             // rather than leaving the user on a blank screen that vanishes.
             file.delete()
             photo = null
-            runCatching {
-                startActivity(
-                    DetailActivity.intent(
-                        this,
-                        DetailTarget(DetailKind.DIET, DietStore.logicalToday())
-                    )
-                )
-            }
-            finish()
+            openDietPage()
         }
+    }
+
+    /**
+     * A second tap on the widget while this activity is still alive delivers a
+     * new intent instead of creating the activity again. Without this the page
+     * came up and did nothing — the "only the first tap works" symptom.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openCamera()
+    }
+
+    private fun openDietPage() {
+        runCatching {
+            startActivity(
+                DetailActivity.intent(
+                    this,
+                    DetailTarget(DetailKind.DIET, DietStore.logicalToday())
+                )
+            )
+        }
+        finish()
     }
 }

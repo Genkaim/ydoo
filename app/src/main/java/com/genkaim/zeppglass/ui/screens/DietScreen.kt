@@ -182,6 +182,11 @@ fun DietDetail(
     }
     val goal = settings.dietGoalOrCut
 
+    // Photos that arrive from the camera-first flow (widget) are logged as soon
+    // as the AI answers: that path exists to capture a meal in one gesture, so
+    // asking for a second confirmation would defeat it.
+    val autoAdd = shoot || pendingPhoto != null
+
     fun analyze(file: File) {
         flow = PhotoFlow.Loading(file)
         error = null
@@ -193,7 +198,7 @@ fun DietDetail(
                 }
                 val json = parseFoodJson(text)
                     ?: error("AI 返回的内容不是可用的估算：${text.take(60)}")
-                draft = MealDraft(
+                val estimated = MealDraft(
                     id = null,
                     epochMs = System.currentTimeMillis(),
                     photoPath = file.absolutePath,
@@ -203,6 +208,23 @@ fun DietDetail(
                     fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
                     note = json.optString("note").takeIf { it.isNotBlank() }
                 )
+                if (autoAdd) {
+                    DietStore.add(
+                        Meal(
+                            id = UUID.randomUUID().toString(),
+                            epochMs = estimated.epochMs,
+                            photoPath = estimated.photoPath,
+                            calories = estimated.items.sumOf { it.kcal ?: 0 },
+                            proteinG = estimated.proteinG,
+                            carbsG = estimated.carbsG,
+                            fatG = estimated.fatG,
+                            items = estimated.items,
+                            note = estimated.note
+                        )
+                    )
+                } else {
+                    draft = estimated
+                }
                 flow = null
             } catch (e: Exception) {
                 // The failure belongs to the photo card, not to the page.

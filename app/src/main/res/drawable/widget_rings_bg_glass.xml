@@ -1,17 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Card background for domestic OEM launchers (MIUI/HyperOS, ColorOS, OriginOS…):
-  a heavily frosted card — the surface is only half opaque, so the wallpaper
-  reads through it, with a wide sheen falling from the top edge, a soft glow
-  along the bottom edge and a thin bright rim. That is the strongest "liquid
-  glass" a RemoteViews card can reach: a real backdrop blur is not available to
-  widgets, the frost is painted with translucency and gradients.
+  a frosted card — mostly opaque so the wallpaper only tints it, with a wide
+  sheen from the top edge, a soft glow along the bottom and a bright rim.
+  A real backdrop blur is not available to RemoteViews; the frost is painted
+  with a translucent fill and gradients.
   Pixel and other AOSP-like launchers keep the plain opaque card.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#80FFFFFF" />
+            <solid android:color="#B8FFFFFF" />
             <corners android:radius="40dp" />
         </shape>
     </item>
@@ -21,7 +20,7 @@
             <gradient
                 android:angle="270"
                 android:endColor="#00FFFFFF"
-                android:startColor="#73FFFFFF" />
+                android:startColor="#4DFFFFFF" />
             <corners android:radius="40dp" />
         </shape>
     </item>
@@ -30,7 +29,7 @@
             <solid android:color="#00000000" />
             <gradient
                 android:angle="90"
-                android:endColor="#1FFFFFFF"
+                android:endColor="#14FFFFFF"
                 android:startColor="#00FFFFFF" />
             <corners android:radius="40dp" />
         </shape>

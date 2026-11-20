@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Domestic OEM card in the app dark theme: half-opaque dark surface, top
+<!-- Domestic OEM card in the app dark theme: mostly opaque dark surface, top
      sheen, bottom glow and a bright rim. See the light file for why the frost is
      painted rather than blurred. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#8017181C" />
+            <solid android:color="#B817181C" />
             <corners android:radius="40dp" />
         </shape>
     </item>
@@ -15,7 +15,7 @@
             <gradient
                 android:angle="270"
                 android:endColor="#00FFFFFF"
-                android:startColor="#3DFFFFFF" />
+                android:startColor="#2EFFFFFF" />
             <corners android:radius="40dp" />
         </shape>
     </item>
@@ -24,7 +24,7 @@
             <solid android:color="#00000000" />
             <gradient
                 android:angle="90"
-                android:endColor="#14FFFFFF"
+                android:endColor="#0FFFFFFF"
                 android:startColor="#00FFFFFF" />
             <corners android:radius="40dp" />
         </shape>

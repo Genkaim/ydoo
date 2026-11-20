@@ -492,20 +492,25 @@ fun OverviewScreen(
 
         // The date menu is a layer of its own, hung under the header: opening it
         // covers the first cards instead of inserting a block that pushes the
-        // whole page down.
+        // whole page down. The layer is offset a little above the header's lower
+        // edge because the sheet's own margin below re-adds that gap.
         AnimatedVisibility(
             visible = calendarOpen,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = headerHeight)
+                .padding(top = headerHeight - 6.dp)
         ) {
             val sheetShape = RoundedCornerShape(30.dp)
+            // The margin is what keeps the drop shadow whole: AnimatedVisibility
+            // clips its content to the animated height, so a shadow drawn at the
+            // card's own edge gets cut off. Here it has 18dp sideways and 12dp
+            // above and below to fall into.
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
                     // A month with six weeks is taller than one with five, so the
                     // sheet animates between the two heights instead of jumping
                     // when the arrows are tapped.
@@ -514,7 +519,7 @@ fun OverviewScreen(
                     // the cards and reads as page text. The shadow lifts it off
                     // the page so it is clear the cards behind it are not part
                     // of the menu.
-                    .shadow(18.dp, sheetShape)
+                    .shadow(12.dp, sheetShape)
                     .background(MaterialTheme.colorScheme.surface, sheetShape)
                     .padding(vertical = 6.dp)
             ) {

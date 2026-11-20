@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -72,10 +73,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
@@ -195,11 +199,17 @@ fun OverviewScreen(
     var headerHeight by remember { mutableStateOf(52.dp) }
     val density = LocalDensity.current
     val pageBackground = MaterialTheme.colorScheme.background
+    val haptics = LocalHapticFeedback.current
     Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = state.refreshing,
-            onRefresh = { store.refresh() },
+            onRefresh = {
+                // A short buzz confirms the gesture crossed the threshold; it
+                // only fires for a pull, not for a background sync.
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                store.refresh()
+            },
             state = pullState,
             modifier = Modifier
                 .fillMaxSize(),
@@ -519,27 +529,42 @@ fun OverviewScreen(
 }
 
 /**
- * Small dial that hangs under the header while the page is being pulled. It has
- * its own surface so it stays readable over the rings behind it.
+ * The dial that hangs under the header while the page is being pulled. It has
+ * its own surface so it stays readable over the rings behind it, and it fades
+ * and grows in as the pull passes the threshold instead of popping into place.
  */
 @Composable
 private fun PullDial(progress: Float?, modifier: Modifier = Modifier) {
+    // While refreshing the dial is fully present; while pulling it follows the
+    // finger, with a short animation so the surface appears rather than blinks.
+    val target = if (progress == null) 1f else progress.coerceIn(0f, 1f)
+    val presence by animateFloatAsState(
+        targetValue = target,
+        animationSpec = tween(durationMillis = 140),
+        label = "pullDialPresence"
+    )
+    val surface = MaterialTheme.colorScheme.surface
     Box(
         modifier
-            .size(32.dp)
-            .background(MaterialTheme.colorScheme.surface, CircleShape),
+            .size(46.dp)
+            .graphicsLayer {
+                alpha = presence
+                scaleX = 0.82f + 0.18f * presence
+                scaleY = 0.82f + 0.18f * presence
+            }
+            .background(surface.copy(alpha = 0.55f + 0.45f * presence), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         if (progress == null) {
             CircularProgressIndicator(
-                modifier = Modifier.size(18.dp),
-                strokeWidth = 2.dp
+                modifier = Modifier.size(26.dp),
+                strokeWidth = 2.5.dp
             )
         } else {
             CircularProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.size(18.dp),
-                strokeWidth = 2.dp,
+                modifier = Modifier.size(26.dp),
+                strokeWidth = 2.5.dp,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f + 0.55f * progress),
                 trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
             )

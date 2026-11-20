@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget card: flat, no border, the same "paper on desk" look as the app. -->
+<!--
+  Widget card, light theme: a slightly translucent white so the wallpaper shows
+  through instead of a flat, opaque block. The alpha is baked into the colour —
+  RemoteViews cannot apply real blur.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/widget_surface" />
+    <solid android:color="#E6FFFFFF" />
     <corners android:radius="40dp" />
 </shape>

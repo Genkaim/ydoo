@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -446,7 +447,9 @@ fun AiScreen(
         ModalBottomSheet(
             onDismissRequest = { showHistory = false },
             sheetState = sheetState,
-            containerColor = MaterialTheme.colorScheme.surface
+            // The sheet is the page tint, so the conversation cards read as white
+            // (dark cards in dark mode) the same way they do on every other page.
+            containerColor = MaterialTheme.colorScheme.background
         ) {
             HistorySheet(
                 sessions = AiChatSession.sessions,
@@ -1011,10 +1014,14 @@ private fun HistorySheet(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+                                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(Modifier.weight(1f)) {
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 4.dp)
+                            ) {
                                 Text(
                                     session.title,
                                     style = MaterialTheme.typography.bodyMedium,
@@ -1038,19 +1045,30 @@ private fun HistorySheet(
                                     )
                                 }
                             }
+                            // The key takes the card's full inner height, so the
+                            // touch target matches the card instead of floating
+                            // in the middle of it.
                             Surface(
                                 onClick = { onDelete(session.id) },
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 tonalElevation = 0.dp,
-                                shadowElevation = 0.dp
+                                shadowElevation = 0.dp,
+                                modifier = Modifier
+                                    .align(Alignment.CenterVertically)
+                                    .height(44.dp)
                             ) {
-                                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                                Box(
+                                    Modifier
+                                        .height(44.dp)
+                                        .width(44.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
                                         Icons.Rounded.DeleteOutline,
                                         contentDescription = "删除对话",
-                                        modifier = Modifier.size(17.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }

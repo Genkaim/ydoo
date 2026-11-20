@@ -78,7 +78,7 @@ fun PinnedPageHeader(
                     brush = Brush.verticalGradient(
                         colorStops = arrayOf(
                             0f to background,
-                            0.55f to background,
+                            0.38f to background,
                             1f to background.copy(alpha = 0f)
                         ),
                         startY = 0f,

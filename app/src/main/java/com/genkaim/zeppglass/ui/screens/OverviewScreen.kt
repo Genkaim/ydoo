@@ -560,7 +560,7 @@ fun OverviewScreen(
                         brush = Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0f to pageBackground,
-                                0.62f to pageBackground,
+                                0.38f to pageBackground,
                                 1f to pageBackground.copy(alpha = 0f)
                             ),
                             startY = 0f,

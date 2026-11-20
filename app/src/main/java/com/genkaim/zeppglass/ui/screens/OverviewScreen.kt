@@ -1169,7 +1169,7 @@ private fun ActivityCard(
                     Text(
                         " / $goal 步",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(bottom = 5.dp, start = 4.dp)
                     )
                 }

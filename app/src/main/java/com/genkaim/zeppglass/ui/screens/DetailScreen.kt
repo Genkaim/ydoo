@@ -2010,7 +2010,7 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
                 Text(
                     " 次/分",
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (abnormal) rhrVerdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) rhrVerdict.second else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -2106,7 +2106,7 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                 Text(
                     " 毫秒",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) hrvVerdict.second else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -2280,7 +2280,7 @@ private fun StageBlock(
                 Text(
                     suffix,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (abnormal) verdict!!.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) verdict!!.second else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
                 )
@@ -2336,7 +2336,9 @@ private fun SleepVitalTile(
                 Text(
                     " $unit",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    // The unit is part of the reading, so it takes the same
+                    // colour as the number and its verdict.
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 3.dp)
                 )
                 if (verdict != null) {
@@ -2574,7 +2576,7 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
                 Text(
                     " %",
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -2689,7 +2691,7 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                 Text(
                     " 分",
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -2805,7 +2807,7 @@ private fun SleepMetricDetail(data: HealthData?, date: LocalDate?, metric: Sleep
                 Text(
                     " ${metric.unit}",
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }

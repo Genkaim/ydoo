@@ -354,7 +354,8 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
             Text(
                 " kcal",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (remaining != null && remaining < 0) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 10.dp)
             )
         }

@@ -247,7 +247,9 @@ fun MetricTile(
                     Text(
                         unit,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                        // The unit belongs to the number: same colour, never the
+                        // muted grey that made "82 %" look like two readings.
+                        color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(start = 3.dp, bottom = 3.dp)
                     )
                 }

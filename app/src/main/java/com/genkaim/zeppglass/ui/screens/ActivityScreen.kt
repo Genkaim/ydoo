@@ -412,7 +412,7 @@ private fun LoadRecoveryCard(
                         Text(
                             " ml/kg",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(bottom = 3.dp)
                         )
                     }

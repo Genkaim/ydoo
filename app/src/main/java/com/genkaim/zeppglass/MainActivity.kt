@@ -16,6 +16,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val settings = AppSettings.get(this)
+        // The diet log is read by screens and by the AI coach; loading it here
+        // means the coach sees today's meals even when the diet page was never
+        // opened in this session.
+        com.genkaim.zeppglass.data.DietStore.attach(this)
         // The snapshot is read once, before the first frame, so opening the app
         // draws the last data instead of flashing a "syncing" card.
         HealthStore.get(this, settings)

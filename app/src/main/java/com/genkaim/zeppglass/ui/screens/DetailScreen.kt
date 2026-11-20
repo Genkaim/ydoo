@@ -327,9 +327,9 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                 fun share(minutes: Int?): Double? =
                     if (minutes == null || sleepTotal == null) null else minutes * 100.0 / sleepTotal
                 // The number alone does not say whether a stage is short, so the
-                // share of the night sits right after it.
-                fun withShare(minutes: Int?): String =
-                    Fmt.hoursMinutes(minutes) + (share(minutes)?.let { " · ${it.roundToInt()}%" } ?: "")
+                // share of the night follows it in brackets at a smaller size.
+                fun shareText(minutes: Int?): String? =
+                    share(minutes)?.let { "（${it.roundToInt()}%）" }
                 val normalColor = MaterialTheme.colorScheme.onSurface
                 val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
                 fun verdict(pct: Double?, low: Double, high: Double): Pair<String, Color> = when {
@@ -346,17 +346,21 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         Modifier.weight(1f),
                         Icons.Rounded.DarkMode,
                         "深睡",
-                        withShare(night.deepMinutes),
+                        Fmt.hoursMinutes(night.deepMinutes),
                         palette.sleepDeep,
-                        verdict(share(night.deepMinutes), 13.0, 23.0)
+                        verdict(share(night.deepMinutes), 10.0, 35.0),
+                        suffix = shareText(night.deepMinutes)
                     )
                     StageBlock(
                         Modifier.weight(1f),
                         Icons.Rounded.LightMode,
                         "浅睡",
-                        withShare(night.lightMinutes),
+                        Fmt.hoursMinutes(night.lightMinutes),
                         palette.sleepLight,
-                        verdict(share(night.lightMinutes), 40.0, 60.0)
+                        // Light sleep is whatever is left; a rating on it would
+                        // only restate the other three stages.
+                        null,
+                        suffix = shareText(night.lightMinutes)
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -368,24 +372,25 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                         Modifier.weight(1f),
                         Icons.Rounded.AutoAwesome,
                         "REM",
-                        withShare(night.remMinutes),
+                        Fmt.hoursMinutes(night.remMinutes),
                         palette.sleepRem,
-                        verdict(share(night.remMinutes), 18.0, 25.0)
+                        verdict(share(night.remMinutes), 10.0, 35.0),
+                        suffix = shareText(night.remMinutes)
                     )
                     StageBlock(
                         Modifier.weight(1f),
                         Icons.Rounded.Visibility,
                         "清醒",
-                        // Awakenings are counted, not timed: how often the night
-                        // broke matters more than the minutes spent awake.
-                        night.wakeCount?.let { "$it 次" }
-                            ?: Fmt.hoursMinutes(night.awakeMinutes),
+                        // Minutes stay the headline; the number of times the night
+                        // broke is the bracket beside it.
+                        Fmt.hoursMinutes(night.awakeMinutes),
                         palette.sleepAwake,
                         verdict(
                             if (night.awakeMinutes == null || inBed <= 0) null
                             else night.awakeMinutes * 100.0 / inBed,
                             0.0, 8.0
-                        )
+                        ),
+                        suffix = night.wakeCount?.let { "（$it 次）" }
                     )
                 }
                 Spacer(Modifier.height(14.dp))
@@ -2245,7 +2250,8 @@ private fun StageBlock(
     label: String,
     value: String,
     tint: Color,
-    verdict: Pair<String, Color>
+    verdict: Pair<String, Color>?,
+    suffix: String? = null
 ) {
     Column(modifier, horizontalAlignment = Alignment.Start) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2262,19 +2268,32 @@ private fun StageBlock(
         // Value and verdict share one line: the rating reads as a gloss on the
         // number instead of adding a second row that makes cards uneven.
         Row(verticalAlignment = Alignment.Bottom) {
-            val abnormal = verdict.first == "偏低" || verdict.first == "偏高"
+            val abnormal = verdict?.first?.let { it == "偏低" || it == "偏高" } == true
             Text(
                 value,
                 style = MaterialTheme.typography.titleLarge,
-                color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
+                color = if (abnormal) verdict!!.second else MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                verdict.first,
-                style = MaterialTheme.typography.labelSmall,
-                color = verdict.second,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
-            )
+            if (suffix != null) {
+                // The share is a gloss on the duration, not a second number:
+                // smaller type, in brackets, right after the time.
+                Text(
+                    suffix,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (abnormal) verdict!!.second else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
+                )
+            }
+            if (verdict != null) {
+                Text(
+                    verdict.first,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = verdict.second,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
+                )
+            }
         }
     }
 }

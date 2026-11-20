@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -186,45 +187,22 @@ fun OverviewScreen(
         }
     }
 
-    // Header in normal flow, content below it. Measuring the header and offsetting
-    // the content by that height made the page drop for a frame once the header's
-    // height changed (spinner appearing/disappearing), so the header no longer
-    // overlays the list.
-    Column(modifier.fillMaxSize()) {
-        HomeHeader(
-            date = date,
-            today = today,
-            expanded = calendarOpen,
-            loggedIn = settings.isLoggedIn,
-            onPrevious = { selectedText = date.minusDays(1).toString() },
-            onNext = { if (date < today) selectedText = date.plusDays(1).toString() },
-            onToggle = { calendarOpen = !calendarOpen },
-            onLogin = onLogin,
-            onOpenSettings = onOpenSettings
-        )
-        AnimatedVisibility(
-            visible = calendarOpen,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            MonthCalendar(
-                selected = date,
-                today = today,
-                onPick = {
-                    selectedText = it.toString()
-                    calendarOpen = false
-                }
-            )
-        }
-
+    // The header floats over the list with a gradient, like every other page:
+    // opaque at the very top, fully transparent at its lower edge, so cards fade
+    // out as they slide under it. The list keeps a top inset of the same height,
+    // so the first card still starts below the header and nothing jumps when the
+    // calendar folds the header taller.
+    var headerHeight by remember { mutableStateOf(52.dp) }
+    val density = LocalDensity.current
+    val pageBackground = MaterialTheme.colorScheme.background
+    Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = { store.refresh() },
             state = pullState,
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxSize(),
             // The page never moves with the finger. Pulling only reveals this
             // small dial under the header, and it withdraws the moment the finger
             // lifts; the dial itself reports the request.
@@ -235,13 +213,13 @@ fun OverviewScreen(
                         progress = null,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
+                            .padding(top = headerHeight + 8.dp)
                     )
                     fraction > 0.02f -> PullDial(
                         progress = fraction,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
+                            .padding(top = headerHeight + 8.dp)
                     )
                 }
             }
@@ -250,6 +228,7 @@ fun OverviewScreen(
                 Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .padding(top = headerHeight + 4.dp)
             ) {
                 Column(
                     Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
@@ -479,7 +458,7 @@ fun OverviewScreen(
                                 }
                             } else {
                                 Text(
-                                    "这是历史记录，不受 3 小时时效限制；没有采样的项目显示 --。",
+                                    "这是历史记录；没有采样的项目显示 --。",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -488,6 +467,52 @@ fun OverviewScreen(
                     }
                     Spacer(Modifier.height(104.dp))
                 }
+            }
+        }
+
+        // The header floats over the list, the same gradient every other page
+        // uses: opaque at the top edge, fully transparent at its lower edge.
+        // Its measured height becomes the list's top inset, so the first card
+        // still starts below it and opening the calendar pushes content down.
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .onSizeChanged { headerHeight = with(density) { it.height.toDp() } }
+                .drawBehind {
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(pageBackground, pageBackground.copy(alpha = 0f)),
+                            startY = 0f,
+                            endY = size.height
+                        )
+                    )
+                }
+        ) {
+            HomeHeader(
+                date = date,
+                today = today,
+                expanded = calendarOpen,
+                loggedIn = settings.isLoggedIn,
+                onPrevious = { selectedText = date.minusDays(1).toString() },
+                onNext = { if (date < today) selectedText = date.plusDays(1).toString() },
+                onToggle = { calendarOpen = !calendarOpen },
+                onLogin = onLogin,
+                onOpenSettings = onOpenSettings
+            )
+            AnimatedVisibility(
+                visible = calendarOpen,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                MonthCalendar(
+                    selected = date,
+                    today = today,
+                    onPick = {
+                        selectedText = it.toString()
+                        calendarOpen = false
+                    }
+                )
             }
         }
     }

@@ -44,6 +44,13 @@ import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 val PageHeaderHeight = 96.dp
 
 /**
+ * How far past its own height a header's fade reaches. Painting outside the
+ * header is fine — nothing clips it — and it keeps the gradient travelling over
+ * a longer distance instead of ending in a band under the title.
+ */
+val TailFade = 48.dp
+
+/**
  * Pins a page header over the scrolling content. The block is simply the page
  * colour: cards slide underneath it, with no fade or shadow at the edge.
  */
@@ -61,21 +68,23 @@ fun PinnedPageHeader(
             .onSizeChanged {
                 onHeight?.invoke(with(density) { it.height.toDp() })
             }
-            // Opaque at the top, fully transparent at the bottom: content scrolls
+            // Opaque at the top, fully transparent further down: content scrolls
             // under the title and fades out instead of meeting a hard edge. The
-            // solid part covers most of the header, so the title keeps a clean
-            // backing even when a card is directly under it.
+            // fade runs past the header's own height (TailFade), so the solid
+            // block does not end in a visible band under the title.
             .drawBehind {
+                val tail = TailFade.toPx()
                 drawRect(
                     brush = Brush.verticalGradient(
                         colorStops = arrayOf(
                             0f to background,
-                            0.62f to background,
+                            0.55f to background,
                             1f to background.copy(alpha = 0f)
                         ),
                         startY = 0f,
-                        endY = size.height
-                    )
+                        endY = size.height + tail
+                    ),
+                    size = androidx.compose.ui.geometry.Size(size.width, size.height + tail)
                 )
             },
         content = content

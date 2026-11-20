@@ -272,40 +272,24 @@ fun AiScreen(
     // scrolls out of view and back would fade in again.
     val playedEntrance = remember(AiChatSession.sessionEpoch) { mutableSetOf<String>() }
 
-    Column(
+    // The header floats over the transcript, the way every other page does it.
+    // Its gradient needs something travelling underneath to be visible at all;
+    // when the header sat in the column flow its lower half simply faded into
+    // the same page colour and the fade could not be seen.
+    var headerHeight by remember { mutableStateOf(0.dp) }
+
+    Box(
         modifier
             .fillMaxSize()
     ) {
-        // Same gradient as every other page: the header keeps an opaque backing
-        // that fades into the transcript.
-        PinnedPageHeader {
-            PageHeader(
-                title = "AI 教练",
-                subtitle = if (configured) settings.aiModel.ifBlank { "默认模型" } else "未接入",
-                trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { AiChatSession.newChat() }) {
-                            Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
-                        }
-                        IconButton(onClick = { showHistory = true }) {
-                            Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
-                        }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
-                        }
-                    }
-                }
-            )
-        }
-
         // The transcript runs to the bottom edge of the window and the deck
         // (suggestions, composer, the gap under them) floats over it. Nothing
         // paints a band behind the deck any more, so while the list scrolls its
         // messages stay visible in the margin around the capsules.
         Box(
             Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(top = headerHeight)
         ) {
             var deckPx by remember { mutableIntStateOf(0) }
             val deckSpace = with(density) { deckPx.toDp() }
@@ -432,6 +416,29 @@ fun AiScreen(
                     Spacer(Modifier.height(bottomSpace))
                 }
             }
+        }
+
+        PinnedPageHeader(
+            modifier = Modifier.align(Alignment.TopCenter),
+            onHeight = { headerHeight = it }
+        ) {
+            PageHeader(
+                title = "AI 教练",
+                subtitle = if (configured) settings.aiModel.ifBlank { "默认模型" } else "未接入",
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { AiChatSession.newChat() }) {
+                            Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
+                        }
+                        IconButton(onClick = { showHistory = true }) {
+                            Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Rounded.Settings, contentDescription = "AI 设置", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            )
         }
     }
 

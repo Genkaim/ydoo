@@ -154,6 +154,12 @@ class YdooRingsWidget : AppWidgetProvider() {
         /** How often the card is allowed to pull new data on its own. */
         private const val REFRESH_INTERVAL_MS = 15 * 60 * 1000L
 
+        /** Brands whose launchers use the glass card treatment. */
+        private val DOMESTIC_OEM_KEYS = listOf(
+            "xiaomi", "redmi", "poco", "oppo", "realme", "oneplus",
+            "vivo", "iqoo", "honor", "huawei", "meizu"
+        )
+
         /**
          * The widget's heartbeat also fetches: redrawing the last snapshot is
          * not a refresh, and a phone left in a pocket would show yesterday's
@@ -290,10 +296,20 @@ class YdooRingsWidget : AppWidgetProvider() {
             val warn = col(R.color.widget_warn, R.color.widget_warn_dark)
             val sleepBase = col(R.color.widget_sleep, R.color.widget_sleep_dark)
             val loadBase = col(R.color.widget_tertiary, R.color.widget_tertiary_dark)
+            // Domestic OEM launchers (MIUI/HyperOS, ColorOS, OriginOS…) draw their
+            // cards with a bright rim and a soft sheen; matching that keeps the
+            // widget from looking foreign. Pixel and AOSP-like systems keep the
+            // plain translucent card.
+            val glass = isDomesticOem()
             views.setInt(
                 R.id.widget_root,
                 "setBackgroundResource",
-                if (dark) R.drawable.widget_rings_bg_dark else R.drawable.widget_rings_bg
+                when {
+                    glass && dark -> R.drawable.widget_rings_bg_glass_dark
+                    glass -> R.drawable.widget_rings_bg_glass
+                    dark -> R.drawable.widget_rings_bg_dark
+                    else -> R.drawable.widget_rings_bg
+                }
             )
             views.setInt(
                 R.id.widget_diet_button,
@@ -404,6 +420,17 @@ class YdooRingsWidget : AppWidgetProvider() {
             drawable.setTint(tint)
             drawable.draw(Canvas(bitmap))
             return bitmap
+        }
+
+        /**
+         * MIUI/HyperOS, ColorOS and OriginOS style their cards with a glass rim;
+         * Pixel and other AOSP-like launchers do not, so the highlight is only
+         * added where the rest of the home screen has one.
+         */
+        private fun isDomesticOem(): Boolean {
+            val name = listOf(Build.BRAND, Build.MANUFACTURER, Build.MODEL)
+                .joinToString(" ").lowercase(Locale.ROOT)
+            return DOMESTIC_OEM_KEYS.any { it in name }
         }
 
         /** The brand mark drawn in the current text colour, at the given height. */

@@ -86,6 +86,7 @@ import com.genkaim.zeppglass.ui.components.CapsuleField
 import com.genkaim.zeppglass.ui.components.FlatButton
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.RoundIconButton
+import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.sheets.DietGoalSheet
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
@@ -456,20 +457,49 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     }
     }
 
+    // Intake, activity and the macros share one card: they answer one question
+    // ("what went in today"), and two separate cards made the page look like two
+    // unrelated readings.
     FlatPanel {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(16.dp)
         ) {
-            DietStat("已摄入", intake.toString(), "kcal", Modifier.weight(1f))
-            DietStat(
-                "今日活动消耗",
-                activeCalories?.roundToInt()?.toString() ?: "--",
-                "kcal",
-                Modifier.weight(1f)
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DietStat("已摄入", intake.toString(), "kcal", Modifier.weight(1f))
+                DietStat(
+                    "今日活动消耗",
+                    activeCalories?.roundToInt()?.toString() ?: "--",
+                    "kcal",
+                    Modifier.weight(1f)
+                )
+            }
+            if (meals.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Rule()
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DietStat(
+                        "蛋白质",
+                        protein?.roundToInt()?.toString() ?: "--",
+                        "g",
+                        Modifier.weight(1f)
+                    )
+                    DietStat(
+                        "碳水",
+                        meals.sumOf { it.carbsG ?: 0.0 }.roundToInt().toString(),
+                        "g",
+                        Modifier.weight(1f)
+                    )
+                    DietStat(
+                        "脂肪",
+                        meals.sumOf { it.fatG ?: 0.0 }.roundToInt().toString(),
+                        "g",
+                        Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 
@@ -498,36 +528,6 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     }
     if (bodyPoint != null) {
         BodyCompositionCard(bodyPoint, compositionPoint, data?.body)
-    }
-
-    if (meals.isNotEmpty()) {
-        FlatPanel {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DietStat(
-                    "蛋白质",
-                    protein?.roundToInt()?.toString() ?: "--",
-                    "g",
-                    Modifier.weight(1f)
-                )
-                DietStat(
-                    "碳水",
-                    meals.sumOf { it.carbsG ?: 0.0 }.roundToInt().toString(),
-                    "g",
-                    Modifier.weight(1f)
-                )
-                DietStat(
-                    "脂肪",
-                    meals.sumOf { it.fatG ?: 0.0 }.roundToInt().toString(),
-                    "g",
-                    Modifier.weight(1f)
-                )
-            }
-        }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -1,6 +1,8 @@
 package com.genkaim.zeppglass.data
 
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 /** One calendar day of activity, as the band reports it. */
 data class DayStat(
@@ -324,6 +326,25 @@ data class HealthData(
     fun latestWeight(): WeightPoint? = weights.maxByOrNull { it.epochMs }
     fun latestStrain(): StrainDay? = strain.maxByOrNull { it.date }
     fun strainOn(date: LocalDate): StrainDay? = strain.lastOrNull { it.date == date }
+
+    /**
+     * The load day that is still accumulating. It only rolls over once the sleep
+     * that crosses midnight has ended, so a heart rate at 01:00 adds to the day
+     * being closed instead of starting a fresh zero at midnight. Before 05:00
+     * there is no night ending this morning yet, so the boundary stands in.
+     */
+    fun strainDateNow(zone: ZoneId = ZoneId.systemDefault()): LocalDate {
+        val now = LocalDateTime.now(zone)
+        val today = now.toLocalDate()
+        if (now.hour < 5) return today.minusDays(1)
+        val wake = nightOn(today)?.endEpochSec
+        return if (wake != null && now.atZone(zone).toEpochSecond() < wake) {
+            today.minusDays(1)
+        } else {
+            today
+        }
+    }
+
     fun chargeOn(date: LocalDate): ChargeDay? = chargeDays.lastOrNull { it.date == date }
 
     fun nightOn(date: LocalDate): SleepNight? = nights.lastOrNull { it.date == date }

@@ -482,7 +482,13 @@ class YdooRingsWidget : AppWidgetProvider() {
             PendingIntent.getActivity(
                 context,
                 1,
-                DetailActivity.intent(context, DetailTarget(DetailKind.DIET, LocalDate.now())),
+                // The widget's fork-and-knife exists to log a meal, so it lands
+                // straight in the camera instead of the diet overview.
+                DetailActivity.intent(
+                    context,
+                    DetailTarget(DetailKind.DIET, com.genkaim.zeppglass.data.DietStore.logicalToday()),
+                    shoot = true
+                ),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 

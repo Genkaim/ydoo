@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,7 +87,16 @@ fun ActivityScreen(
     onOpenDetail: (DetailTarget) -> Unit
 ) {    val data = store.displayData
     val zone = remember { ZoneId.systemDefault() }
-    val today = remember { LocalDate.now() }
+    // A minute ticker keeps the page on the current day: a page left open past
+    // midnight used to keep yesterday until the app was restarted.
+    var today by remember { mutableStateOf(LocalDate.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            val now = LocalDate.now()
+            if (now != today) today = now
+        }
+    }
     val day = data?.day(today) ?: data?.latestDay()
     val labels = remember(data) {
         (13 downTo 0).map { offset ->
@@ -122,8 +132,11 @@ fun ActivityScreen(
             ?.map { it.second }
             .orEmpty()
     }
-    val restingHr = data?.readiness?.firstOrNull { it.date == today }?.sleepRhr
-        ?: day?.restingHr
+    // A resting heart rate the watch did not measure comes back as 0 (or 255),
+    // which is not a reading: both are dropped so the card shows -- instead of a
+    // physiologically impossible 0 bpm.
+    val restingHr = (data?.readiness?.firstOrNull { it.date == today }?.sleepRhr
+        ?: day?.restingHr)?.takeIf { it in 20..200 }
 
     var headerHeight by remember { mutableStateOf(0.dp) }
     val scope = rememberCoroutineScope()

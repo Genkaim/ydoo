@@ -291,8 +291,10 @@ private fun ChargeHero(charge: ChargeDay) {
     val warnTone = LocalZgPalette.current.warn
     fun tier(value: Double?, base: Color): Color = when {
         value == null -> base
-        value <= 5.0 -> crit
-        value < 50.0 -> warnTone
+        // Amber below 30, red below 5: 50 was high enough that a normal
+        // afternoon dip already looked like a warning.
+        value < 5.0 -> crit
+        value < 30.0 -> warnTone
         else -> base
     }
     val physicalColor = tier(charge.physical, MaterialTheme.colorScheme.primary)

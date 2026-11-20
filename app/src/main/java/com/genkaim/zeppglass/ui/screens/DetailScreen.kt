@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.ChargeDay
+import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.PaiDay
@@ -117,7 +118,8 @@ fun DetailScreen(
     store: HealthStore,
     target: DetailTarget,
     onClose: () -> Unit,
-    onOpen: (DetailTarget) -> Unit = {}
+    onOpen: (DetailTarget) -> Unit = {},
+    shoot: Boolean = false
 ) {
     val data = store.displayData
     val palette = LocalZgPalette.current
@@ -152,7 +154,12 @@ fun DetailScreen(
                 DetailKind.VO2 -> Vo2Detail(data)
                 DetailKind.RHR -> RhrDetail(data, target.date)
                 DetailKind.HRV -> HrvDetail(data, target.date)
-                DetailKind.DIET -> DietDetail(data, settings, target.date ?: LocalDate.now())
+                DetailKind.DIET -> DietDetail(
+                    data,
+                    settings,
+                    target.date ?: DietStore.logicalToday(),
+                    shoot = shoot
+                )
                 DetailKind.SLEEP_HR -> SleepMetricDetail(data, target.date, SleepMetric.HEART_RATE)
                 DetailKind.SLEEP_RR -> SleepMetricDetail(data, target.date, SleepMetric.RESPIRATION)
                 DetailKind.SLEEP_APNEA -> SleepMetricDetail(data, target.date, SleepMetric.APNEA)
@@ -1587,17 +1594,35 @@ private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthSt
         MetricTile("消耗", Fmt.int(workout.calories), "kcal", Modifier.weight(1f))
     }
 
+    // Everything else the watch attached to the session. Only the values that
+    // are actually there get a tile: a missing field is left out rather than
+    // printed as a dash, because this grid is about what the watch measured.
+    val extras = buildList {
+        workout.avgHr?.let { add(Triple("平均心率", it.roundToInt().toString(), "bpm")) }
+        workout.maxHr?.let { add(Triple("最高心率", it.roundToInt().toString(), "bpm")) }
+        workout.load?.let { add(Triple("训练负荷", it.roundToInt().toString(), null)) }
+        workout.steps?.let { add(Triple("步数", it.toString(), "步")) }
+        workout.avgCadence?.let { add(Triple("平均步频", it.roundToInt().toString(), "spm")) }
+        workout.maxCadence?.let { add(Triple("最高步频", it.roundToInt().toString(), "spm")) }
+        workout.altitudeGainM?.let { add(Triple("累计爬升", it.roundToInt().toString(), "m")) }
+        workout.altitudeLossM?.let { add(Triple("累计下降", it.roundToInt().toString(), "m")) }
+        workout.vo2Max?.let { add(Triple("最大摄氧量", it.toString(), "ml/kg/min")) }
+    }
+    extras.chunked(2).forEach { pair ->
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            pair.forEach { (label, value, unit) ->
+                MetricTile(label, value, unit, Modifier.weight(1f))
+            }
+            if (pair.size == 1) Spacer(Modifier.weight(1f))
+        }
+    }
+
     // Only curves the watch actually recorded get a chart: an indoor session
     // has no speed line, a flat one has no shape to show. Each metric is its own
     // group: a stats card (average / max / min) and the curve below it.
     val series = detail?.series.orEmpty()
     series.forEach { line ->
-        val tint = when (line.label) {
-            "心率" -> HeartRateRed
-            "速度" -> MaterialTheme.colorScheme.primary
-            "步频" -> MaterialTheme.colorScheme.tertiary
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
+        val tint = workoutSeriesTint(line.label)
         SectionTitle(line.label)
         FlatPanel {
             Row(
@@ -1688,6 +1713,68 @@ private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthSt
                 .fillMaxWidth()
                 .height(120.dp)
         )
+    }
+
+    // Every remaining raw field the detail payload carried, with the keys that
+    // have a known meaning translated. Unknown keys are still shown under their
+    // own name, so a new watch metric appears without a code change.
+    val rawFields = detail?.fields.orEmpty()
+    if (rawFields.isNotEmpty()) {
+        SectionTitle("详细数据", trailing = "${rawFields.size} 项")
+        FlatPanel {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                rawFields.forEach { (key, value) ->
+                    DataRow(workoutFieldLabel(key), workoutFieldValue(key, value))
+                }
+            }
+        }
+    }
+}
+
+/** Colour per curve; anything the watch adds later falls back to the muted ink. */
+@Composable
+private fun workoutSeriesTint(label: String): Color = when {
+    label.contains("心率") -> HeartRateRed
+    label.contains("速度") || label.contains("配速") -> MaterialTheme.colorScheme.primary
+    label.contains("步频") || label.contains("划频") -> MaterialTheme.colorScheme.tertiary
+    label.contains("海拔") -> LocalZgPalette.current.warn
+    label.contains("功率") -> MaterialTheme.colorScheme.secondary
+    label.contains("温度") -> LocalZgPalette.current.warn
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+/** Chinese label for the payload keys whose meaning is known. */
+private fun workoutFieldLabel(key: String): String = when (key) {
+    "distance" -> "距离"
+    "duration", "duration_time", "sport_time" -> "时长"
+    "calories", "calorie", "total_calories" -> "消耗"
+    "avg_heart_rate", "average_heart_rate" -> "平均心率"
+    "max_heart_rate" -> "最高心率"
+    "min_heart_rate" -> "最低心率"
+    "steps", "total_steps" -> "步数"
+    "cadence", "avg_cadence" -> "步频"
+    "max_cadence" -> "最高步频"
+    "pace", "avg_pace" -> "配速"
+    "altitude", "ascent", "total_ascent" -> "累计爬升"
+    "descent", "total_descent" -> "累计下降"
+    "load", "training_load", "training_effect" -> "训练负荷"
+    "vo2_max", "vo2max" -> "最大摄氧量"
+    "city" -> "城市"
+    "location", "address" -> "地点"
+    "device", "device_name" -> "设备"
+    "sport", "sport_type", "type" -> "运动类型"
+    else -> key
+}
+
+/** Seconds become a clock, metres become kilometres; everything else stays raw. */
+private fun workoutFieldValue(key: String, raw: String): String {
+    val number = raw.toDoubleOrNull() ?: return raw
+    val lower = key.lowercase()
+    return when {
+        lower.contains("duration") || lower.endsWith("time") -> Fmt.duration(number.roundToInt())
+        lower.contains("distance") -> Fmt.km(number) + " km"
+        lower.contains("pace") -> Fmt.pace(number)
+        else -> raw
     }
 }
 
@@ -1811,7 +1898,8 @@ private fun ScoreRing(
     value: String,
     caption: String,
     color: Color,
-    size: Dp = 156.dp
+    size: Dp = 156.dp,
+    valueColor: Color = Color.Unspecified
 ) {
     ProgressRing(
         progress.coerceIn(0f, 1f),
@@ -1824,7 +1912,8 @@ private fun ScoreRing(
             Text(
                 value,
                 style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                color = valueColor
             )
             Text(
                 caption,
@@ -1841,11 +1930,20 @@ private fun StrainDetail(data: HealthData?, date: LocalDate?) {
         Missing("还没有足够的心率采样来估算负荷")
         return
     }
-    val strain = if (date != null) source.strainOn(date) else source.latestStrain()
+    // Today is still in progress until the night ends: after midnight the load
+    // keeps adding to the day being closed instead of resetting (see
+    // HealthData.strainDateNow and StrainCalculator).
+    val strain = when {
+        date != null -> source.strainOn(date)
+        else -> source.strainOn(source.strainDateNow())
+    }
     if (strain == null || strain.strain == null) {
         Missing("这一天还没有足够的心率采样来估算负荷")
         return
     }
+    // Over 15 of 21 the ring and its number both take the alert colour.
+    val high = (strain.strain ?: 0.0) >= 15.0
+    val ringColor = if (high) LocalZgPalette.current.critical else MaterialTheme.colorScheme.tertiary
     Column(
         Modifier
             .fillMaxWidth()
@@ -1856,13 +1954,14 @@ private fun StrainDetail(data: HealthData?, date: LocalDate?) {
             progress = ((strain.strain ?: 0.0) / 21.0).toFloat(),
             value = String.format("%.1f", strain.strain ?: 0.0),
             caption = "负荷 / 21",
-            color = MaterialTheme.colorScheme.tertiary
+            color = ringColor,
+            valueColor = ringColor
         )
         Spacer(Modifier.height(12.dp))
         Text(
             strain.band,
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.tertiary
+            color = ringColor
         )
         Spacer(Modifier.height(18.dp))
     }

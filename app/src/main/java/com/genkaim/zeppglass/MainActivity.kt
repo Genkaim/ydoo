@@ -53,9 +53,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Opening (or returning to) the app is a sync point. The one-minute
-        // guard keeps a quick tab switch from firing another request.
-        val last = store.state.lastSyncedAt ?: 0L
-        if (System.currentTimeMillis() - last > 60_000L) store.refresh()
+        // One automatic refresh a minute at most, measured on the data itself:
+        // browsing in and out of the app must not fire a request every time.
+        // A manual pull is not affected.
+        val now = System.currentTimeMillis()
+        val lastAttempt = store.state.lastSyncedAt ?: 0L
+        val dataAge = store.displayData?.fetchedAt ?: 0L
+        if (now - maxOf(lastAttempt, dataAge) > 60_000L) store.refresh()
     }
 }

@@ -7,10 +7,14 @@ import org.json.JSONObject
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.math.roundToInt
+
+/** The diet day starts at 05:00, matching the AI summary's day boundary. */
+private const val DIET_DAY_START_HOUR = 5L
 
 /** One food the AI listed for a meal, with the energy it estimated for it. */
 data class MealItem(
@@ -33,8 +37,13 @@ data class Meal(
     val items: List<MealItem>,
     val note: String?
 ) {
+    /**
+     * The diet day rolls over at 05:00, not at midnight, so a late-night meal is
+     * still part of the evening it belongs to and the page does not reset its
+     * totals while the user is still up.
+     */
     fun date(zone: ZoneId = ZoneId.systemDefault()): LocalDate =
-        Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+        Instant.ofEpochMilli(epochMs).atZone(zone).minusHours(DIET_DAY_START_HOUR).toLocalDate()
 }
 
 /**
@@ -54,6 +63,11 @@ enum class DietGoal(val label: String, val factor: Double, val blurb: String) {
  * analyse, which goes to their own AI endpoint.
  */
 object DietStore {
+
+    
+    /** Today's logical diet day. */
+    fun logicalToday(zone: ZoneId = ZoneId.systemDefault()): LocalDate =
+        LocalDateTime.now(zone).minusHours(DIET_DAY_START_HOUR).toLocalDate()
 
     val meals = mutableStateListOf<Meal>()
     private var loaded = false

@@ -431,7 +431,7 @@ class HealthStore private constructor(
             vo2Max = vo2?.let { HealthParser.parseVo2Max(it) } ?: previous?.vo2Max,
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: previous?.body ?: BodyProfile(),
             warnings = warnings.distinct()
-        ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, zone)) }
+        ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, it.nights, zone)) }
         // The two night streams are optional; the count is how a missing
         // sensor is told apart from a parser that did not understand the reply.
         Log.d("ZeppApi", "respiration=${data.respiration.size} apnea=${data.nightBreathing.size}")
@@ -576,7 +576,7 @@ private fun readSnapshotFile(file: File, zone: ZoneId): HealthData? {
             vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: BodyProfile(),
             heartRate = parsed.flatMap { it.heartRate }.distinctBy { it.first }.sortedBy { it.first }
-        ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, zone)) }
+        ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, it.nights, zone)) }
         if (data.days.isEmpty() && data.nights.isEmpty() && data.chargeDays.isEmpty()) null else data
     }.getOrNull()
 }

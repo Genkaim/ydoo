@@ -134,7 +134,16 @@ fun OverviewScreen(
     onOpenTab: (AppTab) -> Unit,
     onOpenDetail: (DetailTarget) -> Unit
 ) {
-    val today = remember { LocalDate.now() }
+    // A minute ticker, so the home page moves to the new day by itself at
+    // midnight instead of waiting for the app to be reopened.
+    var today by remember { mutableStateOf(LocalDate.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            val now = LocalDate.now()
+            if (now != today) today = now
+        }
+    }
     var selectedText by rememberSaveable { mutableStateOf(today.toString()) }
     val date = remember(selectedText) {
         runCatching { LocalDate.parse(selectedText) }.getOrDefault(today)
@@ -154,7 +163,10 @@ fun OverviewScreen(
     val dayStat = data?.day(date)
     val night = data?.nightOn(date)
     val charge = data?.chargeOn(date)
-    val strain = data?.strainOn(date)
+    // Today's load is the day still in progress: after midnight but before sleep
+    // it is yesterday's, so the number does not drop to zero while the user is
+    // still awake.
+    val strain = if (isToday) data?.let { it.strainOn(it.strainDateNow(zone)) } else data?.strainOn(date)
     val readiness = data?.readiness?.lastOrNull { it.date == date }
     val stress = data?.stress?.firstOrNull { it.date == date }
     val pai = data?.pai?.firstOrNull { it.date == date }
@@ -184,7 +196,10 @@ fun OverviewScreen(
             onOpenDetail(DetailTarget(DetailKind.WORKOUT, workoutId = id))
         }
     }
-    val dietMeals = DietStore.mealsOn(date)
+    // Meals follow the diet day (05:00 boundary), so a snack after midnight still
+    // counts toward the evening it belongs to.
+    val dietDay = if (isToday) DietStore.logicalToday() else date
+    val dietMeals = DietStore.mealsOn(dietDay)
     val dietKcal = dietMeals.sumOf { it.calories }
 
     // Days that actually carry a recording, for the dots in the date menu. A
@@ -216,14 +231,15 @@ fun OverviewScreen(
     val haptics = LocalHapticFeedback.current
     Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
+        // Buzz the moment the pull is far enough to release into a refresh, not
+        // when the refresh actually starts: the gesture answers at the threshold.
+        val readyToRefresh = pullState.distanceFraction >= 1f
+        LaunchedEffect(readyToRefresh) {
+            if (readyToRefresh) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
         PullToRefreshBox(
             isRefreshing = state.refreshing,
-            onRefresh = {
-                // A short buzz confirms the gesture crossed the threshold; it
-                // only fires for a pull, not for a background sync.
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                store.refresh()
-            },
+            onRefresh = { store.refresh() },
             state = pullState,
             modifier = Modifier
                 .fillMaxSize(),
@@ -1114,6 +1130,11 @@ private fun StrainRingCell(
     val palette = LocalZgPalette.current
     val normal = MaterialTheme.colorScheme.tertiary
     val progress = ((value ?: 0.0) / STRAIN_MAX).toFloat()
+    // Over the threshold the whole ring and the number take the alert colour:
+    // a half-red ring read as "partly loaded" when the point is that the day is
+    // already high.
+    val high = (value ?: 0.0) >= STRAIN_HIGH
+    val ringColor = if (high) palette.critical else normal
     val animated = remember { Animatable(0f) }
     LaunchedEffect(progress) { animated.animateTo(progress.coerceIn(0f, 1f), tween(700)) }
 
@@ -1150,7 +1171,7 @@ private fun StrainRingCell(
                 val arcSize = Size(size.width - stroke, size.height - stroke)
                 val strokeStyle = Stroke(stroke, cap = StrokeCap.Round)
                 drawArc(
-                    color = normal.copy(alpha = 0.16f),
+                    color = ringColor.copy(alpha = 0.16f),
                     startAngle = -90f,
                     sweepAngle = 360f,
                     useCenter = false,
@@ -1159,37 +1180,52 @@ private fun StrainRingCell(
                     style = strokeStyle
                 )
                 val filled = 360f * animated.value
-                val thresholdSweep = 360f * (STRAIN_HIGH / STRAIN_MAX)
-                // Below the threshold, then above it: the two segments keep
-                // their own colour instead of the whole ring turning red.
-                val lowSweep = minOf(filled, thresholdSweep)
-                if (lowSweep > 0f) {
-                    drawArc(
-                        color = normal,
-                        startAngle = -90f,
-                        sweepAngle = lowSweep,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = strokeStyle
-                    )
-                }
-                if (filled > thresholdSweep) {
-                    drawArc(
-                        color = palette.critical,
-                        startAngle = -90f + thresholdSweep,
-                        sweepAngle = filled - thresholdSweep,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = strokeStyle
-                    )
+                if (high) {
+                    // One colour from the first degree: the ring reports the day's
+                    // level, not how much of it sits above the threshold.
+                    if (filled > 0f) {
+                        drawArc(
+                            color = ringColor,
+                            startAngle = -90f,
+                            sweepAngle = filled,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = strokeStyle
+                        )
+                    }
+                } else {
+                    val thresholdSweep = 360f * (STRAIN_HIGH / STRAIN_MAX)
+                    val lowSweep = minOf(filled, thresholdSweep)
+                    if (lowSweep > 0f) {
+                        drawArc(
+                            color = normal,
+                            startAngle = -90f,
+                            sweepAngle = lowSweep,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = strokeStyle
+                        )
+                    }
+                    if (filled > thresholdSweep) {
+                        drawArc(
+                            color = palette.critical,
+                            startAngle = -90f + thresholdSweep,
+                            sweepAngle = filled - thresholdSweep,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = strokeStyle
+                        )
+                    }
                 }
             }
             Text(
                 value?.let { String.format("%.1f", it) } ?: "--",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                color = if (high) ringColor else MaterialTheme.colorScheme.onSurface
             )
         }
     }

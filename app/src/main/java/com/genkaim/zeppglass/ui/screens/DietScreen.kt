@@ -149,11 +149,16 @@ private sealed interface PhotoFlow {
  * in the floating card, and every item stays editable.
  */
 @Composable
-fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = LocalDate.now()) {
+fun DietDetail(
+    data: HealthData?,
+    settings: AppSettings,
+    date: LocalDate = DietStore.logicalToday(),
+    shoot: Boolean = false
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val day = remember(date) { date }
-    val today = remember { LocalDate.now() }
+    val today = remember { DietStore.logicalToday() }
 
     LaunchedEffect(Unit) { DietStore.attach(context) }
 
@@ -294,6 +299,17 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
         }
     }
 
+    // The widget's fork-and-knife button opens this page with shoot=true: it
+    // exists to capture a meal, so the camera comes up on arrival instead of
+    // leaving the user to find the button. Runs once, after the launcher is ready.
+    var shotTaken by remember { mutableStateOf(false) }
+    LaunchedEffect(shoot) {
+        if (shoot && !shotTaken) {
+            shotTaken = true
+            takePhoto()
+        }
+    }
+
     fun pickPhoto() {
         if (!configured) {
             setupPrompt = true
@@ -392,12 +408,11 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
     // passed, so today's figure does not drift while the user is still eating).
     // The card is always on screen — 常驻 — so the week's number is there even
     // before the first day of the week has closed.
-    val now = remember { java.time.LocalTime.now() }
-    val currentLogicalDay = if (now.hour < 5) today.minusDays(1) else today
+    // `today` is already a logical day (05:00 boundary), so it needs no shift.
+    val currentLogicalDay = today
     val weekStart = currentLogicalDay.with(
         java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)
     )
-    var settledDays = 0
     var weekDeficit = 0
     var cursor = weekStart
     while (cursor < currentLogicalDay) {
@@ -406,7 +421,6 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
         // A day with no record is skipped, not read as a full deficit.
         if (logged.isNotEmpty() && budget != null) {
             weekDeficit += budget - logged.sumOf { it.calories }
-            settledDays++
         }
         cursor = cursor.plusDays(1)
     }
@@ -428,15 +442,10 @@ fun DietDetail(data: HealthData?, settings: AppSettings, date: LocalDate = Local
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    if (settledDays == 0) "本周还没有已结算的记录" else "本周已结算 $settledDays 天",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    (if (weekDeficit > 0) "+" else "") + "$weekDeficit kcal",
+                    "$weekDeficit kcal",
                     style = MaterialTheme.typography.headlineSmall,
                     color = if (weekDeficit >= 0) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.error

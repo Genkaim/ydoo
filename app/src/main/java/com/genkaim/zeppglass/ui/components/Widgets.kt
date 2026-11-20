@@ -44,11 +44,11 @@ import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 val PageHeaderHeight = 96.dp
 
 /**
- * How far past its own height a header's fade reaches. Painting outside the
- * header is fine — nothing clips it — and it keeps the gradient travelling over
- * a longer distance instead of ending in a band under the title.
+ * How far past its own height a header's fade reaches. Kept short: the gradient
+ * is painted over the content, so a long tail washed out the card sitting right
+ * under the title.
  */
-val TailFade = 48.dp
+val TailFade = 22.dp
 
 /**
  * Pins a page header over the scrolling content. The block is simply the page

@@ -98,11 +98,26 @@ object StrainCalculator {
         body: BodyProfile = BodyProfile(),
         stress: List<StressDay> = emptyList(),
         charge: List<ChargeDay> = emptyList(),
+        nights: List<SleepNight> = emptyList(),
         zone: ZoneId
     ): List<StrainDay> {
-        val byDate = heartRate.groupBy { instant ->
-            Instant.ofEpochSecond(instant.first).atZone(zone).toLocalDate()
+        // A load day ends when the night does, not at midnight: heart rate taken
+        // after 00:00 but before waking still belongs to the day that is being
+        // closed, otherwise the score reset while the user was still up and the
+        // new day started with the tail of the old one. Without a sleep record
+        // the 05:00 boundary stands in for the wake time.
+        val wakeByDate = nights.associate { it.date to it.endEpochSec }
+        fun loadDay(epochSec: Long): LocalDate {
+            val at = Instant.ofEpochSecond(epochSec).atZone(zone)
+            val date = at.toLocalDate()
+            val wake = wakeByDate[date]
+            return when {
+                wake != null && epochSec < wake -> date.minusDays(1)
+                wake == null && at.hour < 5 -> date.minusDays(1)
+                else -> date
+            }
         }
+        val byDate = heartRate.groupBy { instant -> loadDay(instant.first) }
         val restingByDate = days.associate { it.date to it.restingHr }
         val readinessRest = readiness.associate { it.date to it.sleepRhr }
         val stressByDate = stress.associate { it.date to it.average }

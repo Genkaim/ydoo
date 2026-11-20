@@ -365,7 +365,10 @@ object HealthParser {
                 )
             )
         }
-        return out.distinctBy { it.date }
+        // Ascending by date: the API lists newest first, and every chart plots a
+        // list left to right, so an unsorted list put the newest point on the
+        // left of every trend line.
+        return out.distinctBy { it.date }.sortedBy { it.date }
     }
 
     // ---------- PAI ----------
@@ -393,7 +396,7 @@ object HealthParser {
                 )
             )
         }
-        return out.distinctBy { it.date }
+        return out.distinctBy { it.date }.sortedBy { it.date }
     }
 
     // ---------- charge ----------

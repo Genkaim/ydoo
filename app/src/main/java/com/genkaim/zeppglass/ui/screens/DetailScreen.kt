@@ -693,13 +693,17 @@ private fun ChargeDetail(data: HealthData?, date: LocalDate?) {
         }
     }
 
-    val history = data?.chargeDays?.takeLast(14).orEmpty()
-    if (history.size > 1) {
+    // Fourteen calendar days ending on the last day the watch recorded Charge,
+    // so a skipped day leaves a gap instead of sliding the line sideways.
+    val chargeByDate = data?.chargeDays.orEmpty().associateBy { it.date }
+    val lastChargeDate = data?.latestCharge()?.date ?: LocalDate.now()
+    val history = (0..13).map { chargeByDate[lastChargeDate.minusDays(13L - it)] }
+    if (history.count { it != null } > 1) {
         SectionTitle("近 14 天", trailing = "每日最后一次有效读数")
         FlatPanel {
             Column(Modifier.padding(16.dp)) {
                 BarChart(
-                    history.map { it.total?.toFloat() },
+                    history.map { it?.total?.toFloat() },
                     Modifier
                         .fillMaxWidth()
                         .height(110.dp),
@@ -708,7 +712,7 @@ private fun ChargeDetail(data: HealthData?, date: LocalDate?) {
                 )
                 Spacer(Modifier.height(12.dp))
                 LineChart(
-                    history.map { it.physical?.toFloat() },
+                    history.map { it?.physical?.toFloat() },
                     Modifier
                         .fillMaxWidth()
                         .height(80.dp),
@@ -718,7 +722,7 @@ private fun ChargeDetail(data: HealthData?, date: LocalDate?) {
                     showGrid = false
                 )
                 LineChart(
-                    history.map { it.mental?.toFloat() },
+                    history.map { it?.mental?.toFloat() },
                     Modifier
                         .fillMaxWidth()
                         .height(80.dp),
@@ -970,13 +974,17 @@ private fun ReadinessDetail(data: HealthData?, date: LocalDate?) {
         }
     }
 
-    val trend = source.readiness.filter { it.officialScore != null }.takeLast(14)
-    if (trend.size > 1) {
+    // Fourteen calendar days ending on the day being read, so a day the watch
+    // did not score is a gap on the axis instead of shifting the whole line.
+    val trendDays = (0..13).map { day.date.minusDays(13L - it) }
+    val readinessByDate = source.readiness.associateBy { it.date }
+    val trendSeries = trendDays.map { readinessByDate[it]?.officialScore?.toFloat() }
+    if (trendSeries.count { it != null } > 1) {
         SectionTitle("近 14 天准备度")
         FlatPanel {
             TrendLineChart(
-                values = trend.map { it.officialScore?.toFloat() },
-                labels = trend.map { Fmt.weekdayShort(it.date) },
+                values = trendSeries,
+                labels = trendDays.map { Fmt.weekdayShort(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
@@ -1756,14 +1764,18 @@ private fun Vo2Detail(data: HealthData?) {
             Modifier.weight(1f)
         )
     }
-    val history = days.takeLast(14)
-    if (history.count { it.vo2Max != null } > 1) {
+    // Fourteen calendar days ending on the last estimate, so the gaps between
+    // re-estimates show as gaps rather than as evenly spaced points.
+    val vo2End = latestDay?.date ?: java.time.LocalDate.now()
+    val vo2ByDate = days.associateBy { it.date }
+    val history = (0..13).map { vo2ByDate[vo2End.minusDays(13L - it)] }
+    if (history.count { it?.vo2Max != null } > 1) {
         SectionTitle("近 14 天")
         FlatPanel {
             Column(Modifier.padding(14.dp)) {
                 AxisLineChart(
-                    values = history.map { it.vo2Max?.toFloat() },
-                    labels = history.map { Fmt.weekdayShort(it.date) },
+                    values = history.map { it?.vo2Max?.toFloat() },
+                    labels = (0..13).map { Fmt.weekdayShort(vo2End.minusDays(13L - it)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(120.dp),
@@ -1911,13 +1923,16 @@ private fun StrainDetail(data: HealthData?, date: LocalDate?) {
             }
         }
     }
-    val trend = data.strain.takeLast(14)
-    if (trend.size > 1) {
+    // Fourteen calendar days ending on the day being read.
+    val strainDays = (0..13).map { strain.date.minusDays(13L - it) }
+    val strainByDate = data.strain.associateBy { it.date }
+    val strainSeries = strainDays.map { strainByDate[it]?.strain?.toFloat() }
+    if (strainSeries.count { it != null } > 1) {
         SectionTitle("近 14 天")
         FlatPanel {
             com.genkaim.zeppglass.ui.components.AxisBarChart(
-                values = trend.map { it.strain?.toFloat() },
-                labels = trend.map { Fmt.weekdayShort(it.date) },
+                values = strainSeries,
+                labels = strainDays.map { Fmt.weekdayShort(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(14.dp)
@@ -1978,7 +1993,13 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
         Missing("这一天没有静息心率")
         return
     }
-    val recent = source.readiness.filter { it.sleepRhr != null }.takeLast(7)
+    // Seven calendar days ending on the day being read. Keeping the last seven
+    // *records* instead stretched the window back over the days the watch did
+    // not score, so the axis started too early and the newest point sat on the
+    // left whenever the list came back newest-first.
+    val rhrDays = (0..6).map { day.date.minusDays(6L - it) }
+    val rhrByDate = source.readiness.associateBy { it.date }
+    val rhrSeries = rhrDays.map { rhrByDate[it]?.sleepRhr?.toFloat() }
 
     FlatPanel {
         Column(
@@ -2026,12 +2047,12 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
         }
     }
 
-    if (recent.size > 1) {
+    if (rhrSeries.count { it != null } > 1) {
         SectionTitle("近 7 天")
         FlatPanel {
             TrendLineChart(
-                values = recent.map { it.sleepRhr?.toFloat() },
-                labels = recent.map { Fmt.weekdayShort(it.date) },
+                values = rhrSeries,
+                labels = rhrDays.map { Fmt.weekdayShort(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
@@ -2074,7 +2095,9 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
     val nightSamples = night?.let { n ->
         source.hrv.filter { it.epochMs / 1000 in n.startEpochSec..n.endEpochSec }
     }.orEmpty()
-    val recent = source.readiness.filter { it.sleepHrv != null }.takeLast(7)
+    val hrvDays = (0..6).map { day.date.minusDays(6L - it) }
+    val hrvByDate = source.readiness.associateBy { it.date }
+    val hrvSeries = hrvDays.map { hrvByDate[it]?.sleepHrv?.toFloat() }
 
     FlatPanel {
         Column(
@@ -2147,12 +2170,12 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
         }
     }
 
-    if (recent.size > 1) {
+    if (hrvSeries.count { it != null } > 1) {
         SectionTitle("近 7 天")
         FlatPanel {
             TrendLineChart(
-                values = recent.map { it.sleepHrv?.toFloat() },
-                labels = recent.map { Fmt.weekdayShort(it.date) },
+                values = hrvSeries,
+                labels = hrvDays.map { Fmt.weekdayShort(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)

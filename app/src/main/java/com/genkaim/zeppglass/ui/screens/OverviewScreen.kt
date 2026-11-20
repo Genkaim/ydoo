@@ -76,7 +76,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.drawBehind
@@ -229,12 +232,32 @@ fun OverviewScreen(
     val pageBackground = MaterialTheme.colorScheme.background
     Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
+        val haptics = LocalHapticFeedback.current
+        // A buzz once the pull is far enough to release into a refresh. It is
+        // gated on a finger actually being on the page: a background refresh
+        // (widget alarm, opening the app) never buzzes, and neither does the
+        // indicator animating back.
+        var fingerDown by remember { mutableStateOf(false) }
+        val pullReady = fingerDown && pullState.distanceFraction >= 1f
+        LaunchedEffect(pullReady) {
+            if (pullReady) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = { store.refresh() },
             state = pullState,
             modifier = Modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                // Observes presses without consuming them, so the pull gesture
+                // still reaches PullToRefreshBox.
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            fingerDown = event.changes.any { it.pressed }
+                        }
+                    }
+                },
             // The page never moves with the finger. Pulling only reveals this
             // small dial under the header, and it withdraws the moment the finger
             // lifts; the dial itself reports the request.

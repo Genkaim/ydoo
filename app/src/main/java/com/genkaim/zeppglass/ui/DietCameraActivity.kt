@@ -84,8 +84,18 @@ class DietCameraActivity : ComponentActivity() {
         photo = file
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
         runCatching { capture.launch(uri) }.onFailure {
+            // No camera app, or the intent was refused: land on the diet page
+            // rather than leaving the user on a blank screen that vanishes.
             file.delete()
             photo = null
+            runCatching {
+                startActivity(
+                    DetailActivity.intent(
+                        this,
+                        DetailTarget(DetailKind.DIET, DietStore.logicalToday())
+                    )
+                )
+            }
             finish()
         }
     }

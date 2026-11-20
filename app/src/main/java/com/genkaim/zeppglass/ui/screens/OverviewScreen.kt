@@ -1,11 +1,15 @@
 package com.genkaim.zeppglass.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -492,35 +496,42 @@ fun OverviewScreen(
 
         // The date menu is a layer of its own, hung under the header: opening it
         // covers the first cards instead of inserting a block that pushes the
-        // whole page down. The layer is offset a little above the header's lower
-        // edge because the sheet's own margin below re-adds that gap.
+        // whole page down. It fades and scales in rather than expanding: the
+        // expand/shrink animation clips its content to the animated height, which
+        // cut the card's drop shadow off at the bottom edge.
         AnimatedVisibility(
             visible = calendarOpen,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.96f, animationSpec = tween(160)),
+            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.97f, animationSpec = tween(120)),
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = headerHeight - 6.dp)
         ) {
-            val sheetShape = RoundedCornerShape(30.dp)
-            // The margin is what keeps the drop shadow whole: AnimatedVisibility
-            // clips its content to the animated height, so a shadow drawn at the
-            // card's own edge gets cut off. Here it has 18dp sideways and 12dp
-            // above and below to fall into.
+            val sheetShape = RoundedCornerShape(36.dp)
             Box(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp, vertical = 12.dp)
-                    // A month with six weeks is taller than one with five, so the
-                    // sheet animates between the two heights instead of jumping
-                    // when the arrows are tapped.
-                    .animateContentSize(animationSpec = tween(220))
                     // A menu needs a surface: without one the month floats over
                     // the cards and reads as page text. The shadow lifts it off
                     // the page so it is clear the cards behind it are not part
                     // of the menu.
-                    .shadow(12.dp, sheetShape)
+                    // A soft shadow, not a stark one: the elevation sets how far
+                    // it falls, the colour sets how dark it is. Lowering the
+                    // elevation would only shrink the falloff.
+                    .shadow(
+                        elevation = 14.dp,
+                        shape = sheetShape,
+                        ambientColor = Color.Black.copy(alpha = 0.13f),
+                        spotColor = Color.Black.copy(alpha = 0.18f)
+                    )
                     .background(MaterialTheme.colorScheme.surface, sheetShape)
+                    // The height animation comes last, inside the card: it clips
+                    // to its own size, so wrapping the shadow in it cut the shadow
+                    // off at the card's edges. A month with six weeks is taller
+                    // than one with five and now grows instead of jumping when the
+                    // arrows are tapped.
+                    .animateContentSize(animationSpec = tween(220))
                     .padding(vertical = 6.dp)
             ) {
                 MonthCalendar(
@@ -559,8 +570,17 @@ fun OverviewScreen(
                 today = today,
                 expanded = calendarOpen,
                 loggedIn = settings.isLoggedIn,
-                onPrevious = { selectedText = date.minusDays(1).toString() },
-                onNext = { if (date < today) selectedText = date.plusDays(1).toString() },
+                // Stepping a day also folds the menu: the arrows are for quick
+                // day-to-day browsing, and an open month grid would otherwise
+                // cover the day that was just picked.
+                onPrevious = {
+                    selectedText = date.minusDays(1).toString()
+                    calendarOpen = false
+                },
+                onNext = {
+                    if (date < today) selectedText = date.plusDays(1).toString()
+                    calendarOpen = false
+                },
                 onToggle = { calendarOpen = !calendarOpen },
                 onLogin = onLogin,
                 onOpenSettings = onOpenSettings
@@ -710,13 +730,6 @@ private fun MonthCalendar(
     onPick: (LocalDate) -> Unit
 ) {
     var month by remember(selected) { mutableStateOf(selected.withDayOfMonth(1)) }
-    val first = month
-    val offset = first.dayOfWeek.value - 1
-    val cells: List<LocalDate?> = buildList {
-        repeat(offset) { add(null) }
-        for (day in 1..first.lengthOfMonth()) add(first.withDayOfMonth(day))
-    }
-    val rows = cells.chunked(7)
 
     Column(
         Modifier
@@ -757,6 +770,49 @@ private fun MonthCalendar(
                 )
             }
         }
+        // The grid slides sideways when the month changes: a later month comes
+        // in from the right, an earlier one from the left, so the movement
+        // matches the arrow that was tapped.
+        AnimatedContent(
+            targetState = month,
+            transitionSpec = {
+                val forward = targetState.isAfter(initialState)
+                (slideInHorizontally(tween(220)) { width -> if (forward) width else -width } +
+                    fadeIn(tween(160))) togetherWith
+                    (slideOutHorizontally(tween(220)) { width -> if (forward) -width else width } +
+                        fadeOut(tween(140)))
+            },
+            label = "monthGrid"
+        ) { shown ->
+            MonthGrid(
+                month = shown,
+                selected = selected,
+                today = today,
+                recordedDays = recordedDays,
+                onPick = onPick
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+/** One month of cells, kept apart so switching months can slide it sideways. */
+@Composable
+private fun MonthGrid(
+    month: LocalDate,
+    selected: LocalDate,
+    today: LocalDate,
+    recordedDays: Set<LocalDate>,
+    onPick: (LocalDate) -> Unit
+) {
+    val first = month
+    val offset = first.dayOfWeek.value - 1
+    val cells: List<LocalDate?> = buildList {
+        repeat(offset) { add(null) }
+        for (day in 1..first.lengthOfMonth()) add(first.withDayOfMonth(day))
+    }
+    val rows = cells.chunked(7)
+    Column {
         rows.forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 for (index in 0 until 7) {
@@ -816,7 +872,6 @@ private fun MonthCalendar(
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
     }
 }
 

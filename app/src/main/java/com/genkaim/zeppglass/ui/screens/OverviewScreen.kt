@@ -78,6 +78,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -181,6 +182,15 @@ fun OverviewScreen(
     }
     val dietMeals = DietStore.mealsOn(date)
     val dietKcal = dietMeals.sumOf { it.calories }
+
+    // Days that actually carry a recording, for the dots in the date menu. A
+    // missing day has nulls here, never zeros, so this needs no threshold.
+    val recordedDays = remember(raw) {
+        raw?.days.orEmpty()
+            .filter { it.steps != null || it.sleepMinutes != null || it.restingHr != null }
+            .map { it.date }
+            .toSet()
+    }
 
     LaunchedEffect(Unit) { DailySummary.attach(settings) }
 
@@ -491,18 +501,27 @@ fun OverviewScreen(
                 .align(Alignment.TopCenter)
                 .padding(top = headerHeight)
         ) {
+            val sheetShape = RoundedCornerShape(30.dp)
             Box(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp)
+                    // A month with six weeks is taller than one with five, so the
+                    // sheet animates between the two heights instead of jumping
+                    // when the arrows are tapped.
+                    .animateContentSize(animationSpec = tween(220))
                     // A menu needs a surface: without one the month floats over
-                    // the cards and reads as page text.
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                    // the cards and reads as page text. The shadow lifts it off
+                    // the page so it is clear the cards behind it are not part
+                    // of the menu.
+                    .shadow(18.dp, sheetShape)
+                    .background(MaterialTheme.colorScheme.surface, sheetShape)
                     .padding(vertical = 6.dp)
             ) {
                 MonthCalendar(
                     selected = date,
                     today = today,
+                    recordedDays = recordedDays,
                     onPick = {
                         selectedText = it.toString()
                         calendarOpen = false
@@ -682,6 +701,7 @@ private fun HomeHeader(
 private fun MonthCalendar(
     selected: LocalDate,
     today: LocalDate,
+    recordedDays: Set<LocalDate>,
     onPick: (LocalDate) -> Unit
 ) {
     var month by remember(selected) { mutableStateOf(selected.withDayOfMonth(1)) }
@@ -770,6 +790,22 @@ private fun MonthCalendar(
                                     else -> MaterialTheme.colorScheme.onSurface
                                 }
                             )
+                            // A green dot under the number marks a day that has a
+                            // recording. It sits at the bottom of the cell so the
+                            // number keeps its own centre.
+                            if (day in recordedDays) {
+                                Box(
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 4.dp)
+                                        .size(4.dp)
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.primary,
+                                            CircleShape
+                                        )
+                                )
+                            }
                         }
                     }
                 }

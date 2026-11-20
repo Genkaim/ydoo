@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Card background for domestic OEM launchers (MIUI/HyperOS, ColorOS, OriginOS…):
-  the same translucent surface, plus a thin bright rim and a soft sheen falling
-  from the top edge — the "liquid glass" look those systems use everywhere.
-  Pixel and other AOSP-like launchers keep the plain card.
+  a heavily frosted card — the surface is only half opaque, so the wallpaper
+  reads through it, with a wide sheen falling from the top edge, a soft glow
+  along the bottom edge and a thin bright rim. That is the strongest "liquid
+  glass" a RemoteViews card can reach: a real backdrop blur is not available to
+  widgets, the frost is painted with translucency and gradients.
+  Pixel and other AOSP-like launchers keep the plain opaque card.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#A6FFFFFF" />
+            <solid android:color="#80FFFFFF" />
             <corners android:radius="40dp" />
         </shape>
     </item>
@@ -18,7 +21,17 @@
             <gradient
                 android:angle="270"
                 android:endColor="#00FFFFFF"
-                android:startColor="#4DFFFFFF" />
+                android:startColor="#73FFFFFF" />
+            <corners android:radius="40dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#00000000" />
+            <gradient
+                android:angle="90"
+                android:endColor="#1FFFFFFF"
+                android:startColor="#00FFFFFF" />
             <corners android:radius="40dp" />
         </shape>
     </item>
@@ -27,7 +40,7 @@
             <solid android:color="#00000000" />
             <stroke
                 android:width="1dp"
-                android:color="#8CFFFFFF" />
+                android:color="#B3FFFFFF" />
             <corners android:radius="40dp" />
         </shape>
     </item>

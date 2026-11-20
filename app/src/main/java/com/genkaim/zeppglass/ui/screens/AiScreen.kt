@@ -810,7 +810,7 @@ private fun EmptyTranscript(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "在设置里填兼容 OpenAI 的地址、密钥和模型。密钥只保存在本机，不会发给 Zepp。",
+                    "在设置里填兼容 OpenAI 的地址、密钥和模型。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One-row variant, used when the launcher gives the widget a single cell of
+  height. Same data and colours as the full card; the ring labels are dropped
+  because at 70dp there is no room for a caption above each ring.
+
+  The logo keeps the same gap on its top and its left (14dp), and the three
+  rings sit against the right edge with a smaller gap, so the free space falls
+  in the middle instead of around the whole row.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_rings_bg_dark"
+    android:forceDarkAllowed="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="20dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="8dp">
+
+    <ImageView
+        android:id="@+id/widget_logo"
+        android:layout_width="wrap_content"
+        android:layout_height="20dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="@string/app_name"
+        android:scaleType="fitStart"
+        android:src="@drawable/brand_mark" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="end|center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:id="@+id/widget_sleep_frame"
+            android:layout_width="50dp"
+            android:layout_height="50dp">
+
+            <ImageView
+                android:id="@+id/widget_sleep_ring"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/widget_sleep_value"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:maxLines="1"
+                android:textColor="@color/widget_on_surface_dark"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_charge_frame"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="10dp">
+
+            <ImageView
+                android:id="@+id/widget_charge_ring"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/widget_charge_value"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:maxLines="1"
+                android:textColor="@color/widget_on_surface_dark"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_load_frame"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="10dp">
+
+            <ImageView
+                android:id="@+id/widget_load_ring"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/widget_load_value"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:maxLines="1"
+                android:textColor="@color/widget_on_surface_dark"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:maxLines="1"
+        android:textColor="@color/widget_muted_dark"
+        android:textSize="10sp" />
+
+    <!-- 记录饮食: same diameter as the rings, food glyph plus a pencil badge. -->
+    <FrameLayout
+        android:id="@+id/widget_diet_button"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/widget_diet_button_bg_dark">
+
+        <ImageView
+            android:id="@+id/widget_diet_icon"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="center"
+            android:contentDescription="@string/widget_diet"
+            android:scaleType="fitCenter" />
+
+        <ImageView
+            android:id="@+id/widget_diet_badge"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_gravity="bottom|end"
+            android:background="@drawable/widget_badge_bg_dark"
+            android:contentDescription="@null"
+            android:padding="2dp"
+            android:scaleType="fitCenter" />
+    </FrameLayout>
+</LinearLayout>

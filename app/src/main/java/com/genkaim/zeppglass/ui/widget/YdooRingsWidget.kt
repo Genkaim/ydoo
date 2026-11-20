@@ -254,9 +254,30 @@ class YdooRingsWidget : AppWidgetProvider() {
             // room for a caption above each ring, so the labels give way and the
             // rings shrink instead of the card clipping.
             val compact = heightDp(context, appWidgetId) < 96
+            val settings = AppSettings.get(context)
+
+            // The card follows the app's own 深色/浅色 setting, not the system
+            // one: 跟随系统 defers to the system configuration, the other two are
+            // explicit. The palette is baked into the layout as well as pushed
+            // as colour actions — several launchers keep the previously inflated
+            // views and only replay some actions, which is how a dark phone ends
+            // up with a white card. A different layout id also makes them inflate
+            // the card again instead of redrawing the cached one.
+            val dark = when (settings.themeMode) {
+                "dark" -> true
+                "light" -> false
+                else -> (context.resources.configuration.uiMode and
+                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+            }
             val views = RemoteViews(
                 context.packageName,
-                if (compact) R.layout.widget_rings_compact_v5 else R.layout.widget_rings_v5
+                when {
+                    compact && dark -> R.layout.widget_rings_compact_v6_dark
+                    compact -> R.layout.widget_rings_compact_v6
+                    dark -> R.layout.widget_rings_v6_dark
+                    else -> R.layout.widget_rings_v6
+                }
             )
             if (!compact) {
                 // Spacing is pushed as actions, not baked into the XML: a launcher
@@ -265,7 +286,6 @@ class YdooRingsWidget : AppWidgetProvider() {
                 views.setViewPadding(R.id.widget_root, px(16), px(16), px(16), px(16))
                 views.setViewPadding(R.id.widget_rings_row, 0, px(2), 0, 0)
             }
-            val settings = AppSettings.get(context)
             val data = runCatching { HealthStore.readCached(context, settings) }.getOrNull()
             val zone = ZoneId.systemDefault()
             val today = LocalDate.now(zone)
@@ -277,17 +297,6 @@ class YdooRingsWidget : AppWidgetProvider() {
             val chargeScore = data?.chargeOn(today)?.total
             val strain = data?.strainOn(today)?.strain
 
-            // The card follows the app's own 深色/浅色 setting, not the system
-            // one: 跟随系统 defers to the system configuration, the other two are
-            // explicit. Colours are therefore picked here instead of relying on
-            // values-night, which only knows about the system.
-            val dark = when (settings.themeMode) {
-                "dark" -> true
-                "light" -> false
-                else -> (context.resources.configuration.uiMode and
-                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                    android.content.res.Configuration.UI_MODE_NIGHT_YES
-            }
             fun col(light: Int, night: Int): Int = context.getColor(if (dark) night else light)
             val onSurface = col(R.color.widget_on_surface, R.color.widget_on_surface_dark)
             val muted = col(R.color.widget_muted, R.color.widget_muted_dark)

@@ -286,11 +286,12 @@ fun AiScreen(
         // The transcript runs to the bottom edge of the window and the deck
         // (suggestions, composer, the gap under them) floats over it. Nothing
         // paints a band behind the deck any more, so while the list scrolls its
-        // messages stay visible in the margin around the capsules.
+        // messages stay visible in the margin around the capsules. The list also
+        // runs under the header — only its first rows are pushed below it — so
+        // the header's fade has text travelling underneath it.
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(top = headerHeight)
         ) {
             var deckPx by remember { mutableIntStateOf(0) }
             val deckSpace = with(density) { deckPx.toDp() }
@@ -304,7 +305,7 @@ fun AiScreen(
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = deckSpace)
+                        .padding(top = headerHeight, bottom = deckSpace)
                 )
             }
 
@@ -315,7 +316,7 @@ fun AiScreen(
                     contentPadding = PaddingValues(
                         start = 20.dp,
                         end = 20.dp,
-                        top = 4.dp,
+                        top = headerHeight + 4.dp,
                         bottom = deckSpace + 8.dp
                     ),
                     // A short conversation sits at the bottom of the page, the

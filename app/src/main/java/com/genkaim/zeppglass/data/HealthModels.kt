@@ -220,7 +220,12 @@ data class WeightPoint(
     val metabolismKcal: Double? = null,
     /** Protein share of body weight (`proteinRatio`, %). */
     val proteinPct: Double? = null
-)
+) {
+    /** True when the reading came from the scale and carries composition fields. */
+    val hasComposition: Boolean
+        get() = bodyFatPct != null || skeletalMuscleKg != null || bodyWaterPct != null ||
+            boneMassKg != null || skeletalMusclePct != null
+}
 
 data class Workout(
     val id: String,

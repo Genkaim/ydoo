@@ -127,6 +127,44 @@ fun PageHeader(
  * monospaced for a terminal feel; the mixed faces made one card look like two
  * different apps, so every Number now follows the system face.
  */
+/**
+ * Two-state switch for the body-composition card: watch entries on the left,
+ * scale readings on the right. Deliberately tiny — it sits in a card corner.
+ */
+@Composable
+fun BodySourceToggle(
+    source: String,
+    onChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(2.dp)
+    ) {
+        listOf("watch" to "手表", "scale" to "体脂秤").forEach { (key, label) ->
+            val selected = source == key
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.surface else Color.Transparent
+                    )
+                    .clickable { onChange(key) }
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (selected) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun DataRow(
     label: String,

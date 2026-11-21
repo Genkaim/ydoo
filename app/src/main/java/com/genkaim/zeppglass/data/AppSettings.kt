@@ -70,6 +70,19 @@ class AppSettings private constructor(context: Context) {
         private set
 
     /**
+     * Which readings the body-composition card follows: "scale" for the scale
+     * (体脂秤, with fat/muscle) or "watch" for the watch/manual entries. Kept
+     * across launches so the card does not flip back after every restart.
+     */
+    var bodySource: String by mutableStateOf(prefs.getString(KEY_BODY_SOURCE, "scale") ?: "scale")
+        private set
+
+    fun updateBodySource(source: String) {
+        bodySource = source
+        prefs.edit().putString(KEY_BODY_SOURCE, source).apply()
+    }
+
+    /**
      * What the diet budget aims at. Null means the user has never picked one,
      * which is also the state every install upgraded from a build without this
      * setting arrives in — the diet page asks once instead of guessing.
@@ -338,6 +351,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_AI_VISION = "ai_vision_model"
         private const val KEY_AI_SESSION = "ai_session"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_BODY_SOURCE = "body_source"
         private const val KEY_DIET_GOAL = "diet_goal"
         private const val KEY_SUMMARY_TEXT = "daily_summary_text"
         private const val KEY_SUMMARY_DAY = "daily_summary_day"

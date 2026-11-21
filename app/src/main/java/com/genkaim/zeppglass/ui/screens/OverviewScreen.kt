@@ -105,6 +105,7 @@ import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.LineChart
+import com.genkaim.zeppglass.ui.components.BodySourceToggle
 import com.genkaim.zeppglass.ui.components.MetricTile
 import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.ProgressRing
@@ -178,10 +179,12 @@ fun OverviewScreen(
     val vo2 = dayStat?.vo2Max
         ?: data?.workouts?.firstOrNull { dateOf(it.endEpochSec * 1000) == date && it.vo2Max != null }?.vo2Max
     // The overview card is a day-scoped card: a weighing from another day does
-    // not stand in for this one, so a day without a reading shows --.
-    val weightToday = data?.weights
-        ?.filter { dateOf(it.epochMs) == date }
-        ?.maxByOrNull { it.epochMs }
+    // not stand in for this one. The watch and scale readings are kept apart,
+    // because the corner switch picks which set the card follows.
+    val dayWeights = data?.weights?.filter { dateOf(it.epochMs) == date }.orEmpty()
+    val scaleWeight = dayWeights.filter { it.hasComposition }.maxByOrNull { it.epochMs }
+    val watchWeight = dayWeights.filter { !it.hasComposition }.maxByOrNull { it.epochMs }
+    val bodyPoint = if (settings.bodySource == "watch") watchWeight else scaleWeight
     val spo2 = data?.spo2?.lastOrNull { dateOf(it.epochMs) == date }
     val morningCharge = charge?.morningScore(night?.endEpochSec)
     // Same number the detail page leads with: average over the sleep window, not
@@ -482,7 +485,9 @@ fun OverviewScreen(
                             // The body-composition card sits where the sleep and
                             // Charge cards used to be.
                             BodyCompositionCard(
-                                point = weightToday,
+                                point = bodyPoint,
+                                source = settings.bodySource,
+                                onSourceChange = { settings.updateBodySource(it) },
                                 onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
                             )
 
@@ -1663,17 +1668,18 @@ private fun RecentWorkouts(
  * borrowing an older one — the detail page is where the latest readings live.
  */
 @Composable
-private fun BodyCompositionCard(point: WeightPoint?, onClick: () -> Unit) {
+private fun BodyCompositionCard(
+    point: WeightPoint?,
+    source: String,
+    onSourceChange: (String) -> Unit,
+    onClick: () -> Unit
+) {
     FlatPanel(onClick = onClick) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("身体成分", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                Icon(
-                    Icons.Rounded.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
+                // Corner switch: which recording the card follows.
+                BodySourceToggle(source = source, onChange = onSourceChange)
             }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth()) {

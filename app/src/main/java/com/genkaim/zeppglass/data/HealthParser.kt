@@ -592,11 +592,14 @@ object HealthParser {
                     // hand-typed weights. `muscleRate` is the share of skeletal
                     // muscle; `skeletalMuscle` is a weight in kg, so it cannot be
                     // shown as a percentage.
-                    skeletalMusclePct = summary.anyNumber("muscleRate")
-                        ?: summary.anyNumber("skeletalMuscleRate")
-                        ?: summary.anyNumber("muscle"),
+                    skeletalMusclePct = summary.anyNumber("skeletalMuscleRate")
+                        ?.takeIf { it > 0.0 && it <= 80.0 },
                     skeletalMuscleKg = summary.anyNumber("skeletalMuscle")
                         ?.takeIf { it in 5.0..80.0 },
+                    // `muscleRate` is muscle mass in kg, not a percentage: the
+                    // official app prints 肌肉 51.0 公斤 from this field.
+                    muscleKg = summary.anyNumber("muscleRate")
+                        ?.takeIf { it in 5.0..90.0 },
                     // Composition fields only exist on impedance readings; 0 means
                     // the scale did not measure that field.
                     bodyWaterPct = (summary.anyNumber("bodyWaterRate")

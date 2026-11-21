@@ -1485,24 +1485,30 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         // Composition (fat, muscle, water, bone, metabolism) only arrives from a
         // scale reading, and the newest one may be older than the newest weight.
         val comp = points.filter { it.hasComposition }.maxByOrNull { it.epochMs }
+        val body = data?.body
+        val male = body?.isMale ?: true
+        val heightM = body?.heightCm?.takeIf { it > 100 }?.div(100.0)
         val bmi = latest?.bmi
+        val bodyWeight = latest?.weightKg ?: comp?.weightKg
         // Mifflin-St Jeor from the Zepp profile: used only to rate the scale's
         // metabolism figure, never shown as a reading of its own.
-        val bmrEstimate = mifflinBmr(data?.body, latest?.weightKg ?: comp?.weightKg)
+        val bmrEstimate = mifflinBmr(body, bodyWeight)
         // A watch entry has weight and BMI only: a score or body age built from
-        // that alone would read as "0 / 偏低" and mislead, so both need a scale
-        // reading with composition.
-        val score = if (comp == null) null else bodyScore(
+        // that alone would mislead, so both need a scale reading.
+        val score = if (comp == null) null else bodyCompositionScore(
             bmi = bmi,
             fat = comp.bodyFatPct,
-            muscle = comp.skeletalMusclePct,
+            muscleKg = comp.muscleKg,
             water = comp.bodyWaterPct,
             visceral = comp.visceralFat,
             protein = comp.proteinPct,
             bone = comp.boneMassKg,
             bmr = comp.metabolismKcal,
-            bmrEstimate = bmrEstimate
+            bmrEstimate = bmrEstimate,
+            heightM = heightM,
+            male = male
         )
+        val bodyAge = if (comp == null) null else deurenbergAge(bmi, comp.bodyFatPct, male)
         val ink = MaterialTheme.colorScheme.onSurface
         val warnTone = LocalZgPalette.current.warn
         val criticalTone = LocalZgPalette.current.critical
@@ -1518,14 +1524,6 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         val actualAge = data?.body?.birthYear
             ?.let { LocalDate.now().year - it }
             ?.takeIf { it in 5..110 }
-        val age = bodyAge(
-            actualAge = actualAge,
-            bmi = bmi,
-            fat = comp?.bodyFatPct,
-            muscle = comp?.skeletalMusclePct,
-            water = comp?.bodyWaterPct,
-            visceral = comp?.visceralFat
-        )
 
         // A watch entry has no composition, so the score and body age are not
         // shown at all — an empty "--" block would just be noise.
@@ -1575,7 +1573,7 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                age?.toString() ?: "--",
+                                bodyAge?.toString() ?: "--",
                                 style = MaterialTheme.typography.displaySmall,
                                 color = ink
                             )
@@ -1586,11 +1584,11 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
-                        if (age != null && actualAge != null) {
+                        if (bodyAge != null && actualAge != null) {
                             Text(
                                 when {
-                                    age < actualAge -> "比实际小 ${actualAge - age} 岁"
-                                    age > actualAge -> "比实际大 ${age - actualAge} 岁"
+                                    bodyAge < actualAge -> "比实际小 ${actualAge - bodyAge} 岁"
+                                    bodyAge > actualAge -> "比实际大 ${bodyAge - actualAge} 岁"
                                     else -> "与实际年龄相同"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
@@ -1618,46 +1616,72 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         fun cut(value: Double, digits: Int = 0) =
             String.format(java.util.Locale.CHINA, "%.${digits}f", value)
 
-        // Each row rates the reading the same way the skin-temperature page does:
-        // a word, one colour, and a bar cut into the healthy / warning / bad bands
-        // with a triangle at today's figure.
-        val bmiRate: Pair<String, BodyTone>? = bmi?.let {
+        // Thresholds follow the bands the Zepp app prints: BMI 18.5/24/28,
+        // body fat 11/17/22/27 (male), water 55/65, protein 16/18, visceral fat
+        // 10/15. Muscle is judged in kilograms against height.
+        val fatLow = if (male) 11.0 else 21.0
+        val fatOk = if (male) 17.0 else 24.0
+        val fatHigh = if (male) 22.0 else 28.0
+        val fatTop = if (male) 27.0 else 32.0
+        val muscleLow = heightM?.let { 16.5 * it * it } ?: 49.5
+        val muscleHigh = heightM?.let { 19.8 * it * it } ?: 59.4
+        val skeletalLow = muscleLow * 0.6
+        val skeletalHigh = muscleHigh * 0.6
+        val boneLow = if (male) 2.0 else 1.5
+        val boneHigh = if (male) 4.0 else 3.5
+        val weightMax = maxOf(150.0, (bodyWeight ?: 0.0) + 10.0)
+        val muscleMax = maxOf(muscleHigh * 1.3, (bodyWeight ?: 0.0) * 0.8, 60.0)
+        val skeletalMax = maxOf(skeletalHigh * 1.4, 45.0)
+
+        val bmiRate = bmi?.let {
             when {
                 it < 18.5 -> "偏轻" to BodyTone.WARN
                 it < 24.0 -> "正常" to BodyTone.NORMAL
                 it < 28.0 -> "偏高" to BodyTone.WARN
-                else -> "肥胖" to BodyTone.BAD
+                else -> "高" to BodyTone.BAD
             }
         }
         val fatRate = comp?.bodyFatPct?.let {
             when {
-                it < 15.0 -> "偏低" to BodyTone.WARN
-                it <= 25.0 -> "正常" to BodyTone.NORMAL
-                it <= 30.0 -> "偏高" to BodyTone.WARN
-                else -> "偏高" to BodyTone.BAD
+                it < fatLow -> "偏低" to BodyTone.WARN
+                it < fatOk -> "正常" to BodyTone.NORMAL
+                it < fatHigh -> "偏高" to BodyTone.WARN
+                it < fatTop -> "高" to BodyTone.WARN
+                else -> "高" to BodyTone.BAD
             }
         }
-        val muscleRate = comp?.skeletalMusclePct?.let {
-            if (it < 40.0) "偏低" to BodyTone.WARN else "正常" to BodyTone.NORMAL
+        val muscleRate = comp?.muscleKg?.let {
+            when {
+                it < muscleLow -> "偏低" to BodyTone.WARN
+                it < muscleHigh -> "标准" to BodyTone.NORMAL
+                else -> "优秀" to BodyTone.NORMAL
+            }
+        }
+        val skeletalRate = comp?.skeletalMuscleKg?.let {
+            when {
+                it < skeletalLow -> "偏低" to BodyTone.WARN
+                it < skeletalHigh -> "标准" to BodyTone.NORMAL
+                else -> "优秀" to BodyTone.NORMAL
+            }
         }
         val waterRate = comp?.bodyWaterPct?.let {
             when {
-                it < 50.0 -> "偏低" to BodyTone.WARN
+                it < 55.0 -> "偏低" to BodyTone.WARN
                 it <= 65.0 -> "正常" to BodyTone.NORMAL
                 else -> "偏高" to BodyTone.WARN
             }
         }
         val boneRate = comp?.boneMassKg?.let {
             when {
-                it < 2.0 -> "偏低" to BodyTone.WARN
-                it <= 4.0 -> "正常" to BodyTone.NORMAL
+                it < boneLow -> "偏低" to BodyTone.WARN
+                it <= boneHigh -> "标准" to BodyTone.NORMAL
                 else -> "偏高" to BodyTone.WARN
             }
         }
         val visceralRate = comp?.visceralFat?.let {
             when {
-                it <= 9.0 -> "正常" to BodyTone.NORMAL
-                it <= 14.0 -> "偏高" to BodyTone.WARN
+                it <= 10.0 -> "正常" to BodyTone.NORMAL
+                it <= 15.0 -> "偏高" to BodyTone.WARN
                 else -> "高" to BodyTone.BAD
             }
         }
@@ -1668,20 +1692,20 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                     abs(diff) <= 0.05 -> "正常" to BodyTone.NORMAL
                     diff < 0 && diff >= -0.10 -> "偏低" to BodyTone.WARN
                     diff > 0 && diff <= 0.10 -> "偏高" to BodyTone.WARN
-                    diff < 0 -> "偏低" to BodyTone.BAD
-                    else -> "偏高" to BodyTone.BAD
+                    diff < 0 -> "低" to BodyTone.BAD
+                    else -> "高" to BodyTone.BAD
                 }
             }
         }
         val proteinRate = comp?.proteinPct?.let {
             when {
                 it < 16.0 -> "偏低" to BodyTone.WARN
-                it <= 20.0 -> "正常" to BodyTone.NORMAL
+                it <= 18.0 -> "正常" to BodyTone.NORMAL
                 else -> "偏高" to BodyTone.WARN
             }
         }
 
-        // Band cuts, in the metric's own units.
+        // Band cuts and the numbers printed under each bar.
         val bmiBands = listOf(
             Triple(15.0, 18.5, BodyTone.WARN),
             Triple(18.5, 24.0, BodyTone.NORMAL),
@@ -1689,75 +1713,62 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             Triple(28.0, 40.0, BodyTone.BAD)
         )
         val fatBands = listOf(
-            Triple(5.0, 15.0, BodyTone.WARN),
-            Triple(15.0, 25.0, BodyTone.NORMAL),
-            Triple(25.0, 30.0, BodyTone.WARN),
-            Triple(30.0, 40.0, BodyTone.BAD)
+            Triple(5.0, fatLow, BodyTone.WARN),
+            Triple(fatLow, fatOk, BodyTone.NORMAL),
+            Triple(fatOk, fatHigh, BodyTone.WARN),
+            Triple(fatHigh, fatTop, BodyTone.WARN),
+            Triple(fatTop, 40.0, BodyTone.BAD)
         )
-        val musclePctBands = listOf(
-            Triple(20.0, 40.0, BodyTone.WARN),
-            Triple(40.0, 55.0, BodyTone.NORMAL)
+        val muscleBands = listOf(
+            Triple(20.0, muscleLow, BodyTone.WARN),
+            Triple(muscleLow, muscleHigh, BodyTone.NORMAL),
+            Triple(muscleHigh, muscleMax, BodyTone.NORMAL)
+        )
+        val skeletalBands = listOf(
+            Triple(10.0, skeletalLow, BodyTone.WARN),
+            Triple(skeletalLow, skeletalHigh, BodyTone.NORMAL),
+            Triple(skeletalHigh, skeletalMax, BodyTone.NORMAL)
         )
         val waterBands = listOf(
-            Triple(35.0, 50.0, BodyTone.WARN),
-            Triple(50.0, 65.0, BodyTone.NORMAL),
+            Triple(35.0, 55.0, BodyTone.WARN),
+            Triple(55.0, 65.0, BodyTone.NORMAL),
             Triple(65.0, 75.0, BodyTone.WARN)
         )
         val boneBands = listOf(
-            Triple(1.0, 2.0, BodyTone.WARN),
-            Triple(2.0, 4.0, BodyTone.NORMAL),
-            Triple(4.0, 5.0, BodyTone.WARN)
+            Triple(1.0, boneLow, BodyTone.WARN),
+            Triple(boneLow, boneHigh, BodyTone.NORMAL),
+            Triple(boneHigh, 5.0, BodyTone.WARN)
         )
         val visceralBands = listOf(
-            Triple(1.0, 9.0, BodyTone.NORMAL),
-            Triple(9.0, 14.0, BodyTone.WARN),
-            Triple(14.0, 20.0, BodyTone.BAD)
+            Triple(1.0, 10.0, BodyTone.NORMAL),
+            Triple(10.0, 15.0, BodyTone.WARN),
+            Triple(15.0, 20.0, BodyTone.BAD)
         )
         val proteinBands = listOf(
             Triple(10.0, 16.0, BodyTone.WARN),
-            Triple(16.0, 20.0, BodyTone.NORMAL),
-            Triple(20.0, 25.0, BodyTone.WARN)
+            Triple(16.0, 18.0, BodyTone.NORMAL),
+            Triple(18.0, 25.0, BodyTone.WARN)
         )
         val bmrBands = bmrEstimate?.let { est ->
             listOf(
                 Triple(800.0, est * 0.95, BodyTone.WARN),
                 Triple(est * 0.95, est * 1.05, BodyTone.NORMAL),
-                Triple(est * 1.05, 2500.0, BodyTone.WARN)
+                Triple(est * 1.05, 2600.0, BodyTone.WARN)
             )
         }.orEmpty()
-
-        // Weight and skeletal muscle are judged against the body's own size.
-        val bodyWeight = latest?.weightKg ?: comp?.weightKg
-        val heightM = data?.body?.heightCm?.takeIf { it > 100 }?.div(100.0)
-        val weightMax = maxOf(150.0, (bodyWeight ?: 0.0) + 10.0)
         val weightBands = if (heightM != null) listOf(
             Triple(30.0, 18.5 * heightM * heightM, BodyTone.WARN),
             Triple(18.5 * heightM * heightM, 24.0 * heightM * heightM, BodyTone.NORMAL),
             Triple(24.0 * heightM * heightM, 28.0 * heightM * heightM, BodyTone.WARN),
             Triple(28.0 * heightM * heightM, weightMax, BodyTone.BAD)
         ) else emptyList()
-        val muscleKgMax = (bodyWeight?.times(0.6))?.coerceAtLeast(25.0) ?: 45.0
-        val muscleKgBands = if (bodyWeight != null) listOf(
-            Triple(5.0, bodyWeight * 0.35, BodyTone.WARN),
-            Triple(bodyWeight * 0.35, bodyWeight * 0.50, BodyTone.NORMAL),
-            Triple(bodyWeight * 0.50, muscleKgMax, BodyTone.NORMAL)
-        ) else emptyList()
-
-        // Threshold numbers printed under each bar at the colour cuts.
         val weightTicks = if (heightM != null) listOf(
             18.5 * heightM * heightM to cut(18.5 * heightM * heightM),
             24.0 * heightM * heightM to cut(24.0 * heightM * heightM),
             28.0 * heightM * heightM to cut(28.0 * heightM * heightM)
         ) else emptyList()
-        val muscleKgTicks = if (bodyWeight != null) listOf(
-            bodyWeight * 0.35 to cut(bodyWeight * 0.35, 1),
-            bodyWeight * 0.50 to cut(bodyWeight * 0.50, 1)
-        ) else emptyList()
         val bmrTicks = bmrEstimate?.let { est ->
-            listOf(
-                est * 0.95 to cut(est * 0.95),
-                est * 1.05 to cut(est * 1.05)
-            )
+            listOf(est * 0.95 to cut(est * 0.95), est * 1.05 to cut(est * 1.05))
         }.orEmpty()
 
         val metrics = listOf(
@@ -1773,42 +1784,46 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             BodyMetric(
                 "体脂率", Icons.Rounded.Percent, pct(comp?.bodyFatPct), comp?.bodyFatPct,
                 fatRate, 5.0, 40.0, fatBands,
-                listOf(15.0 to "15", 25.0 to "25", 30.0 to "30")
+                listOf(
+                    fatLow to cut(fatLow), fatOk to cut(fatOk),
+                    fatHigh to cut(fatHigh), fatTop to cut(fatTop)
+                )
             ),
             BodyMetric(
-                "骨骼肌", Icons.Rounded.FitnessCenter, kg(comp?.skeletalMuscleKg),
-                comp?.skeletalMuscleKg, muscleRate, 5.0, muscleKgMax, muscleKgBands, muscleKgTicks
+                "肌肉", Icons.Rounded.FitnessCenter, kg(comp?.muscleKg), comp?.muscleKg,
+                muscleRate, 20.0, muscleMax, muscleBands,
+                listOf(muscleLow to cut(muscleLow, 1), muscleHigh to cut(muscleHigh, 1))
             ),
             BodyMetric(
-                "肌肉率", Icons.Rounded.Accessibility, pct(comp?.skeletalMusclePct),
-                comp?.skeletalMusclePct, muscleRate, 20.0, 55.0, musclePctBands,
-                listOf(40.0 to "40")
+                "骨骼肌", Icons.Rounded.Accessibility, kg(comp?.skeletalMuscleKg),
+                comp?.skeletalMuscleKg, skeletalRate, 10.0, skeletalMax, skeletalBands,
+                listOf(skeletalLow to cut(skeletalLow, 1), skeletalHigh to cut(skeletalHigh, 1))
             ),
             BodyMetric(
                 "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
                 comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands,
-                listOf(50.0 to "50", 65.0 to "65")
+                listOf(55.0 to "55", 65.0 to "65")
             ),
             BodyMetric(
                 "骨量", Icons.Rounded.Spa, kg(comp?.boneMassKg, 2), comp?.boneMassKg,
                 boneRate, 1.0, 5.0, boneBands,
-                listOf(2.0 to "2", 4.0 to "4")
+                listOf(boneLow to cut(boneLow), boneHigh to cut(boneHigh))
             ),
             BodyMetric(
                 "内脏脂肪", Icons.Rounded.Favorite,
                 comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
                 visceralRate, 1.0, 20.0, visceralBands,
-                listOf(9.0 to "9", 14.0 to "14")
+                listOf(10.0 to "10", 15.0 to "15")
             ),
             BodyMetric(
                 "基础代谢", Icons.Rounded.LocalFireDepartment,
                 comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
-                comp?.metabolismKcal, bmrRate, 800.0, 2500.0, bmrBands, bmrTicks
+                comp?.metabolismKcal, bmrRate, 800.0, 2600.0, bmrBands, bmrTicks
             ),
             BodyMetric(
                 "蛋白质率", Icons.Rounded.Restaurant, pct(comp?.proteinPct),
                 comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands,
-                listOf(16.0 to "16", 20.0 to "20")
+                listOf(16.0 to "16", 18.0 to "18")
             )
         )
 
@@ -1827,6 +1842,34 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         // Three trends in one card, over the last 170 days, each with the change
         // against the previous weighing and against the reading 170 days ago.
         BodyTrendCard(points)
+
+        SectionTitle("计算说明")
+        FlatPanel {
+            Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    "身体得分和身体年龄都是本机算的，不是 Zepp 官方数值。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "身体得分：从 100 分起扣，按 WHO/ACSM 体成分参考区间计算——BMI 每偏离 18.5–24 一档计 2 分；" +
+                        "体脂每偏离标准区间 1% 计 1.5 分；肌肉每低于身高标准 1kg 计 2 分；" +
+                        "内脏脂肪每高 1 级计 2 分；蛋白质每低 1% 计 1.5 分；基础代谢每偏离同身高体重年龄的 " +
+                        "Mifflin-St Jeor 估算值 1% 计 0.5 分。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "身体年龄：Deurenberg 体脂-年龄公式反推（Br J Nutr, 1991）：" +
+                        "年龄 =（体脂率 − 1.2 × BMI + 5.4 + 10.8 × 性别）÷ 0.23，" +
+                        "男性性别取 1、女性取 0，结果限制在 18–80 岁。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
@@ -1934,95 +1977,62 @@ private fun MetricDivider() {
     )
 }
 
-/** 100 inside the healthy band, falling off linearly outside it. */
-private fun bandScore(value: Double, low: Double, high: Double, span: Double): Double =
-    when {
-        value < low -> 100.0 - (low - value) / span * 100.0
-        value > high -> 100.0 - (value - high) / span * 100.0
-        else -> 100.0
-    }
-
-/**
- * 身体年龄: the real age moved by where the composition sits. Purely local, and
- * only computed when the profile has a birth year to start from.
- */
-private fun bodyAge(
-    actualAge: Int?,
-    bmi: Double?,
-    fat: Double?,
-    muscle: Double?,
-    water: Double?,
-    visceral: Double?
-): Int? {
-    var age = actualAge ?: return null
-    bmi?.let {
-        age += when {
-            it >= 28.0 -> 4
-            it >= 24.0 -> 2
-            it < 18.5 -> 2
-            else -> 0
-        }
-    }
-    fat?.let {
-        age += when {
-            it > 30.0 -> 4
-            it > 25.0 -> 2
-            it < 15.0 -> 1
-            else -> 0
-        }
-    }
-    muscle?.let {
-        age += when {
-            it < 40.0 -> 3
-            it >= 45.0 -> -3
-            else -> 0
-        }
-    }
-    water?.let { if (it < 50.0) age += 1 }
-    visceral?.let {
-        age += when {
-            it > 14.0 -> 3
-            it > 9.0 -> 1
-            else -> 0
-        }
-    }
-    return age.coerceIn(18, 80)
+/** How far a value sits outside a range, in its own units. */
+private fun outside(value: Double, low: Double, high: Double): Double = when {
+    value < low -> low - value
+    value > high -> value - high
+    else -> 0.0
 }
 
 /**
- * 身体得分: a 0–100 summary of the scale reading, weighted towards the figures
- * people act on (BMI, body fat, muscle). Only the fields present are counted,
- * so a scale without, say, visceral fat still produces a score.
+ * 身体得分: starts at 100 and subtracts for every figure outside the WHO/ACSM
+ * reference ranges that the Zepp app also draws its bands with. Calculated on
+ * the phone, not a Zepp number.
  */
-private fun bodyScore(
+private fun bodyCompositionScore(
     bmi: Double?,
     fat: Double?,
-    muscle: Double?,
+    muscleKg: Double?,
     water: Double?,
     visceral: Double?,
     protein: Double?,
     bone: Double?,
     bmr: Double?,
-    bmrEstimate: Double?
+    bmrEstimate: Double?,
+    heightM: Double?,
+    male: Boolean
 ): Int? {
-    var sum = 0.0
-    var total = 0.0
-    fun add(score: Double, weight: Double) {
-        sum += score.coerceIn(0.0, 100.0) * weight
-        total += weight
+    var penalty = 0.0
+    var any = false
+    bmi?.let { any = true; penalty += outside(it, 18.5, 24.0) * 2.0 }
+    fat?.let {
+        any = true
+        penalty += outside(it, if (male) 11.0 else 21.0, if (male) 17.0 else 24.0) * 1.5
     }
-    bmi?.let { add(bandScore(it, 18.5, 24.0, 6.0), 20.0) }
-    fat?.let { add(bandScore(it, 15.0, 25.0, 10.0), 25.0) }
-    muscle?.let { add((it / 45.0 * 100.0), 20.0) }
-    water?.let { add(bandScore(it, 50.0, 65.0, 10.0), 15.0) }
-    visceral?.let { add(100.0 - (it - 9.0).coerceAtLeast(0.0) * 8.0, 10.0) }
-    protein?.let { add(bandScore(it, 16.0, 20.0, 5.0), 5.0) }
-    bone?.let { add(bandScore(it, 2.0, 4.0, 1.5), 5.0) }
+    if (muscleKg != null && heightM != null) {
+        any = true
+        penalty += maxOf(0.0, 16.5 * heightM * heightM - muscleKg) * 2.0
+    }
+    water?.let { any = true; penalty += maxOf(0.0, 55.0 - it) * 0.8 }
+    protein?.let { any = true; penalty += maxOf(0.0, 16.0 - it) * 1.5 }
+    visceral?.let { any = true; penalty += maxOf(0.0, it - 10.0) * 2.0 }
+    bone?.let { any = true; penalty += maxOf(0.0, (if (male) 2.0 else 1.5) - it) * 3.0 }
     if (bmr != null && bmrEstimate != null && bmrEstimate > 0.0) {
-        add(100.0 - abs(bmr - bmrEstimate) / bmrEstimate * 400.0, 10.0)
+        any = true
+        penalty += maxOf(0.0, abs(bmr - bmrEstimate) / bmrEstimate - 0.05) * 50.0
     }
-    if (total == 0.0) return null
-    return (sum / total).roundToInt()
+    if (!any) return null
+    return (100.0 - penalty).roundToInt().coerceIn(0, 100)
+}
+
+/**
+ * 身体年龄: Deurenberg's body-fat ↔ age relation (Br J Nutr, 1991), solved for
+ * age: age = (fat% − 1.2×BMI + 5.4 + 10.8×male) / 0.23.
+ */
+private fun deurenbergAge(bmi: Double?, fat: Double?, male: Boolean): Int? {
+    if (bmi == null || fat == null) return null
+    val age = (fat - 1.2 * bmi + 5.4 + if (male) 10.8 else 0.0) / 0.23
+    return age.roundToInt().coerceIn(18, 80)
 }
 
 /** Mifflin-St Jeor basal rate from the Zepp profile; null when it is incomplete. */

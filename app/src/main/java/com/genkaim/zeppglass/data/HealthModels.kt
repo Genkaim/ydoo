@@ -210,6 +210,11 @@ data class WeightPoint(
     val skeletalMusclePct: Double? = null,
     /** Skeletal muscle mass in kg, straight from the scale's `skeletalMuscle`. */
     val skeletalMuscleKg: Double? = null,
+    /**
+     * Total muscle mass in kg. The scale sends it as `muscleRate`, but the
+     * official app prints it in kilograms (肌肉 51.0 公斤), not as a percentage.
+     */
+    val muscleKg: Double? = null,
     /** Share of body water, `bodyWaterRate` (%). */
     val bodyWaterPct: Double? = null,
     /** Bone mass in kg (`boneMass`). */
@@ -224,7 +229,7 @@ data class WeightPoint(
     /** True when the reading came from the scale and carries composition fields. */
     val hasComposition: Boolean
         get() = bodyFatPct != null || skeletalMuscleKg != null || bodyWaterPct != null ||
-            boneMassKg != null || skeletalMusclePct != null
+            boneMassKg != null || skeletalMusclePct != null || muscleKg != null
 }
 
 data class Workout(

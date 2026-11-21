@@ -1410,15 +1410,13 @@ private fun PaiZoneColumn(
 private fun WeightDetail(data: HealthData?, date: LocalDate?) {
     val zone = ZoneId.systemDefault()
     val points = data?.weights.orEmpty()
-    val latest = if (date != null) {
-        // The card opens for "today", but the last weighing may be days earlier:
-        // show the newest reading on or before that day instead of an empty page.
-        points.filter { Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() <= date }
-            .maxByOrNull { it.epochMs }
-            ?: points.maxByOrNull { it.epochMs }
-    } else {
-        points.maxByOrNull { it.epochMs }
-    }
+    fun dayOf(point: WeightPoint): LocalDate =
+        Instant.ofEpochMilli(point.epochMs).atZone(zone).toLocalDate()
+    // The overview card is the selected day only; this page always leads with
+    // the most recent weighing, whichever day it belongs to.
+    val latest = date
+        ?.let { day -> points.filter { dayOf(it) == day }.maxByOrNull { it.epochMs } }
+        ?: points.maxByOrNull { it.epochMs }
     if (latest == null) {
         Missing("还没有称重记录")
         return
@@ -1426,13 +1424,12 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
     val ink = MaterialTheme.colorScheme.onSurface
     val warnTone = LocalZgPalette.current.warn
     val criticalTone = LocalZgPalette.current.critical
-    // The newest composition reading close to the current weight, same rule as
-    // the diet page: a shared scale can hold someone else's much lighter data.
+    // Composition (fat, muscle, water, bone, metabolism) only arrives from a
+    // scale reading, and the newest one may be older than the newest weight.
     val comp = points
-        .filter { it.bodyFatPct != null || it.skeletalMusclePct != null || it.skeletalMuscleKg != null }
         .filter {
-            it.weightKg == null || latest.weightKg == null ||
-                kotlin.math.abs(it.weightKg - latest.weightKg) <= 8.0
+            it.bodyFatPct != null || it.skeletalMusclePct != null || it.skeletalMuscleKg != null ||
+                it.bodyWaterPct != null || it.boneMassKg != null
         }
         .maxByOrNull { it.epochMs }
     val bmi = latest.bmi
@@ -1480,6 +1477,72 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
             },
             modifier = Modifier.weight(1f)
         )
+    }
+
+    fun pct(value: Double?) =
+        value?.let { String.format(java.util.Locale.CHINA, "%.1f%%", it) } ?: "--"
+    fun kg(value: Double?, digits: Int = 1) =
+        value?.let { String.format(java.util.Locale.CHINA, "%.${digits}f kg", it) } ?: "--"
+
+    SectionTitle("身体成分", trailing = comp?.let { Fmt.date(dayOf(it)) } ?: "暂无")
+    FlatPanel {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            DataRow("体脂率", pct(comp?.bodyFatPct))
+            DataRow("肌肉量", kg(comp?.skeletalMuscleKg))
+            DataRow("肌肉率", pct(comp?.skeletalMusclePct))
+            DataRow("体水分率", pct(comp?.bodyWaterPct))
+            DataRow("骨量", kg(comp?.boneMassKg, digits = 2))
+            DataRow("内脏脂肪", comp?.visceralFat?.roundToInt()?.toString() ?: "--")
+            DataRow("基础代谢", comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--")
+            DataRow("蛋白质率", pct(comp?.proteinPct))
+        }
+    }
+
+    // Six calendar months of weigh-ins, newest first: every reading is listed,
+    // with its composition when that day came from the scale.
+    val windowStart = LocalDate.now().minusMonths(6)
+    val history = points
+        .filter { dayOf(it) >= windowStart && dayOf(it) <= LocalDate.now() }
+        .sortedByDescending { it.epochMs }
+    SectionTitle("近 6 个月")
+    FlatPanel {
+        if (history.isEmpty()) {
+            Text(
+                "近 6 个月没有称重记录",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp)
+            )
+        } else {
+            Column(
+                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                history.take(12).forEach { point ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                        Text(
+                            Fmt.date(dayOf(point)),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            buildString {
+                                append("${Fmt.oneDecimal(point.weightKg)} kg")
+                                point.bodyFatPct?.let { append(" · 体脂 ${Fmt.oneDecimal(it)}%") }
+                                point.skeletalMuscleKg?.let { append(" · 肌肉 ${Fmt.oneDecimal(it)} kg") }
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            modifier = Modifier.weight(1.6f)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

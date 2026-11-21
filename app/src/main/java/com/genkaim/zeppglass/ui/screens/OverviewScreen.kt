@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Schedule
@@ -98,6 +99,7 @@ import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.LoadDay
 import com.genkaim.zeppglass.data.SleepNight
+import com.genkaim.zeppglass.data.WeightPoint
 import com.genkaim.zeppglass.data.morningScore
 import com.genkaim.zeppglass.ui.DetailKind
 import com.genkaim.zeppglass.ui.DetailTarget
@@ -176,7 +178,11 @@ fun OverviewScreen(
     val load = data?.load?.firstOrNull { it.date == date }
     val vo2 = dayStat?.vo2Max
         ?: data?.workouts?.firstOrNull { dateOf(it.endEpochSec * 1000) == date && it.vo2Max != null }?.vo2Max
-    val weight = data?.weights?.filter { dateOf(it.epochMs) <= date }?.maxByOrNull { it.epochMs }
+    // The overview card is a day-scoped card: a weighing from another day does
+    // not stand in for this one, so a day without a reading shows --.
+    val weightToday = data?.weights
+        ?.filter { dateOf(it.epochMs) == date }
+        ?.maxByOrNull { it.epochMs }
     val spo2 = data?.spo2?.lastOrNull { dateOf(it.epochMs) == date }
     val morningCharge = charge?.morningScore(night?.endEpochSec)
     // Same number the detail page leads with: average over the sleep window, not
@@ -515,6 +521,11 @@ fun OverviewScreen(
                                 date = date,
                                 today = today,
                                 onOpen = ::openWorkout
+                            )
+
+                            BodyCompositionCard(
+                                point = weightToday,
+                                onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
                             )
 
                             if (isToday) {
@@ -1651,6 +1662,65 @@ private fun RecentWorkouts(
                 }
                 if (index != workouts.lastIndex) Rule(Modifier.padding(start = 46.dp, end = 16.dp))
             }
+        }
+    }
+}
+
+/**
+ * The last card on the overview: the selected day's weighing, with the scale's
+ * composition figures beside it. A day without a weighing shows -- instead of
+ * borrowing an older one — the detail page is where the latest readings live.
+ */
+@Composable
+private fun BodyCompositionCard(point: WeightPoint?, onClick: () -> Unit) {
+    FlatPanel(onClick = onClick) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.MonitorWeight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.size(6.dp))
+                Text("身体成分", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth()) {
+                BodyStat("体重", point?.weightKg, "kg", Modifier.weight(1f))
+                BodyStat("体脂", point?.bodyFatPct, "%", Modifier.weight(1f))
+                BodyStat("骨骼肌", point?.skeletalMuscleKg, "kg", Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BodyStat(label: String, value: Double?, unit: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value?.let { Fmt.oneDecimal(it) } ?: "--",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                unit,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 3.dp, bottom = 3.dp)
+            )
         }
     }
 }

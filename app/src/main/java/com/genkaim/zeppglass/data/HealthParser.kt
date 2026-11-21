@@ -596,7 +596,20 @@ object HealthParser {
                         ?: summary.anyNumber("skeletalMuscleRate")
                         ?: summary.anyNumber("muscle"),
                     skeletalMuscleKg = summary.anyNumber("skeletalMuscle")
-                        ?.takeIf { it in 5.0..80.0 }
+                        ?.takeIf { it in 5.0..80.0 },
+                    // Composition fields only exist on impedance readings; 0 means
+                    // the scale did not measure that field.
+                    bodyWaterPct = (summary.anyNumber("bodyWaterRate")
+                        ?: summary.anyNumber("waterRate"))?.takeIf { it > 0.0 && it <= 80.0 },
+                    boneMassKg = summary.anyNumber("boneMass")
+                        ?.takeIf { it > 0.0 && it <= 10.0 },
+                    visceralFat = (summary.anyNumber("visceralFat")
+                        ?: summary.anyNumber("visceralFatRate")
+                        ?: summary.anyNumber("visceralFatLevel"))?.takeIf { it > 0.0 && it <= 60.0 },
+                    metabolismKcal = summary.anyNumber("metabolism")
+                        ?.takeIf { it in 500.0..5000.0 },
+                    proteinPct = (summary.anyNumber("proteinRatio")
+                        ?: summary.anyNumber("proteinRate"))?.takeIf { it > 0.0 && it <= 40.0 }
                 )
             )
         }

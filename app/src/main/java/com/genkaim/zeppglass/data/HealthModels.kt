@@ -209,7 +209,17 @@ data class WeightPoint(
      */
     val skeletalMusclePct: Double? = null,
     /** Skeletal muscle mass in kg, straight from the scale's `skeletalMuscle`. */
-    val skeletalMuscleKg: Double? = null
+    val skeletalMuscleKg: Double? = null,
+    /** Share of body water, `bodyWaterRate` (%). */
+    val bodyWaterPct: Double? = null,
+    /** Bone mass in kg (`boneMass`). */
+    val boneMassKg: Double? = null,
+    /** Visceral fat level (`visceralFat` / `visceralFatRate`). */
+    val visceralFat: Double? = null,
+    /** Basal metabolism in kcal (`metabolism`). */
+    val metabolismKcal: Double? = null,
+    /** Protein share of body weight (`proteinRatio`, %). */
+    val proteinPct: Double? = null
 )
 
 data class Workout(

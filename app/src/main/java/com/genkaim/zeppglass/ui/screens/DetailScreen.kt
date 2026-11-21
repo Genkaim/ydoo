@@ -2831,14 +2831,6 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                 )
             }
             Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
-            if (delta != null && value != null) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "相对个人基线 · 评分 $value",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
     }
 

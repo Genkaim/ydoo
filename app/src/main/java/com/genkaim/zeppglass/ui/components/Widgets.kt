@@ -300,6 +300,8 @@ fun MetricTile(
     caption: String? = null,
     modifier: Modifier = Modifier,
     verdict: Pair<String, Color>? = null,
+    /** Custom glyph in place of [icon], for marks the icon set does not have. */
+    leading: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
     // A tile showing "--" has nothing behind it, so it must not open a page:
@@ -312,7 +314,10 @@ fun MetricTile(
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (icon != null) {
+                if (leading != null) {
+                    leading()
+                    Spacer(Modifier.size(6.dp))
+                } else if (icon != null) {
                     Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.size(6.dp))
                 }

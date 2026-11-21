@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bloodtype
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bolt
@@ -510,7 +509,22 @@ fun OverviewScreen(
                                     label = "血氧",
                                     value = (nightSpo2 ?: spo2?.value)?.toString() ?: "--",
                                     unit = "%",
-                                    icon = Icons.Filled.Bloodtype,
+                                    // No O₂ glyph in the icon set: a blood drop plus the
+                                    // symbol the reading is usually drawn with.
+                                    leading = {
+                                        Icon(
+                                            Icons.Rounded.WaterDrop,
+                                            contentDescription = null,
+                                            tint = LocalZgPalette.current.critical,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            "O₂",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
                                     modifier = Modifier.weight(1f),
                                     verdict = (nightSpo2 ?: spo2?.value)?.let {
                                         when {

@@ -2800,11 +2800,13 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
             )
             Spacer(Modifier.height(6.dp))
             val abnormal = verdict.first != "正常"
-            // The official app prints the night's deviation from the personal
-            // baseline ("+0.2℃"), not an absolute reading; the score stays as the
-            // secondary number.
-            val hero = delta?.let { String.format(java.util.Locale.CHINA, "%+.1f", it) }
-                ?: value.toString()
+            // The official app prints whole degrees against the baseline, so a
+            // +0.2℃ night reads as 0℃ there; rounding here keeps the two screens
+            // saying the same thing.
+            val hero = delta?.let {
+                val whole = Math.round(it).toInt()
+                if (whole == 0) "0" else String.format(java.util.Locale.CHINA, "%+d", whole)
+            } ?: value.toString()
             val heroUnit = if (delta != null) " ℃" else " 分"
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(

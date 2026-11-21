@@ -115,12 +115,29 @@ fun BaselineScaleBar(
                 if (index > 0) x1 += gap
                 if (index < bands.lastIndex) x2 -= gap
                 if (x2 > x1) {
-                    drawRoundRect(
-                        color = band.color,
-                        topLeft = Offset(x1, barTop),
-                        size = Size(x2 - x1, barHeight),
-                        cornerRadius = CornerRadius(corner)
-                    )
+                    if (bandDivider != null) {
+                        // Flush zones: only the two outer ends of the whole bar
+                        // are rounded, every inner cut is square.
+                        val rect = androidx.compose.ui.geometry.RoundRect(
+                            left = x1,
+                            top = barTop,
+                            right = x2,
+                            bottom = barBottom,
+                            topLeftCornerRadius = if (index == 0) CornerRadius(corner) else CornerRadius.Zero,
+                            bottomLeftCornerRadius = if (index == 0) CornerRadius(corner) else CornerRadius.Zero,
+                            topRightCornerRadius = if (index == bands.lastIndex) CornerRadius(corner) else CornerRadius.Zero,
+                            bottomRightCornerRadius = if (index == bands.lastIndex) CornerRadius(corner) else CornerRadius.Zero
+                        )
+                        drawPath(Path().apply { addRoundRect(rect) }, band.color)
+                    } else {
+                        // Gapped zones stay individual pills.
+                        drawRoundRect(
+                            color = band.color,
+                            topLeft = Offset(x1, barTop),
+                            size = Size(x2 - x1, barHeight),
+                            cornerRadius = CornerRadius(corner)
+                        )
+                    }
                 }
             }
             if (bandDivider != null) {

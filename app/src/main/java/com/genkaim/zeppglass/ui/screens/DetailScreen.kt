@@ -11,6 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -218,6 +225,13 @@ fun DetailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+                // The body page's source switch lives in the header, on the right.
+                if (target.kind == DetailKind.WEIGHT) {
+                    BodySourceToggle(
+                        source = settings.bodySource,
+                        onChange = { settings.updateBodySource(it) }
+                    )
                 }
             }
         }
@@ -1425,339 +1439,349 @@ private fun PaiZoneColumn(
 
 @Composable
 private fun WeightDetail(data: HealthData?, date: LocalDate?, settings: AppSettings) {
-    val zone = ZoneId.systemDefault()
-    val all = data?.weights.orEmpty()
-    fun dayOf(point: WeightPoint): LocalDate =
-        Instant.ofEpochMilli(point.epochMs).atZone(zone).toLocalDate()
-    // The corner switch picks one source, and the page follows it everywhere:
-    // 体脂秤 = readings that carry composition, 手表 = the plain entries.
-    val source = settings.bodySource
-    val points = all.filter { if (source == "watch") !it.hasComposition else it.hasComposition }
-    // The overview card is the selected day only; this page always leads with
-    // the most recent reading of the chosen source.
-    val latest = date
-        ?.let { day -> points.filter { dayOf(it) == day }.maxByOrNull { it.epochMs } }
-        ?: points.maxByOrNull { it.epochMs }
-    // Composition (fat, muscle, water, bone, metabolism) only arrives from a
-    // scale reading, and the newest one may be older than the newest weight.
-    val comp = points.filter { it.hasComposition }.maxByOrNull { it.epochMs }
-    val bmi = latest?.bmi
-    // Mifflin-St Jeor from the Zepp profile: used only to rate the scale's
-    // metabolism figure, never shown as a reading of its own.
-    val bmrEstimate = mifflinBmr(data?.body, latest?.weightKg ?: comp?.weightKg)
-    val score = bodyScore(
-        bmi = bmi,
-        fat = comp?.bodyFatPct,
-        muscle = comp?.skeletalMusclePct,
-        water = comp?.bodyWaterPct,
-        visceral = comp?.visceralFat,
-        protein = comp?.proteinPct,
-        bone = comp?.boneMassKg,
-        bmr = comp?.metabolismKcal,
-        bmrEstimate = bmrEstimate
-    )
-    val ink = MaterialTheme.colorScheme.onSurface
-    val warnTone = LocalZgPalette.current.warn
-    val criticalTone = LocalZgPalette.current.critical
-    val scoreVerdict: Pair<String, Color>? = score?.let {
-        when {
-            it >= 85 -> "优秀" to ink
-            it >= 70 -> "良好" to ink
-            it >= 55 -> "一般" to warnTone
-            else -> "偏低" to criticalTone
-        }
+    // Switching source slides the white cards sideways instead of swapping them.
+    AnimatedContent(
+        targetState = settings.bodySource,
+        transitionSpec = {
+            val forward = targetState == "scale"
+            (slideInHorizontally(tween(220)) { if (forward) it / 3 else -it / 3 } + fadeIn(tween(200))) togetherWith
+                (slideOutHorizontally(tween(220)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(150)))
+        },
+        label = "body-source"
+    ) { source ->
+        WeightBody(data, date, source)
     }
-    val scoreAbnormal = scoreVerdict != null && scoreVerdict.first !in setOf("优秀", "良好")
-    val actualAge = data?.body?.birthYear
-        ?.let { LocalDate.now().year - it }
-        ?.takeIf { it in 5..110 }
-    val age = bodyAge(
-        actualAge = actualAge,
-        bmi = bmi,
-        fat = comp?.bodyFatPct,
-        muscle = comp?.skeletalMusclePct,
-        water = comp?.bodyWaterPct,
-        visceral = comp?.visceralFat
-    )
+}
 
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 2.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BodySourceToggle(source = source, onChange = { settings.updateBodySource(it) })
-    }
-    FlatPanel {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 18.dp, horizontal = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "身体得分",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.Bottom) {
+@Composable
+private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        val zone = ZoneId.systemDefault()
+        val all = data?.weights.orEmpty()
+        fun dayOf(point: WeightPoint): LocalDate =
+            Instant.ofEpochMilli(point.epochMs).atZone(zone).toLocalDate()
+        // The corner switch picks one source, and the page follows it everywhere:
+        // 体脂秤 = readings that carry composition, 手表 = the plain entries.
+            val points = all.filter { if (source == "watch") !it.hasComposition else it.hasComposition }
+        // The overview card is the selected day only; this page always leads with
+        // the most recent reading of the chosen source.
+        val latest = date
+            ?.let { day -> points.filter { dayOf(it) == day }.maxByOrNull { it.epochMs } }
+            ?: points.maxByOrNull { it.epochMs }
+        // Composition (fat, muscle, water, bone, metabolism) only arrives from a
+        // scale reading, and the newest one may be older than the newest weight.
+        val comp = points.filter { it.hasComposition }.maxByOrNull { it.epochMs }
+        val bmi = latest?.bmi
+        // Mifflin-St Jeor from the Zepp profile: used only to rate the scale's
+        // metabolism figure, never shown as a reading of its own.
+        val bmrEstimate = mifflinBmr(data?.body, latest?.weightKg ?: comp?.weightKg)
+        val score = bodyScore(
+            bmi = bmi,
+            fat = comp?.bodyFatPct,
+            muscle = comp?.skeletalMusclePct,
+            water = comp?.bodyWaterPct,
+            visceral = comp?.visceralFat,
+            protein = comp?.proteinPct,
+            bone = comp?.boneMassKg,
+            bmr = comp?.metabolismKcal,
+            bmrEstimate = bmrEstimate
+        )
+        val ink = MaterialTheme.colorScheme.onSurface
+        val warnTone = LocalZgPalette.current.warn
+        val criticalTone = LocalZgPalette.current.critical
+        val scoreVerdict: Pair<String, Color>? = score?.let {
+            when {
+                it >= 85 -> "优秀" to ink
+                it >= 70 -> "良好" to ink
+                it >= 55 -> "一般" to warnTone
+                else -> "偏低" to criticalTone
+            }
+        }
+        val scoreAbnormal = scoreVerdict != null && scoreVerdict.first !in setOf("优秀", "良好")
+        val actualAge = data?.body?.birthYear
+            ?.let { LocalDate.now().year - it }
+            ?.takeIf { it in 5..110 }
+        val age = bodyAge(
+            actualAge = actualAge,
+            bmi = bmi,
+            fat = comp?.bodyFatPct,
+            muscle = comp?.skeletalMusclePct,
+            water = comp?.bodyWaterPct,
+            visceral = comp?.visceralFat
+        )
+
+        FlatPanel {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 18.dp, horizontal = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            score?.toString() ?: "--",
-                            style = MaterialTheme.typography.displaySmall,
-                            color = if (scoreAbnormal) scoreVerdict!!.second else ink
-                        )
-                        Text(
-                            " 分",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (scoreAbnormal) scoreVerdict!!.second else ink,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                    }
-                    if (scoreVerdict != null) {
-                        Text(
-                            scoreVerdict.first,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = scoreVerdict.second
-                        )
-                    }
-                }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "身体年龄",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            age?.toString() ?: "--",
-                            style = MaterialTheme.typography.displaySmall,
-                            color = ink
-                        )
-                        Text(
-                            " 岁",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ink,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                    }
-                    if (age != null && actualAge != null) {
-                        Text(
-                            when {
-                                age < actualAge -> "比实际小 ${actualAge - age} 岁"
-                                age > actualAge -> "比实际大 ${age - actualAge} 岁"
-                                else -> "与实际年龄相同"
-                            },
+                            "身体得分",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                score?.toString() ?: "--",
+                                style = MaterialTheme.typography.displaySmall,
+                                color = if (scoreAbnormal) scoreVerdict!!.second else ink
+                            )
+                            Text(
+                                " 分",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (scoreAbnormal) scoreVerdict!!.second else ink,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        if (scoreVerdict != null) {
+                            Text(
+                                scoreVerdict.first,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = scoreVerdict.second
+                            )
+                        }
+                    }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "身体年龄",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                age?.toString() ?: "--",
+                                style = MaterialTheme.typography.displaySmall,
+                                color = ink
+                            )
+                            Text(
+                                " 岁",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ink,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        if (age != null && actualAge != null) {
+                            Text(
+                                when {
+                                    age < actualAge -> "比实际小 ${actualAge - age} 岁"
+                                    age > actualAge -> "比实际大 ${age - actualAge} 岁"
+                                    else -> "与实际年龄相同"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
+                if (score == null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        if (source == "watch") "手表记录没有身体成分，切到体脂秤试试"
+                        else "体脂秤读数为空，暂时算不出得分",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            if (score == null) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (source == "watch") "手表记录没有身体成分，切到体脂秤试试"
-                    else "体脂秤读数为空，暂时算不出得分",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
-    }
 
-    fun pct(value: Double?) =
-        value?.let { String.format(java.util.Locale.CHINA, "%.1f%%", it) } ?: "--"
-    fun kg(value: Double?, digits: Int = 1) =
-        value?.let { String.format(java.util.Locale.CHINA, "%.${digits}f kg", it) } ?: "--"
+        fun pct(value: Double?) =
+            value?.let { String.format(java.util.Locale.CHINA, "%.1f%%", it) } ?: "--"
+        fun kg(value: Double?, digits: Int = 1) =
+            value?.let { String.format(java.util.Locale.CHINA, "%.${digits}f kg", it) } ?: "--"
 
-    // Each row rates the reading the same way the skin-temperature page does:
-    // a word, one colour, and a bar cut into the healthy / warning / bad bands
-    // with a triangle at today's figure.
-    val bmiRate: Pair<String, BodyTone>? = bmi?.let {
-        when {
-            it < 18.5 -> "偏轻" to BodyTone.WARN
-            it < 24.0 -> "正常" to BodyTone.NORMAL
-            it < 28.0 -> "偏高" to BodyTone.WARN
-            else -> "肥胖" to BodyTone.BAD
-        }
-    }
-    val fatRate = comp?.bodyFatPct?.let {
-        when {
-            it < 15.0 -> "偏低" to BodyTone.WARN
-            it <= 25.0 -> "正常" to BodyTone.NORMAL
-            it <= 30.0 -> "偏高" to BodyTone.WARN
-            else -> "偏高" to BodyTone.BAD
-        }
-    }
-    val muscleRate = comp?.skeletalMusclePct?.let {
-        if (it < 40.0) "偏低" to BodyTone.WARN else "正常" to BodyTone.NORMAL
-    }
-    val waterRate = comp?.bodyWaterPct?.let {
-        when {
-            it < 50.0 -> "偏低" to BodyTone.WARN
-            it <= 65.0 -> "正常" to BodyTone.NORMAL
-            else -> "偏高" to BodyTone.WARN
-        }
-    }
-    val boneRate = comp?.boneMassKg?.let {
-        when {
-            it < 2.0 -> "偏低" to BodyTone.WARN
-            it <= 4.0 -> "正常" to BodyTone.NORMAL
-            else -> "偏高" to BodyTone.WARN
-        }
-    }
-    val visceralRate = comp?.visceralFat?.let {
-        when {
-            it <= 9.0 -> "正常" to BodyTone.NORMAL
-            it <= 14.0 -> "偏高" to BodyTone.WARN
-            else -> "高" to BodyTone.BAD
-        }
-    }
-    val bmrRate = comp?.metabolismKcal?.let { bmr ->
-        bmrEstimate?.let { est ->
-            val diff = (bmr - est) / est
+        // Each row rates the reading the same way the skin-temperature page does:
+        // a word, one colour, and a bar cut into the healthy / warning / bad bands
+        // with a triangle at today's figure.
+        val bmiRate: Pair<String, BodyTone>? = bmi?.let {
             when {
-                abs(diff) <= 0.05 -> "正常" to BodyTone.NORMAL
-                diff < 0 && diff >= -0.10 -> "偏低" to BodyTone.WARN
-                diff > 0 && diff <= 0.10 -> "偏高" to BodyTone.WARN
-                diff < 0 -> "偏低" to BodyTone.BAD
+                it < 18.5 -> "偏轻" to BodyTone.WARN
+                it < 24.0 -> "正常" to BodyTone.NORMAL
+                it < 28.0 -> "偏高" to BodyTone.WARN
+                else -> "肥胖" to BodyTone.BAD
+            }
+        }
+        val fatRate = comp?.bodyFatPct?.let {
+            when {
+                it < 15.0 -> "偏低" to BodyTone.WARN
+                it <= 25.0 -> "正常" to BodyTone.NORMAL
+                it <= 30.0 -> "偏高" to BodyTone.WARN
                 else -> "偏高" to BodyTone.BAD
             }
         }
-    }
-    val proteinRate = comp?.proteinPct?.let {
-        when {
-            it < 16.0 -> "偏低" to BodyTone.WARN
-            it <= 20.0 -> "正常" to BodyTone.NORMAL
-            else -> "偏高" to BodyTone.WARN
+        val muscleRate = comp?.skeletalMusclePct?.let {
+            if (it < 40.0) "偏低" to BodyTone.WARN else "正常" to BodyTone.NORMAL
         }
-    }
-
-    // Band cuts, in the metric's own units.
-    val bmiBands = listOf(
-        Triple(15.0, 18.5, BodyTone.WARN),
-        Triple(18.5, 24.0, BodyTone.NORMAL),
-        Triple(24.0, 28.0, BodyTone.WARN),
-        Triple(28.0, 40.0, BodyTone.BAD)
-    )
-    val fatBands = listOf(
-        Triple(5.0, 15.0, BodyTone.WARN),
-        Triple(15.0, 25.0, BodyTone.NORMAL),
-        Triple(25.0, 30.0, BodyTone.WARN),
-        Triple(30.0, 40.0, BodyTone.BAD)
-    )
-    val musclePctBands = listOf(
-        Triple(20.0, 40.0, BodyTone.WARN),
-        Triple(40.0, 55.0, BodyTone.NORMAL)
-    )
-    val waterBands = listOf(
-        Triple(35.0, 50.0, BodyTone.WARN),
-        Triple(50.0, 65.0, BodyTone.NORMAL),
-        Triple(65.0, 75.0, BodyTone.WARN)
-    )
-    val boneBands = listOf(
-        Triple(1.0, 2.0, BodyTone.WARN),
-        Triple(2.0, 4.0, BodyTone.NORMAL),
-        Triple(4.0, 5.0, BodyTone.WARN)
-    )
-    val visceralBands = listOf(
-        Triple(1.0, 9.0, BodyTone.NORMAL),
-        Triple(9.0, 14.0, BodyTone.WARN),
-        Triple(14.0, 20.0, BodyTone.BAD)
-    )
-    val proteinBands = listOf(
-        Triple(10.0, 16.0, BodyTone.WARN),
-        Triple(16.0, 20.0, BodyTone.NORMAL),
-        Triple(20.0, 25.0, BodyTone.WARN)
-    )
-    val bmrBands = bmrEstimate?.let { est ->
-        listOf(
-            Triple(800.0, est * 0.95, BodyTone.WARN),
-            Triple(est * 0.95, est * 1.05, BodyTone.NORMAL),
-            Triple(est * 1.05, 2500.0, BodyTone.WARN)
-        )
-    }.orEmpty()
-
-    // Weight and skeletal muscle are judged against the body's own size.
-    val bodyWeight = latest?.weightKg ?: comp?.weightKg
-    val heightM = data?.body?.heightCm?.takeIf { it > 100 }?.div(100.0)
-    val weightMax = maxOf(150.0, (bodyWeight ?: 0.0) + 10.0)
-    val weightBands = if (heightM != null) listOf(
-        Triple(30.0, 18.5 * heightM * heightM, BodyTone.WARN),
-        Triple(18.5 * heightM * heightM, 24.0 * heightM * heightM, BodyTone.NORMAL),
-        Triple(24.0 * heightM * heightM, 28.0 * heightM * heightM, BodyTone.WARN),
-        Triple(28.0 * heightM * heightM, weightMax, BodyTone.BAD)
-    ) else emptyList()
-    val muscleKgMax = (bodyWeight?.times(0.6))?.coerceAtLeast(25.0) ?: 45.0
-    val muscleKgBands = if (bodyWeight != null) listOf(
-        Triple(5.0, bodyWeight * 0.35, BodyTone.WARN),
-        Triple(bodyWeight * 0.35, bodyWeight * 0.50, BodyTone.NORMAL),
-        Triple(bodyWeight * 0.50, muscleKgMax, BodyTone.NORMAL)
-    ) else emptyList()
-
-    val metrics = listOf(
-        BodyMetric(
-            "体重", Icons.Rounded.MonitorWeight, kg(latest?.weightKg), latest?.weightKg,
-            bmiRate, 30.0, weightMax, weightBands
-        ),
-        BodyMetric(
-            "BMI", Icons.Rounded.Straighten, Fmt.oneDecimal(bmi), bmi,
-            bmiRate, 15.0, 40.0, bmiBands
-        ),
-        BodyMetric(
-            "体脂率", Icons.Rounded.Percent, pct(comp?.bodyFatPct), comp?.bodyFatPct,
-            fatRate, 5.0, 40.0, fatBands
-        ),
-        BodyMetric(
-            "骨骼肌", Icons.Rounded.FitnessCenter, kg(comp?.skeletalMuscleKg),
-            comp?.skeletalMuscleKg, muscleRate, 5.0, muscleKgMax, muscleKgBands
-        ),
-        BodyMetric(
-            "肌肉率", Icons.Rounded.Accessibility, pct(comp?.skeletalMusclePct),
-            comp?.skeletalMusclePct, muscleRate, 20.0, 55.0, musclePctBands
-        ),
-        BodyMetric(
-            "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
-            comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands
-        ),
-        BodyMetric(
-            "骨量", Icons.Rounded.Spa, kg(comp?.boneMassKg, 2), comp?.boneMassKg,
-            boneRate, 1.0, 5.0, boneBands
-        ),
-        BodyMetric(
-            "内脏脂肪", Icons.Rounded.Favorite,
-            comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
-            visceralRate, 1.0, 20.0, visceralBands
-        ),
-        BodyMetric(
-            "基础代谢", Icons.Rounded.LocalFireDepartment,
-            comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
-            comp?.metabolismKcal, bmrRate, 800.0, 2500.0, bmrBands
-        ),
-        BodyMetric(
-            "蛋白质率", Icons.Rounded.Restaurant, pct(comp?.proteinPct),
-            comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands
-        )
-    )
-
-    SectionTitle("所有指标")
-    FlatPanel {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            metrics.forEachIndexed { index, metric ->
-                BodyMetricRow(metric)
-                if (index != metrics.lastIndex) MetricDivider()
+        val waterRate = comp?.bodyWaterPct?.let {
+            when {
+                it < 50.0 -> "偏低" to BodyTone.WARN
+                it <= 65.0 -> "正常" to BodyTone.NORMAL
+                else -> "偏高" to BodyTone.WARN
             }
         }
-    }
+        val boneRate = comp?.boneMassKg?.let {
+            when {
+                it < 2.0 -> "偏低" to BodyTone.WARN
+                it <= 4.0 -> "正常" to BodyTone.NORMAL
+                else -> "偏高" to BodyTone.WARN
+            }
+        }
+        val visceralRate = comp?.visceralFat?.let {
+            when {
+                it <= 9.0 -> "正常" to BodyTone.NORMAL
+                it <= 14.0 -> "偏高" to BodyTone.WARN
+                else -> "高" to BodyTone.BAD
+            }
+        }
+        val bmrRate = comp?.metabolismKcal?.let { bmr ->
+            bmrEstimate?.let { est ->
+                val diff = (bmr - est) / est
+                when {
+                    abs(diff) <= 0.05 -> "正常" to BodyTone.NORMAL
+                    diff < 0 && diff >= -0.10 -> "偏低" to BodyTone.WARN
+                    diff > 0 && diff <= 0.10 -> "偏高" to BodyTone.WARN
+                    diff < 0 -> "偏低" to BodyTone.BAD
+                    else -> "偏高" to BodyTone.BAD
+                }
+            }
+        }
+        val proteinRate = comp?.proteinPct?.let {
+            when {
+                it < 16.0 -> "偏低" to BodyTone.WARN
+                it <= 20.0 -> "正常" to BodyTone.NORMAL
+                else -> "偏高" to BodyTone.WARN
+            }
+        }
 
-    // Three trends in one card, over the last 170 days, each with the change
-    // against the previous weighing and against the reading 170 days ago.
-    BodyTrendCard(points)
+        // Band cuts, in the metric's own units.
+        val bmiBands = listOf(
+            Triple(15.0, 18.5, BodyTone.WARN),
+            Triple(18.5, 24.0, BodyTone.NORMAL),
+            Triple(24.0, 28.0, BodyTone.WARN),
+            Triple(28.0, 40.0, BodyTone.BAD)
+        )
+        val fatBands = listOf(
+            Triple(5.0, 15.0, BodyTone.WARN),
+            Triple(15.0, 25.0, BodyTone.NORMAL),
+            Triple(25.0, 30.0, BodyTone.WARN),
+            Triple(30.0, 40.0, BodyTone.BAD)
+        )
+        val musclePctBands = listOf(
+            Triple(20.0, 40.0, BodyTone.WARN),
+            Triple(40.0, 55.0, BodyTone.NORMAL)
+        )
+        val waterBands = listOf(
+            Triple(35.0, 50.0, BodyTone.WARN),
+            Triple(50.0, 65.0, BodyTone.NORMAL),
+            Triple(65.0, 75.0, BodyTone.WARN)
+        )
+        val boneBands = listOf(
+            Triple(1.0, 2.0, BodyTone.WARN),
+            Triple(2.0, 4.0, BodyTone.NORMAL),
+            Triple(4.0, 5.0, BodyTone.WARN)
+        )
+        val visceralBands = listOf(
+            Triple(1.0, 9.0, BodyTone.NORMAL),
+            Triple(9.0, 14.0, BodyTone.WARN),
+            Triple(14.0, 20.0, BodyTone.BAD)
+        )
+        val proteinBands = listOf(
+            Triple(10.0, 16.0, BodyTone.WARN),
+            Triple(16.0, 20.0, BodyTone.NORMAL),
+            Triple(20.0, 25.0, BodyTone.WARN)
+        )
+        val bmrBands = bmrEstimate?.let { est ->
+            listOf(
+                Triple(800.0, est * 0.95, BodyTone.WARN),
+                Triple(est * 0.95, est * 1.05, BodyTone.NORMAL),
+                Triple(est * 1.05, 2500.0, BodyTone.WARN)
+            )
+        }.orEmpty()
+
+        // Weight and skeletal muscle are judged against the body's own size.
+        val bodyWeight = latest?.weightKg ?: comp?.weightKg
+        val heightM = data?.body?.heightCm?.takeIf { it > 100 }?.div(100.0)
+        val weightMax = maxOf(150.0, (bodyWeight ?: 0.0) + 10.0)
+        val weightBands = if (heightM != null) listOf(
+            Triple(30.0, 18.5 * heightM * heightM, BodyTone.WARN),
+            Triple(18.5 * heightM * heightM, 24.0 * heightM * heightM, BodyTone.NORMAL),
+            Triple(24.0 * heightM * heightM, 28.0 * heightM * heightM, BodyTone.WARN),
+            Triple(28.0 * heightM * heightM, weightMax, BodyTone.BAD)
+        ) else emptyList()
+        val muscleKgMax = (bodyWeight?.times(0.6))?.coerceAtLeast(25.0) ?: 45.0
+        val muscleKgBands = if (bodyWeight != null) listOf(
+            Triple(5.0, bodyWeight * 0.35, BodyTone.WARN),
+            Triple(bodyWeight * 0.35, bodyWeight * 0.50, BodyTone.NORMAL),
+            Triple(bodyWeight * 0.50, muscleKgMax, BodyTone.NORMAL)
+        ) else emptyList()
+
+        val metrics = listOf(
+            BodyMetric(
+                "体重", Icons.Rounded.MonitorWeight, kg(latest?.weightKg), latest?.weightKg,
+                bmiRate, 30.0, weightMax, weightBands
+            ),
+            BodyMetric(
+                "BMI", Icons.Rounded.Straighten, Fmt.oneDecimal(bmi), bmi,
+                bmiRate, 15.0, 40.0, bmiBands
+            ),
+            BodyMetric(
+                "体脂率", Icons.Rounded.Percent, pct(comp?.bodyFatPct), comp?.bodyFatPct,
+                fatRate, 5.0, 40.0, fatBands
+            ),
+            BodyMetric(
+                "骨骼肌", Icons.Rounded.FitnessCenter, kg(comp?.skeletalMuscleKg),
+                comp?.skeletalMuscleKg, muscleRate, 5.0, muscleKgMax, muscleKgBands
+            ),
+            BodyMetric(
+                "肌肉率", Icons.Rounded.Accessibility, pct(comp?.skeletalMusclePct),
+                comp?.skeletalMusclePct, muscleRate, 20.0, 55.0, musclePctBands
+            ),
+            BodyMetric(
+                "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
+                comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands
+            ),
+            BodyMetric(
+                "骨量", Icons.Rounded.Spa, kg(comp?.boneMassKg, 2), comp?.boneMassKg,
+                boneRate, 1.0, 5.0, boneBands
+            ),
+            BodyMetric(
+                "内脏脂肪", Icons.Rounded.Favorite,
+                comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
+                visceralRate, 1.0, 20.0, visceralBands
+            ),
+            BodyMetric(
+                "基础代谢", Icons.Rounded.LocalFireDepartment,
+                comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
+                comp?.metabolismKcal, bmrRate, 800.0, 2500.0, bmrBands
+            ),
+            BodyMetric(
+                "蛋白质率", Icons.Rounded.Restaurant, pct(comp?.proteinPct),
+                comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands
+            )
+        )
+
+        // The date on the right is when the composition reading was taken, so an
+        // old scale reading is never mistaken for today's.
+        SectionTitle("所有指标", trailing = latest?.let { Fmt.date(dayOf(it)) })
+        FlatPanel {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                metrics.forEachIndexed { index, metric ->
+                    BodyMetricRow(metric)
+                    if (index != metrics.lastIndex) MetricDivider()
+                }
+            }
+        }
+
+        // Three trends in one card, over the last 170 days, each with the change
+        // against the previous weighing and against the reading 170 days ago.
+        BodyTrendCard(points)
+    }
 }
 
 /** How far a body-composition reading is from its healthy band. */
@@ -1785,35 +1809,42 @@ private fun BodyMetricRow(metric: BodyMetric) {
         BodyTone.BAD -> palette.critical
         BodyTone.NORMAL -> primary
     }
+    val tone = metric.rating?.second
+    val toneColor = if (tone == null || tone == BodyTone.NORMAL) MaterialTheme.colorScheme.onSurface
+    else colorOf(tone)
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 14.dp)
+            .padding(vertical = 15.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 metric.icon,
                 contentDescription = null,
-                tint = colorOf(metric.rating?.second ?: BodyTone.NORMAL),
-                modifier = Modifier.size(16.dp)
+                tint = colorOf(tone ?: BodyTone.NORMAL),
+                modifier = Modifier.size(19.dp)
             )
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.size(9.dp))
             Text(
                 metric.label,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
             metric.rating?.let {
                 Text(
                     it.first,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (it.second == BodyTone.NORMAL) MaterialTheme.colorScheme.onSurface
-                    else colorOf(it.second),
+                    style = MaterialTheme.typography.labelMedium,
+                    // Rating and figure share one colour.
+                    color = toneColor,
                     modifier = Modifier.padding(end = 8.dp)
                 )
             }
-            Text(metric.value, style = MaterialTheme.typography.titleSmall)
+            Text(
+                metric.value,
+                style = MaterialTheme.typography.titleMedium,
+                color = toneColor
+            )
         }
         Spacer(Modifier.height(10.dp))
         if (metric.numeric != null) {
@@ -1842,13 +1873,13 @@ private fun BodyMetricRow(metric: BodyMetric) {
     }
 }
 
-/** Short dash between two metric rows. */
+/** Thin rule between two metric rows; runs nearly the full card width. */
 @Composable
 private fun MetricDivider() {
     Box(
         Modifier
             .padding(vertical = 2.dp)
-            .width(28.dp)
+            .fillMaxWidth()
             .height(1.dp)
             .background(MaterialTheme.colorScheme.outlineVariant)
     )
@@ -1961,18 +1992,17 @@ private fun mifflinBmr(body: com.genkaim.zeppglass.data.BodyProfile?, weightKg: 
 @Composable
 private fun BodyTrendCard(points: List<WeightPoint>) {
     val palette = LocalZgPalette.current
-    val today = LocalDate.now()
-    val start = today.minusDays(170)
-    SectionTitle("趋势", trailing = "近 170 天")
+    SectionTitle(
+        "趋势",
+        trailing = points.size.takeIf { it > 0 }?.let { "$it 次记录" }
+    )
     FlatPanel {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            BodyTrendRow("体重", "kg", points, start, today, palette.accent) { it.weightKg }
+            BodyTrendRow("体重", "kg", points, palette.accent) { it.weightKg }
             MetricDivider()
-            BodyTrendRow("体脂", "%", points, start, today, palette.warn) { it.bodyFatPct }
+            BodyTrendRow("体脂", "%", points, palette.warn) { it.bodyFatPct }
             MetricDivider()
-            BodyTrendRow("骨骼肌", "kg", points, start, today, palette.sleepLight) {
-                it.skeletalMuscleKg
-            }
+            BodyTrendRow("骨骼肌", "kg", points, palette.sleepLight) { it.skeletalMuscleKg }
         }
     }
 }
@@ -1982,8 +2012,6 @@ private fun BodyTrendRow(
     title: String,
     unit: String,
     points: List<WeightPoint>,
-    start: LocalDate,
-    today: LocalDate,
     color: Color,
     selector: (WeightPoint) -> Double?
 ) {
@@ -1997,11 +2025,26 @@ private fun BodyTrendRow(
         .sortedBy { it.first }
     fun dayOf(epochMs: Long): LocalDate =
         Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
-    val window = series.filter { dayOf(it.first) in start..today }
-    val current = window.lastOrNull()?.second
-    val previous = window.dropLast(1).lastOrNull()?.second
-    // "170 days ago" is the newest reading on or before the window start.
-    val base = series.lastOrNull { dayOf(it.first) <= start }?.second
+
+    // Valid readings only: the newest two drive the comparison, so any two
+    // readings are enough to show a change.
+    val currentPoint = series.lastOrNull()
+    val current = currentPoint?.second
+    val previous = series.dropLast(1).lastOrNull()?.second
+    val lastDate = currentPoint?.let { dayOf(it.first) }
+    // "170 days ago" = the newest reading on or before that date.
+    val base = lastDate?.let { end ->
+        series.lastOrNull { dayOf(it.first) <= end.minusDays(170) }?.second
+    }
+    // Plot the last 170 days; when the data is older than that, fall back to the
+    // readings themselves so the curve still appears.
+    val windowStart = lastDate?.minusDays(170)
+    val recent = if (windowStart != null) {
+        series.filter { dayOf(it.first) in windowStart..lastDate }
+    } else {
+        emptyList()
+    }
+    val plot = if (recent.size >= 2) recent else series.takeLast(8)
     fun delta(value: Double?): String =
         value?.let { Fmt.signedOneDecimal(it) + " $unit" } ?: "--"
 
@@ -2036,11 +2079,9 @@ private fun BodyTrendRow(
             )
         }
         Spacer(Modifier.height(8.dp))
-        if (window.size >= 2) {
+        if (plot.size >= 2) {
             MiniTrendChart(
-                values = window,
-                start = start,
-                today = today,
+                values = plot,
                 color = color,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2048,9 +2089,17 @@ private fun BodyTrendRow(
             )
         }
         Row(Modifier.fillMaxWidth()) {
-            Text(Fmt.date(start), style = MaterialTheme.typography.labelSmall, color = muted)
+            Text(
+                plot.firstOrNull()?.let { Fmt.date(dayOf(it.first)) } ?: "--",
+                style = MaterialTheme.typography.labelSmall,
+                color = muted
+            )
             Spacer(Modifier.weight(1f))
-            Text(Fmt.date(today), style = MaterialTheme.typography.labelSmall, color = muted)
+            Text(
+                plot.lastOrNull()?.let { Fmt.date(dayOf(it.first)) } ?: "--",
+                style = MaterialTheme.typography.labelSmall,
+                color = muted
+            )
         }
     }
 }
@@ -2059,15 +2108,17 @@ private fun BodyTrendRow(
 @Composable
 private fun MiniTrendChart(
     values: List<Pair<Long, Double>>,
-    start: LocalDate,
-    today: LocalDate,
     color: Color,
     modifier: Modifier = Modifier
 ) {
-    val zone = ZoneId.systemDefault()
     Canvas(modifier) {
-        val startMs = start.atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
-        val endMs = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
+        // Span from the first reading to the last, with a small margin, so two
+        // readings on the same day still spread across the card.
+        val firstMs = values.first().first
+        val lastMs = values.last().first
+        val padMs = maxOf(3_600_000L, (lastMs - firstMs) / 10)
+        val startMs = (firstMs - padMs).toFloat()
+        val endMs = (lastMs + padMs).toFloat()
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }

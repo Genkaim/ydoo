@@ -87,6 +87,13 @@ object StrainCalculator {
     /** A full 0-100 cognitive load is worth this many TRIMP. */
     private const val MENTAL_TO_TRIMP = 0.25
 
+    /**
+     * The last half hour of sleep seeds the new load day. Those 30 minutes are
+     * low-intensity by definition, so the day opens with a small genuine number
+     * instead of a bare zero.
+     */
+    private const val WAKE_SEED_SEC = 30 * 60L
+
     // Zones used for the minutes-per-zone card, not for the score itself.
     private val zoneStarts = doubleArrayOf(0.30, 0.50, 0.60, 0.70, 0.80, 0.90)
 
@@ -104,15 +111,16 @@ object StrainCalculator {
         // A load day ends when the night does, not at midnight: heart rate taken
         // after 00:00 but before waking still belongs to the day that is being
         // closed, otherwise the score reset while the user was still up and the
-        // new day started with the tail of the old one. Without a sleep record
-        // the 05:00 boundary stands in for the wake time.
+        // new day started with the tail of the old one. The last half hour of
+        // sleep seeds the new day, so it opens with a small real number instead of
+        // a bare 0. Without a sleep record the 05:00 boundary stands in.
         val wakeByDate = nights.associate { it.date to it.endEpochSec }
         fun loadDay(epochSec: Long): LocalDate {
             val at = Instant.ofEpochSecond(epochSec).atZone(zone)
             val date = at.toLocalDate()
             val wake = wakeByDate[date]
             return when {
-                wake != null && epochSec < wake -> date.minusDays(1)
+                wake != null && epochSec < wake - WAKE_SEED_SEC -> date.minusDays(1)
                 wake == null && at.hour < 5 -> date.minusDays(1)
                 else -> date
             }

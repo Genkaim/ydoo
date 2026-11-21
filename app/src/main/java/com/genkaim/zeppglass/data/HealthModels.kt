@@ -328,17 +328,19 @@ data class HealthData(
     fun strainOn(date: LocalDate): StrainDay? = strain.lastOrNull { it.date == date }
 
     /**
-     * The load day that is still accumulating. It only rolls over once the sleep
-     * that crosses midnight has ended, so a heart rate at 01:00 adds to the day
-     * being closed instead of starting a fresh zero at midnight. Before 05:00
-     * there is no night ending this morning yet, so the boundary stands in.
+     * The load day that is still accumulating. It only rolls over at the end of
+     * the sleep that crosses midnight (minus a half-hour seed), so a heart rate
+     * at 01:00 adds to the day being closed instead of starting a fresh zero.
+     * Before 05:00 there is no night ending this morning yet, so the boundary
+     * stands in.
      */
     fun strainDateNow(zone: ZoneId = ZoneId.systemDefault()): LocalDate {
         val now = LocalDateTime.now(zone)
         val today = now.toLocalDate()
         if (now.hour < 5) return today.minusDays(1)
         val wake = nightOn(today)?.endEpochSec
-        return if (wake != null && now.atZone(zone).toEpochSecond() < wake) {
+        val seed = 30 * 60L
+        return if (wake != null && now.atZone(zone).toEpochSecond() < wake - seed) {
             today.minusDays(1)
         } else {
             today

@@ -341,10 +341,7 @@ fun AiScreen(
                         val fresh = index >= settled && playedEntrance.add(rowKey)
                         AppearFromBelow(
                             animate = fresh,
-                            delayMillis = if (fresh && message.role == "assistant") 70 else 0,
-                            // Placement only: the default item fade would run on
-                            // top of the alpha this composable drives itself.
-                            modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+                            delayMillis = if (fresh && message.role == "assistant") 70 else 0
                         ) {
                             if (message.role == "user") {
                                 UserBubble(message.content)

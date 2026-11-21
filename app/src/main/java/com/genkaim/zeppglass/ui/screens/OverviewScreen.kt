@@ -33,16 +33,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DirectionsRun
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Schedule
@@ -497,6 +500,7 @@ fun OverviewScreen(
                                     label = "准备度",
                                     value = readiness?.officialScore?.toString() ?: "--",
                                     unit = null,
+                                    icon = Icons.Rounded.EmojiEvents,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),
                                     verdict = scoreVerdict(readiness?.officialScore),
@@ -506,6 +510,7 @@ fun OverviewScreen(
                                     label = "血氧",
                                     value = (nightSpo2 ?: spo2?.value)?.toString() ?: "--",
                                     unit = "%",
+                                    icon = Icons.Rounded.Air,
                                     modifier = Modifier.weight(1f),
                                     verdict = (nightSpo2 ?: spo2?.value)?.let {
                                         when {
@@ -1697,7 +1702,16 @@ private fun BodyCompositionCard(
 ) {
     FlatPanel(onClick = onClick) {
         Column(Modifier.padding(16.dp)) {
-            Text("身体成分", style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.MonitorWeight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.size(6.dp))
+                Text("身体成分", style = MaterialTheme.typography.titleSmall)
+            }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth()) {
                 BodyStat("体重", point?.weightKg, "kg", Modifier.weight(1f))

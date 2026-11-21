@@ -36,8 +36,12 @@ object Fmt {
         return "%02d:%02d".format(minute / 60, minute % 60)
     }
 
-    fun date(date: LocalDate): String =
-        date.format(DateTimeFormatter.ofPattern("M 月 d 日", Locale.CHINA))
+    fun date(date: LocalDate): String {
+        // Dates from another year carry the year, so "12 月 8 日" cannot be
+        // mistaken for a reading from this year.
+        val pattern = if (date.year == LocalDate.now().year) "M 月 d 日" else "yyyy 年 M 月 d 日"
+        return date.format(DateTimeFormatter.ofPattern(pattern, Locale.CHINA))
+    }
 
     fun weekday(date: LocalDate): String =
         date.format(DateTimeFormatter.ofPattern("EEE", Locale.CHINA))

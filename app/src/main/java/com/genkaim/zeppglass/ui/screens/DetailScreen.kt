@@ -246,7 +246,7 @@ fun DetailScreen(
                     BodySourceToggle(
                         source = settings.bodySource,
                         onChange = { settings.updateBodySource(it) },
-                        modifier = Modifier.padding(end = 10.dp)
+                        modifier = Modifier.padding(end = 20.dp)
                     )
                 }
             }
@@ -1527,14 +1527,17 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             visceral = comp?.visceralFat
         )
 
-        FlatPanel {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 18.dp, horizontal = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(Modifier.fillMaxWidth()) {
+        // A watch entry has no composition, so the score and body age are not
+        // shown at all — an empty "--" block would just be noise.
+        if (source != "watch") {
+            FlatPanel {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 18.dp, horizontal = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(Modifier.fillMaxWidth()) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "身体得分",
@@ -1599,11 +1602,11 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                 if (score == null) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        if (source == "watch") "手表记录没有身体成分，切到体脂秤试试"
-                        else "体脂秤读数为空，暂时算不出得分",
+                        "这次读数缺少身体成分，暂时算不出得分",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
                 }
             }
         }
@@ -2038,10 +2041,7 @@ private fun mifflinBmr(body: com.genkaim.zeppglass.data.BodyProfile?, weightKg: 
 @Composable
 private fun BodyTrendCard(points: List<WeightPoint>) {
     val palette = LocalZgPalette.current
-    SectionTitle(
-        "趋势",
-        trailing = points.size.takeIf { it > 0 }?.let { "$it 次记录" }
-    )
+    SectionTitle("趋势", trailing = "近 1 个月")
     FlatPanel {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             BodyTrendRow("体重", "kg", points, palette.accent) { it.weightKg }
@@ -2072,44 +2072,16 @@ private fun BodyTrendRow(
     fun dayOf(epochMs: Long): LocalDate =
         Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
 
-    // Valid readings only: the newest two drive the comparison, so any two
-    // readings are enough to show a change.
+    // The curve covers one month back from the newest reading of this source.
     val currentPoint = series.lastOrNull()
     val current = currentPoint?.second
-    val previous = series.dropLast(1).lastOrNull()?.second
     val lastDate = currentPoint?.let { dayOf(it.first) }
-    // Compare against the reading closest to 170 days before the newest one; if
-    // that lands on an empty stretch, the nearest reading is used and the text
-    // says how many days back it actually is.
-    val targetDate = lastDate?.minusDays(170)
-    val basePoint = if (targetDate != null) {
-        series
-            .filter { currentPoint == null || it.first != currentPoint.first }
-            .minByOrNull { abs(dayOf(it.first).toEpochDay() - targetDate.toEpochDay()) }
-    } else {
-        null
-    }
-    val base = basePoint?.second
-    val baseDays = if (basePoint != null && lastDate != null) {
-        (lastDate.toEpochDay() - dayOf(basePoint.first).toEpochDay()).toInt()
-    } else {
-        null
-    }
-    // The curve spans 200 days so the 170-day comparison always has room, and
-    // reaches back to the earlier reading when that one is older still.
-    val windowStart = lastDate?.minusDays(200)
-    val rangeStart = when {
-        windowStart == null -> null
-        basePoint != null && dayOf(basePoint.first) < windowStart -> dayOf(basePoint.first)
-        else -> windowStart
-    }
+    val rangeStart = lastDate?.minusMonths(1)
     val plot = if (rangeStart != null && lastDate != null) {
         series.filter { dayOf(it.first) in rangeStart..lastDate }
     } else {
         series
     }
-    fun delta(value: Double?): String =
-        value?.let { Fmt.signedOneDecimal(it) + " $unit" } ?: "--"
 
     Column(
         Modifier
@@ -2126,20 +2098,6 @@ private fun BodyTrendRow(
             Text(
                 current?.let { Fmt.oneDecimal(it) + " $unit" } ?: "--",
                 style = MaterialTheme.typography.titleSmall
-            )
-        }
-        Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(
-                "较上次 " + delta(current?.let { cur -> previous?.let { cur - it } }),
-                style = MaterialTheme.typography.labelSmall,
-                color = muted
-            )
-            Text(
-                "较 ${baseDays ?: 170} 天前 " +
-                    delta(current?.let { cur -> base?.let { cur - it } }),
-                style = MaterialTheme.typography.labelSmall,
-                color = muted
             )
         }
         Spacer(Modifier.height(8.dp))

@@ -2856,17 +2856,6 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
             )
         }
     }
-
-    SectionTitle("这个数值")
-    FlatPanel {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                "皮肤温度是手表在夜间测到的手腕温度，减去你自己的基线后得到的温差：向上是比平时偏暖，向下是偏冷。" +
-                    "通常 ±0.5℃ 以内算正常，超过 ±1℃ 会标成琥珀或红色。它是相对温差，不是绝对体温。",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-    }
 }
 
 // ---------------- sleep vitals with a 7-day trend ----------------

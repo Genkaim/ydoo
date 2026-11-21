@@ -65,6 +65,15 @@ object Fmt {
     fun oneDecimal(value: Double?): String =
         value?.let { String.format(Locale.CHINA, "%.1f", it) } ?: "--"
 
+    /**
+     * A signed one-decimal reading such as the skin-temperature deviation:
+     * "+0.2", "-0.3". A night that rounds to zero prints "0.0" without a sign.
+     */
+    fun signedOneDecimal(value: Double?): String = value?.let {
+        val text = String.format(Locale.CHINA, "%+.1f", it)
+        if (text == "+0.0" || text == "-0.0") "0.0" else text
+    } ?: "--"
+
     fun km(meters: Double?): String =
         meters?.let { String.format(Locale.CHINA, "%.1f", it / 1000.0) } ?: "--"
 

@@ -346,6 +346,11 @@ object HealthParser {
             val item = items.optJSONObject(i) ?: continue
             val ts = item.anyNumber("timestamp")?.toLong() ?: continue
             fun score(key: String): Int? = item.anyNumber(key)?.roundToInt()?.takeIf { it in 1..100 }
+            // 32767 / 255 mean "baseline not ready": any calibrated value sent
+            // with that baseline is a placeholder, not a deviation.
+            val skinBaseline = item.anyNumber("skinTempBaseLine")
+            val hasSkinBaseline =
+                skinBaseline != null && skinBaseline != 32767.0 && skinBaseline != 255.0
             out.add(
                 ReadinessDay(
                     date = dateOf(ts, zone),
@@ -358,10 +363,15 @@ object HealthParser {
                     sleepRhr = item.anyNumber("sleepRHR")?.roundToInt()?.takeIf { it in 20..200 },
                     ahiScore = score("ahiScore"),
                     skinTempScore = score("skinTempScore"),
-                    // Tenths of a degree against the baseline; 32767 / 255 are
-                    // "no baseline" markers, not temperatures.
+                    // Hundredths of a degree against the baseline: Zepp's own app
+                    // prints -22 as -0.2℃, so the raw value is 0.01℃ steps. 32767
+                    // and 255 are "no baseline" markers, not temperatures.
                     skinTempDeltaC = item.anyNumber("skinTempCalibrated")
-                        ?.takeIf { it > -500.0 && it < 500.0 }?.div(10.0),
+                        ?.takeIf {
+                            hasSkinBaseline &&
+                                it != 32767.0 && it != -32768.0 && it != 255.0 && it != -255.0 &&
+                                it > -5000.0 && it < 5000.0
+                        }?.div(100.0),
                     insight = item.anyNumber("rdnsInsight")?.roundToInt()?.takeIf { it in 0..100 },
                     // 255 is the watch's "baseline not ready" marker: keep it null.
                     rhrBaseline = item.anyNumber("rhrBaseline")?.roundToInt()?.takeIf { it in 20..200 },

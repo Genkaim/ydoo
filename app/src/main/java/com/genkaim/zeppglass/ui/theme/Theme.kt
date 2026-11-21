@@ -77,6 +77,10 @@ data class ZgPalette(
     val panelMuted: Color,
     val accent: Color,
     val accentSoft: Color,
+    /** Hybrid Charge 精力: blue, fixed whatever the reading is. */
+    val chargeMental: Color,
+    /** Hybrid Charge 体力: a lighter blue, so the two sides read as one family. */
+    val chargePhysical: Color,
     val grid: Color,
     val sleepDeep: Color,
     val sleepLight: Color,
@@ -102,6 +106,8 @@ val LocalZgPalette = staticCompositionLocalOf {
         panelMuted = Color(0xFFF6F6F7),
         accent = Color(0xFF0E8A63),
         accentSoft = Color(0xFFE4F5EE),
+        chargeMental = Color(0xFF3D5AFE),
+        chargePhysical = Color(0xFF7C9BFF),
         grid = Color(0xFFEDEDF0),
         sleepDeep = Color(0xFF3B4C8A),
         sleepLight = Color(0xFF7C9BFF),
@@ -154,6 +160,8 @@ fun ZeppGlassTheme(
         panelMuted = scheme.surfaceVariant,
         accent = scheme.primary,
         accentSoft = scheme.primaryContainer,
+        chargeMental = if (darkTheme) Color(0xFF8FA6FF) else Color(0xFF3D5AFE),
+        chargePhysical = if (darkTheme) Color(0xFFB8C8FF) else Color(0xFF7C9BFF),
         grid = scheme.outlineVariant,
         sleepDeep = if (darkTheme) Color(0xFF7E93E8) else Color(0xFF3B4C8A),
         sleepLight = if (darkTheme) Color(0xFF9DB3FF) else Color(0xFF6F8DF5),

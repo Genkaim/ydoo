@@ -117,6 +117,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -446,14 +447,29 @@ fun OverviewScreen(
                                     },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.STRESS, date)) }
                                 )
+                                // Same three bands as the detail page: ±0.5℃ is
+                                // normal, up to ±1℃ amber, beyond that red.
+                                val skinDelta = readiness?.skinTempDeltaC
+                                val skinBand = skinDelta?.let {
+                                    val magnitude = abs(it)
+                                    when {
+                                        magnitude <= 0.5 -> "正常" to ink
+                                        magnitude <= 1.0 ->
+                                            (if (it > 0) "偏高" else "偏低") to warnTone
+                                        else ->
+                                            (if (it > 0) "偏高" else "偏低") to criticalTone
+                                    }
+                                }
                                 MetricTile(
                                     label = "皮肤温度",
-                                    value = readiness?.skinTempScore?.toString() ?: "--",
-                                    unit = readiness?.skinTempScore?.let { "分" },
+                                    value = if (skinDelta != null) Fmt.signedOneDecimal(skinDelta)
+                                    else readiness?.skinTempScore?.toString() ?: "--",
+                                    unit = if (skinDelta != null) "℃"
+                                    else readiness?.skinTempScore?.let { "分" },
                                     icon = Icons.Rounded.Thermostat,
-                                    tint = LocalZgPalette.current.warn,
+                                    tint = skinBand?.second ?: LocalZgPalette.current.warn,
                                     modifier = Modifier.weight(1f),
-                                    verdict = scoreVerdict(readiness?.skinTempScore),
+                                    verdict = skinBand ?: scoreVerdict(readiness?.skinTempScore),
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.SKIN_TEMP, date)) }
                                 )
                             }

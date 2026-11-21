@@ -135,7 +135,9 @@ fun SignedBarChart(
     values: List<Float?>,
     labels: List<String>,
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.tertiary
+    color: Color = MaterialTheme.colorScheme.tertiary,
+    /** Decimal places on the axis and the bar labels; 0 keeps the integer look. */
+    decimals: Int = 0
 ) {
     val valid = values.filterNotNull()
     if (valid.isEmpty()) {
@@ -146,8 +148,25 @@ fun SignedBarChart(
     val axisStyle = TextStyle(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val grid = LocalZgPalette.current.grid
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
-    val maxAbs = max(abs(valid.max()), abs(valid.min())).coerceAtLeast(5f)
-    val bound = ceil(maxAbs / 5f) * 5f
+    val maxAbs = max(abs(valid.max()), abs(valid.min()))
+    val bound = if (decimals == 0) {
+        ceil(maxAbs.coerceAtLeast(5f) / 5f) * 5f
+    } else {
+        // Tenths-scale readings (skin temperature) would be flattened by the
+        // fixed ±5 training-status scale, so pick the tightest round bound.
+        listOf(0.5f, 1f, 2f, 5f, 10f, 20f, 50f).firstOrNull { it >= maxAbs }
+            ?: (ceil(maxAbs / 50f) * 50f)
+    }
+    fun rounded(v: Float): Float =
+        if (decimals == 0) v.roundToInt().toFloat()
+        else Math.round(v * 10f) / 10f
+    fun plain(v: Float): String =
+        if (decimals == 0) v.roundToInt().toString()
+        else String.format(java.util.Locale.CHINA, "%.${decimals}f", rounded(v))
+    fun signedLabel(v: Float): String {
+        val r = rounded(v)
+        return if (decimals > 0 && r > 0f) "+" + plain(r) else plain(r)
+    }
 
     Canvas(modifier) {
         val axisWidth = 30.dp.toPx()
@@ -162,7 +181,7 @@ fun SignedBarChart(
         listOf(bound, 0f, -bound).forEach { value ->
             val y = yOf(value)
             drawLine(grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
-            val layout = measurer.measure(value.roundToInt().toString(), axisStyle)
+            val layout = measurer.measure(plain(value), axisStyle)
             drawText(layout, topLeft = Offset(0f, y - layout.size.height / 2f))
         }
 
@@ -181,12 +200,13 @@ fun SignedBarChart(
                 size = androidx.compose.ui.geometry.Size(barWidth, height),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
             )
-            val text = value.roundToInt().toString()
+            val text = signedLabel(value)
             val layout = measurer.measure(text, axisStyle)
             val ly = if (value >= 0) top - layout.size.height - 2.dp.toPx()
             else top + height + 2.dp.toPx()
             val lx = (centerX - layout.size.width / 2f)
                 .coerceIn(axisWidth, (size.width - layout.size.width).coerceAtLeast(axisWidth))
+
             drawBadgedLabel(
                 measurer,
                 text,

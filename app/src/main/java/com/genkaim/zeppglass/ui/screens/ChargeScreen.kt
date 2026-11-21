@@ -297,9 +297,11 @@ private fun ChargeHero(charge: ChargeDay) {
         value < 30.0 -> warnTone
         else -> base
     }
-    val physicalColor = tier(charge.physical, MaterialTheme.colorScheme.primary)
-    // 精力 shares the main accent now: the split is in the label, not the colour.
-    val mentalColor = tier(charge.mental, MaterialTheme.colorScheme.primary)
+    // 体力 and 精力 keep their own colour whatever the reading: light blue for
+    // the body, deeper blue for the mind. Only the combined score still steps
+    // down to amber and red.
+    val physicalColor = LocalZgPalette.current.chargePhysical
+    val mentalColor = LocalZgPalette.current.chargeMental
     val totalColor = tier(charge.total?.toDouble(), MaterialTheme.colorScheme.primary)
     Column(
         Modifier
@@ -512,7 +514,7 @@ private fun SplitTrend(
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 12.dp)
                 .height(140.dp),
-            color = MaterialTheme.colorScheme.primary
+            color = LocalZgPalette.current.chargePhysical
         )
     }
     SectionTitle("精力", trailing = "晨起")
@@ -524,7 +526,7 @@ private fun SplitTrend(
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 12.dp)
                 .height(140.dp),
-            color = MaterialTheme.colorScheme.primary
+            color = LocalZgPalette.current.chargeMental
         )
     }
 }

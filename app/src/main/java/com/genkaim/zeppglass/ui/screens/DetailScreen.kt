@@ -89,6 +89,7 @@ import com.genkaim.zeppglass.ui.components.RoutePath
 import com.genkaim.zeppglass.ui.components.RoutePlaceholder
 import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.ScaleBar
+import com.genkaim.zeppglass.ui.components.SignedBarChart
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SleepStageBar
 import com.genkaim.zeppglass.ui.components.SleepStageChart
@@ -106,6 +107,7 @@ import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -2775,14 +2777,24 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
     } ?: source.readiness.lastOrNull { it.skinTempScore != null }
     val value = day?.skinTempScore
     val delta = day?.skinTempDeltaC
-    if (day == null || value == null) {
+    if (day == null || (value == null && delta == null)) {
         Missing("手表还没有给出皮肤温度")
         return
     }
     val palette = LocalZgPalette.current
     val ink = MaterialTheme.colorScheme.onSurface
-    val verdict = when {
-        value >= 75 -> "正常" to ink
+    // Three bands, the same ones the overview tile uses: within ±0.5℃ is
+    // normal, up to ±1℃ is worth a look, beyond that is clearly off baseline.
+    val band: Pair<String, Color>? = delta?.let {
+        val magnitude = abs(it)
+        when {
+            magnitude <= 0.5 -> "正常" to ink
+            magnitude <= 1.0 -> (if (it > 0) "偏高" else "偏低") to palette.warn
+            else -> (if (it > 0) "偏高" else "偏低") to palette.critical
+        }
+    }
+    val verdict = band ?: when {
+        value == null || value >= 75 -> "正常" to ink
         value >= 50 -> "一般" to palette.warn
         else -> "偏低" to palette.critical
     }
@@ -2800,13 +2812,10 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
             )
             Spacer(Modifier.height(6.dp))
             val abnormal = verdict.first != "正常"
-            // The official app prints whole degrees against the baseline, so a
-            // +0.2℃ night reads as 0℃ there; rounding here keeps the two screens
-            // saying the same thing.
-            val hero = delta?.let {
-                val whole = Math.round(it).toInt()
-                if (whole == 0) "0" else String.format(java.util.Locale.CHINA, "%+d", whole)
-            } ?: value.toString()
+            // The official app prints the night's deviation from the personal
+            // baseline with one decimal ("-0.2℃"), and rounds to a bare 0.0 on a
+            // night that sits right on it.
+            val hero = delta?.let { Fmt.signedOneDecimal(it) } ?: value.toString()
             val heroUnit = if (delta != null) " ℃" else " 分"
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
@@ -2822,7 +2831,7 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                 )
             }
             Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
-            if (delta != null) {
+            if (delta != null && value != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "相对个人基线 · 评分 $value",
@@ -2834,33 +2843,34 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
     }
 
     val recent = (0..6).map { day.date.minusDays(6L - it) }
-    // Plot the deviation when the watch sent it: it is the number people compare
-    // day to day, and it is what the official app shows.
+    // Deviations around zero: above the line means warmer than the personal
+    // baseline, below means colder. Days without a calibrated reading stay empty
+    // instead of borrowing the score.
     val series = recent.map { d ->
-        val r = source.readiness.firstOrNull { it.date == d }
-        (r?.skinTempDeltaC?.toFloat()) ?: r?.skinTempScore?.toFloat()
+        source.readiness.firstOrNull { it.date == d }?.skinTempDeltaC?.toFloat()
     }
     if (series.count { it != null } > 1) {
         SectionTitle("近 7 天")
         FlatPanel {
-            TrendLineChart(
+            SignedBarChart(
                 values = series,
                 labels = recent.map { Fmt.weekdayShort(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
                     .height(170.dp),
-                color = palette.warn
+                color = palette.warn,
+                decimals = 1
             )
         }
     }
 
-    SectionTitle("这个分数")
+    SectionTitle("这个数值")
     FlatPanel {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "皮肤温度分是手表把夜间手腕温度和自己的基线比较后给出的 0–100 分：越接近满分，说明当晚越贴近个人基线；" +
-                    "明显偏高或偏低时分数会下降。它是相对评分，不是绝对体温。",
+                "皮肤温度是手表在夜间测到的手腕温度，减去你自己的基线后得到的温差：向上是比平时偏暖，向下是偏冷。" +
+                    "通常 ±0.5℃ 以内算正常，超过 ±1℃ 会标成琥珀或红色。它是相对温差，不是绝对体温。",
                 style = MaterialTheme.typography.bodySmall
             )
         }

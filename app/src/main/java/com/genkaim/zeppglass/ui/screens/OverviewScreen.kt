@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bolt
@@ -509,22 +510,7 @@ fun OverviewScreen(
                                     label = "血氧",
                                     value = (nightSpo2 ?: spo2?.value)?.toString() ?: "--",
                                     unit = "%",
-                                    // No O₂ glyph in the icon set: a blood drop plus the
-                                    // symbol the reading is usually drawn with.
-                                    leading = {
-                                        Icon(
-                                            Icons.Rounded.WaterDrop,
-                                            contentDescription = null,
-                                            tint = LocalZgPalette.current.critical,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Text(
-                                            "O₂",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    },
+                                    icon = Icons.Rounded.Air,
                                     modifier = Modifier.weight(1f),
                                     verdict = (nightSpo2 ?: spo2?.value)?.let {
                                         when {
@@ -534,28 +520,6 @@ fun OverviewScreen(
                                         }
                                     },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.SPO2, date)) }
-                                )
-                            }
-
-                            // Blood pressure and glucose have no cloud source yet, so
-                            // they follow the same rule as every other metric: a card
-                            // that reads "--" until a reading exists.
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                MetricTile(
-                                    label = "血压",
-                                    value = "--",
-                                    unit = "mmHg",
-                                    icon = Icons.Rounded.Favorite,
-                                    tint = LocalZgPalette.current.critical,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                MetricTile(
-                                    label = "血糖",
-                                    value = "--",
-                                    unit = "mmol/L",
-                                    icon = Icons.Rounded.WaterDrop,
-                                    tint = LocalZgPalette.current.warn,
-                                    modifier = Modifier.weight(1f)
                                 )
                             }
 

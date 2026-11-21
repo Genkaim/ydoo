@@ -2774,6 +2774,7 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
         source.readiness.firstOrNull { it.date == d && it.skinTempScore != null }
     } ?: source.readiness.lastOrNull { it.skinTempScore != null }
     val value = day?.skinTempScore
+    val delta = day?.skinTempDeltaC
     if (day == null || value == null) {
         Missing("手表还没有给出皮肤温度")
         return
@@ -2799,26 +2800,43 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
             )
             Spacer(Modifier.height(6.dp))
             val abnormal = verdict.first != "正常"
+            // The official app prints the night's deviation from the personal
+            // baseline ("+0.2℃"), not an absolute reading; the score stays as the
+            // secondary number.
+            val hero = delta?.let { String.format(java.util.Locale.CHINA, "%+.1f", it) }
+                ?: value.toString()
+            val heroUnit = if (delta != null) " ℃" else " 分"
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    value.toString(),
+                    hero,
                     style = MaterialTheme.typography.displayMedium,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface
+                    color = if (abnormal) verdict.second else ink
                 )
                 Text(
-                    " 分",
+                    heroUnit,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (abnormal) verdict.second else MaterialTheme.colorScheme.onSurface,
+                    color = if (abnormal) verdict.second else ink,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
             Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+            if (delta != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "相对个人基线 · 评分 $value",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 
     val recent = (0..6).map { day.date.minusDays(6L - it) }
+    // Plot the deviation when the watch sent it: it is the number people compare
+    // day to day, and it is what the official app shows.
     val series = recent.map { d ->
-        source.readiness.firstOrNull { it.date == d }?.skinTempScore?.toFloat()
+        val r = source.readiness.firstOrNull { it.date == d }
+        (r?.skinTempDeltaC?.toFloat()) ?: r?.skinTempScore?.toFloat()
     }
     if (series.count { it != null } > 1) {
         SectionTitle("近 7 天")

@@ -126,6 +126,12 @@ data class ReadinessDay(
     val sleepRhr: Int?,
     val ahiScore: Int?,
     val skinTempScore: Int?,
+    /**
+     * The night's skin temperature compared with the personal baseline, in °C.
+     * Zepp sends it in tenths (`skinTempCalibrated`), and this is the number the
+     * official app prints as "+0.2℃" / "-0.3℃".
+     */
+    val skinTempDeltaC: Double? = null,
     val insight: Int?,
     /** Official baselines; null when the watch sent the 255 "no baseline" marker. */
     val rhrBaseline: Int? = null,

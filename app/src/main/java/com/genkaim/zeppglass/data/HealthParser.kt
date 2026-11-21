@@ -358,6 +358,10 @@ object HealthParser {
                     sleepRhr = item.anyNumber("sleepRHR")?.roundToInt()?.takeIf { it in 20..200 },
                     ahiScore = score("ahiScore"),
                     skinTempScore = score("skinTempScore"),
+                    // Tenths of a degree against the baseline; 32767 / 255 are
+                    // "no baseline" markers, not temperatures.
+                    skinTempDeltaC = item.anyNumber("skinTempCalibrated")
+                        ?.takeIf { it > -500.0 && it < 500.0 }?.div(10.0),
                     insight = item.anyNumber("rdnsInsight")?.roundToInt()?.takeIf { it in 0..100 },
                     // 255 is the watch's "baseline not ready" marker: keep it null.
                     rhrBaseline = item.anyNumber("rhrBaseline")?.roundToInt()?.takeIf { it in 20..200 },

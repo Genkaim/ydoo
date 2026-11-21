@@ -165,7 +165,15 @@ fun SignedBarChart(
         else String.format(java.util.Locale.CHINA, "%.${decimals}f", rounded(v))
     fun signedLabel(v: Float): String {
         val r = rounded(v)
-        return if (decimals > 0 && r > 0f) "+" + plain(r) else plain(r)
+        return when {
+            decimals == 0 -> plain(r)
+            // Anything that rounds to zero is shown as "±0.0", and drawn on the
+            // zero line, so a -0.04 night and a +0.02 night do not land on
+            // opposite sides of the axis.
+            r == 0f -> "±" + plain(r)
+            r > 0f -> "+" + plain(r)
+            else -> plain(r)
+        }
     }
 
     Canvas(modifier) {
@@ -188,21 +196,24 @@ fun SignedBarChart(
         val count = values.size.coerceAtLeast(1)
         val slot = chartWidth / count
         val barWidth = (slot * 0.34f).coerceIn(4f, 14.dp.toPx())
-        values.forEachIndexed { index, value ->
-            if (value == null) return@forEachIndexed
+        values.forEachIndexed { index, raw ->
+            if (raw == null) return@forEachIndexed
+            // Position by the value the label shows: a raw -0.04 is "±0.0" on
+            // screen, so it must not hang below the zero line.
+            val value = rounded(raw)
             val centerX = axisWidth + slot * index + slot / 2f
             val y = yOf(value)
-            val top = minOf(y, zeroY)
             val height = abs(zeroY - y).coerceAtLeast(1.5f)
+            val top = if (value == 0f) zeroY - height / 2f else minOf(y, zeroY)
             drawRoundRect(
-                color = if (value >= 0) color else color.copy(alpha = 0.45f),
+                color = if (value >= 0f) color else color.copy(alpha = 0.45f),
                 topLeft = Offset(centerX - barWidth / 2f, top),
                 size = androidx.compose.ui.geometry.Size(barWidth, height),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
             )
             val text = signedLabel(value)
             val layout = measurer.measure(text, axisStyle)
-            val ly = if (value >= 0) top - layout.size.height - 2.dp.toPx()
+            val ly = if (value >= 0f) top - layout.size.height - 2.dp.toPx()
             else top + height + 2.dp.toPx()
             val lx = (centerX - layout.size.width / 2f)
                 .coerceIn(axisWidth, (size.width - layout.size.width).coerceAtLeast(axisWidth))

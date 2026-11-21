@@ -71,7 +71,10 @@ object Fmt {
      */
     fun signedOneDecimal(value: Double?): String = value?.let {
         val text = String.format(Locale.CHINA, "%+.1f", it)
-        if (text == "+0.0" || text == "-0.0") "0.0" else text
+        when (text) {
+            "+0.0", "-0.0" -> "±0.0"
+            else -> text
+        }
     } ?: "--"
 
     fun km(meters: Double?): String =

@@ -1679,7 +1679,7 @@ private fun BodyCompositionCard(
             Row(Modifier.fillMaxWidth()) {
                 BodyStat("体重", point?.weightKg, "kg", Modifier.weight(1f))
                 BodyStat("体脂", point?.bodyFatPct, "%", Modifier.weight(1f))
-                BodyStat("骨骼肌", point?.skeletalMuscleKg, "kg", Modifier.weight(1f))
+                BodyStat("肌肉", point?.muscleKg, "kg", Modifier.weight(1f))
             }
         }
     }

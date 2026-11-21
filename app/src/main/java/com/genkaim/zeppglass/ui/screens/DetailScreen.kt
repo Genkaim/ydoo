@@ -1638,13 +1638,10 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         val fatTop = if (male) 27.0 else 32.0
         val muscleLow = heightM?.let { 16.5 * it * it } ?: 49.5
         val muscleHigh = heightM?.let { 19.8 * it * it } ?: 59.4
-        val skeletalLow = muscleLow * 0.6
-        val skeletalHigh = muscleHigh * 0.6
         val boneLow = if (male) 2.0 else 1.5
         val boneHigh = if (male) 4.0 else 3.5
         val weightMax = maxOf(150.0, (bodyWeight ?: 0.0) + 10.0)
         val muscleMax = maxOf(muscleHigh * 1.3, (bodyWeight ?: 0.0) * 0.8, 60.0)
-        val skeletalMax = maxOf(skeletalHigh * 1.4, 45.0)
 
         val bmiRate = bmi?.let {
             when {
@@ -1667,13 +1664,6 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             when {
                 it < muscleLow -> "偏低" to BodyTone.WARN
                 it < muscleHigh -> "标准" to BodyTone.NORMAL
-                else -> "优秀" to BodyTone.NORMAL
-            }
-        }
-        val skeletalRate = comp?.skeletalMuscleKg?.let {
-            when {
-                it < skeletalLow -> "偏低" to BodyTone.WARN
-                it < skeletalHigh -> "标准" to BodyTone.NORMAL
                 else -> "优秀" to BodyTone.NORMAL
             }
         }
@@ -1736,11 +1726,6 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             Triple(20.0, muscleLow, BodyTone.WARN),
             Triple(muscleLow, muscleHigh, BodyTone.NORMAL),
             Triple(muscleHigh, muscleMax, BodyTone.NORMAL)
-        )
-        val skeletalBands = listOf(
-            Triple(10.0, skeletalLow, BodyTone.WARN),
-            Triple(skeletalLow, skeletalHigh, BodyTone.NORMAL),
-            Triple(skeletalHigh, skeletalMax, BodyTone.NORMAL)
         )
         val waterBands = listOf(
             Triple(35.0, 55.0, BodyTone.WARN),
@@ -1806,11 +1791,6 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                 "肌肉", Icons.Rounded.FitnessCenter, kg(comp?.muscleKg), comp?.muscleKg,
                 muscleRate, 20.0, muscleMax, muscleBands,
                 listOf(muscleLow to cut(muscleLow, 1), muscleHigh to cut(muscleHigh, 1))
-            ),
-            BodyMetric(
-                "骨骼肌", Icons.Rounded.Accessibility, kg(comp?.skeletalMuscleKg),
-                comp?.skeletalMuscleKg, skeletalRate, 10.0, skeletalMax, skeletalBands,
-                listOf(skeletalLow to cut(skeletalLow, 1), skeletalHigh to cut(skeletalHigh, 1))
             ),
             BodyMetric(
                 "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
@@ -2069,7 +2049,7 @@ private fun mifflinBmr(body: com.genkaim.zeppglass.data.BodyProfile?, weightKg: 
     return base + if (male) 5.0 else -161.0
 }
 
-/** One card with three small trends: weight, body fat and skeletal muscle. */
+/** One card with three small trends: weight, body fat and muscle. */
 @Composable
 private fun BodyTrendCard(points: List<WeightPoint>) {
     val palette = LocalZgPalette.current
@@ -2080,7 +2060,7 @@ private fun BodyTrendCard(points: List<WeightPoint>) {
             MetricDivider()
             BodyTrendRow("体脂", "%", points, palette.warn) { it.bodyFatPct }
             MetricDivider()
-            BodyTrendRow("骨骼肌", "kg", points, palette.sleepLight) { it.skeletalMuscleKg }
+            BodyTrendRow("肌肉", "kg", points, palette.sleepLight) { it.muscleKg }
         }
     }
 }

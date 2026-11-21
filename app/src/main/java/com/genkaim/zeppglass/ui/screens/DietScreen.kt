@@ -1029,7 +1029,7 @@ private fun BodyCompositionCard(
         muscle < (if (male == false) 35.0 else 40.0) -> "偏低" to palette.warn
         else -> "正常" to normalInk
     }
-    val muscleKg = composition?.skeletalMuscleKg
+    val muscleKg = composition?.muscleKg ?: composition?.skeletalMuscleKg
 
     FlatPanel {
         Row(
@@ -1055,7 +1055,7 @@ private fun BodyCompositionCard(
                 Modifier.weight(1f)
             )
             BodyStat(
-                "骨骼肌",
+                "肌肉",
                 muscleKg?.let { Fmt.oneDecimal(it) } ?: "--",
                 "kg",
                 palette.sleepRem,

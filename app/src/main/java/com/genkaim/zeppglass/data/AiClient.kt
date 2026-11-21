@@ -570,24 +570,40 @@ object AiContext {
             }
         }
 
-        // Body composition: the scale and the wearable each keep their own latest
-        // reading, so the two dates can differ. Scores are local calculations,
-        // not Zepp's numbers.
+        // Body composition: weight/BMI and the composition figures are listed
+        // separately per source, each with its own date, because the wearable and
+        // the scale can be used on different days and a manual weight entry
+        // carries no composition at all.
         if (data.weights.isNotEmpty()) {
             val body = data.body
             val male = body?.isMale ?: true
             val heightM = body?.heightCm?.takeIf { it > 100 }?.div(100.0)
-            builder.appendLine("\n体重与身体成分（体脂秤与穿戴设备分开列，日期不同是正常的）：")
-            fun describe(label: String, point: WeightPoint?) {
+            builder.appendLine(
+                "\n体重与身体成分（体脂秤 / 穿戴设备分开；体重与身体成分各自的日期都写明了，" +
+                    "读的时候不要把一个日期套到另一个数字上）："
+            )
+
+            fun dayOf(point: WeightPoint) =
+                Instant.ofEpochMilli(point.epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
+
+            fun describeWeight(label: String, point: WeightPoint?) {
                 if (point == null) {
-                    builder.appendLine("- $label：没有记录")
+                    builder.appendLine("- $label 体重：没有记录")
                     return
                 }
-                val date = Instant.ofEpochMilli(point.epochMs)
-                    .atZone(ZoneId.systemDefault()).toLocalDate()
-                val parts = buildList {
+                val text = buildList {
                     point.weightKg?.let { add("体重 ${"%.1f".format(it)} kg") }
                     point.bmi?.let { add("BMI ${"%.1f".format(it)}") }
+                }.joinToString("，").ifEmpty { "没有体重" }
+                builder.appendLine("- $label 体重（${dayOf(point)}）：$text")
+            }
+
+            fun describeComposition(label: String, point: WeightPoint?) {
+                if (point == null) {
+                    builder.appendLine("- $label 身体成分：没有记录")
+                    return
+                }
+                val parts = buildList {
                     point.bodyFatPct?.let { add("体脂 ${"%.1f".format(it)}%") }
                     point.muscleKg?.let { add("肌肉 ${"%.1f".format(it)} kg") }
                     point.skeletalMuscleKg?.let { add("骨骼肌 ${"%.1f".format(it)} kg") }
@@ -613,13 +629,19 @@ object AiContext {
                 )
                 val age = deurenbergAge(point.bmi, point.bodyFatPct, male)
                 builder.appendLine(
-                    "- $label（$date）：" + parts.joinToString("，").ifEmpty { "没有身体成分" } +
-                        (score?.let { "，身体得分 $it" } ?: "") +
-                        (age?.let { "，身体年龄 $it 岁" } ?: "")
+                    "- $label 身体成分（${dayOf(point)}）：" +
+                        (parts.joinToString("，").ifEmpty { "没有身体成分" } +
+                            (score?.let { "，身体得分 $it" } ?: "") +
+                            (age?.let { "，身体年龄 $it 岁" } ?: ""))
                 )
             }
-            describe("体脂秤最近一条", data.weights.filter { it.weightType == 0 }.maxByOrNull { it.epochMs })
-            describe("穿戴设备最近一条", data.weights.filter { it.weightType != 0 }.maxByOrNull { it.epochMs })
+
+            val scale = data.weights.filter { it.weightType == 0 }
+            val watch = data.weights.filter { it.weightType != 0 }
+            describeWeight("体脂秤", scale.maxByOrNull { it.epochMs })
+            describeComposition("体脂秤", scale.filter { it.hasComposition }.maxByOrNull { it.epochMs })
+            describeWeight("穿戴设备", watch.maxByOrNull { it.epochMs })
+            describeComposition("穿戴设备", watch.filter { it.hasComposition }.maxByOrNull { it.epochMs })
         }
 
         // Diet log. The numbers are the user's own entries (AI estimates they
@@ -669,11 +691,16 @@ object AiContext {
         }
 
         data.latestWeight()?.let { w ->
-            builder.appendLine("\n体重：${w.weightKg} kg" + (w.bmi?.let { "，BMI ${"%.1f".format(it)}" } ?: ""))
+            val day = Instant.ofEpochMilli(w.epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
+            builder.appendLine(
+                "\n体重（$day）：${w.weightKg} kg" +
+                    (w.bmi?.let { "，BMI ${"%.1f".format(it)}" } ?: "")
+            )
         }
         data.weights.filter { it.hasComposition }.maxByOrNull { it.epochMs }?.let { c ->
+            val day = Instant.ofEpochMilli(c.epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
             builder.appendLine(
-                "身体成分：" + listOfNotNull(
+                "身体成分（$day，与上面的体重可能不是同一天）：" + listOfNotNull(
                     c.bodyFatPct?.let { "体脂 ${"%.1f".format(it)}%" },
                     c.muscleKg?.let { "肌肉 ${"%.1f".format(it)} kg" },
                     c.bodyWaterPct?.let { "水分 ${"%.1f".format(it)}%" },

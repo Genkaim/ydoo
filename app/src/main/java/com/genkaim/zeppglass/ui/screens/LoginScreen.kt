@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -286,6 +289,12 @@ fun LoginScreen(
                 onDispose { }
             } else {
                 window.setDimAmount(0f)
+                // A dialog window has an opaque background until its first frame;
+                // with the full-screen dialog that was the black flash when the
+                // sign-in page opened.
+                window.setBackgroundDrawable(
+                    android.graphics.drawable.ColorDrawable(AndroidColor.TRANSPARENT)
+                )
                 window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
                 window.statusBarColor = AndroidColor.TRANSPARENT
                 window.navigationBarColor = AndroidColor.TRANSPARENT
@@ -309,7 +318,13 @@ fun LoginScreen(
             color = MaterialTheme.colorScheme.background,
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
-            Column(Modifier.fillMaxSize()) {
+            // The dialog owns the whole screen (decorFitsSystemWindows=false), so
+            // it has to keep the status bar and the gesture bar clear itself.
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+            ) {
                 Row(
                     Modifier
                         .fillMaxWidth()

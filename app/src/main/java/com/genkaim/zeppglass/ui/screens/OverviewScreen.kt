@@ -105,7 +105,6 @@ import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.LineChart
-import com.genkaim.zeppglass.ui.components.BodySourceToggle
 import com.genkaim.zeppglass.ui.components.MetricTile
 import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.ProgressRing
@@ -486,8 +485,6 @@ fun OverviewScreen(
                             // Charge cards used to be.
                             BodyCompositionCard(
                                 point = bodyPoint,
-                                source = settings.bodySource,
-                                onSourceChange = { settings.updateBodySource(it) },
                                 onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
                             )
 
@@ -1670,17 +1667,11 @@ private fun RecentWorkouts(
 @Composable
 private fun BodyCompositionCard(
     point: WeightPoint?,
-    source: String,
-    onSourceChange: (String) -> Unit,
     onClick: () -> Unit
 ) {
     FlatPanel(onClick = onClick) {
         Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("身体成分", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                // Corner switch: which recording the card follows.
-                BodySourceToggle(source = source, onChange = onSourceChange)
-            }
+            Text("身体成分", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth()) {
                 BodyStat("体重", point?.weightKg, "kg", Modifier.weight(1f))

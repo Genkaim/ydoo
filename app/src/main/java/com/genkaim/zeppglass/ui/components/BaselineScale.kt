@@ -46,7 +46,9 @@ fun BaselineScaleBar(
     leftLabel: String? = null,
     centerLabel: String? = null,
     rightLabel: String? = null,
-    markerColor: Color? = null
+    markerColor: Color? = null,
+    /** When set, band thresholds are thick bars in this colour instead of gaps. */
+    bandDivider: Color? = null
 ) {
     if (max <= min) return
     val palette = LocalZgPalette.current
@@ -103,9 +105,10 @@ fun BaselineScaleBar(
         }
 
         if (bands.isNotEmpty()) {
-            // Zone scale: a 3dp gap between neighbouring stretches, so the
-            // thresholds read as cuts in the bar.
-            val gap = if (bands.size > 1) 1.5.dp.toPx() else 0f
+            // Zone scale. With a divider colour the stretches sit flush and each
+            // threshold is a thick white bar, matching the HRV gauge; without it
+            // a 3dp gap separates them instead.
+            val gap = if (bandDivider == null && bands.size > 1) 1.5.dp.toPx() else 0f
             bands.forEachIndexed { index, band ->
                 var x1 = xOf(band.from)
                 var x2 = xOf(band.to)
@@ -117,6 +120,17 @@ fun BaselineScaleBar(
                         topLeft = Offset(x1, barTop),
                         size = Size(x2 - x1, barHeight),
                         cornerRadius = CornerRadius(corner)
+                    )
+                }
+            }
+            if (bandDivider != null) {
+                bands.drop(1).forEach { band ->
+                    val x = xOf(band.from)
+                    drawLine(
+                        bandDivider,
+                        Offset(x, barTop),
+                        Offset(x, barBottom),
+                        2.dp.toPx()
                     )
                 }
             }

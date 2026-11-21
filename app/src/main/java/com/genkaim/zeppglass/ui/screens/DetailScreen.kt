@@ -11,6 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -22,6 +28,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Accessibility
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.MonitorWeight
+import androidx.compose.material.icons.rounded.Percent
+import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.Spa
+import androidx.compose.material.icons.rounded.Straighten
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -216,7 +232,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.ACTIVITY -> "活动"
     DetailKind.LOAD -> "训练负荷"
     DetailKind.PAI -> "PAI"
-    DetailKind.WEIGHT -> "体重与身体成分"
+    DetailKind.WEIGHT -> "身体成分"
     DetailKind.SPO2 -> "血氧"
     DetailKind.WORKOUT -> "运动"
     DetailKind.STRAIN -> "负荷"
@@ -1467,15 +1483,10 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?, settings: AppSetti
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp, bottom = 2.dp),
+            .padding(top = 2.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            "身体成分",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
         BodySourceToggle(source = source, onChange = { settings.updateBodySource(it) })
     }
     FlatPanel {
@@ -1690,116 +1701,63 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?, settings: AppSetti
     ) else emptyList()
 
     val metrics = listOf(
-        BodyMetric("体重", kg(latest?.weightKg), latest?.weightKg, bmiRate, 30.0, weightMax, weightBands),
-        BodyMetric("BMI", Fmt.oneDecimal(bmi), bmi, bmiRate, 15.0, 40.0, bmiBands),
-        BodyMetric("体脂率", pct(comp?.bodyFatPct), comp?.bodyFatPct, fatRate, 5.0, 40.0, fatBands),
         BodyMetric(
-            "骨骼肌",
-            kg(comp?.skeletalMuscleKg),
-            comp?.skeletalMuscleKg,
-            muscleRate,
-            5.0,
-            muscleKgMax,
-            muscleKgBands
+            "体重", Icons.Rounded.MonitorWeight, kg(latest?.weightKg), latest?.weightKg,
+            bmiRate, 30.0, weightMax, weightBands
         ),
         BodyMetric(
-            "肌肉率",
-            pct(comp?.skeletalMusclePct),
-            comp?.skeletalMusclePct,
-            muscleRate,
-            20.0,
-            55.0,
-            musclePctBands
+            "BMI", Icons.Rounded.Straighten, Fmt.oneDecimal(bmi), bmi,
+            bmiRate, 15.0, 40.0, bmiBands
         ),
         BodyMetric(
-            "体水分率",
-            pct(comp?.bodyWaterPct),
-            comp?.bodyWaterPct,
-            waterRate,
-            35.0,
-            75.0,
-            waterBands
-        ),
-        BodyMetric("骨量", kg(comp?.boneMassKg, 2), comp?.boneMassKg, boneRate, 1.0, 5.0, boneBands),
-        BodyMetric(
-            "内脏脂肪",
-            comp?.visceralFat?.roundToInt()?.toString() ?: "--",
-            comp?.visceralFat,
-            visceralRate,
-            1.0,
-            20.0,
-            visceralBands
+            "体脂率", Icons.Rounded.Percent, pct(comp?.bodyFatPct), comp?.bodyFatPct,
+            fatRate, 5.0, 40.0, fatBands
         ),
         BodyMetric(
-            "基础代谢",
+            "骨骼肌", Icons.Rounded.FitnessCenter, kg(comp?.skeletalMuscleKg),
+            comp?.skeletalMuscleKg, muscleRate, 5.0, muscleKgMax, muscleKgBands
+        ),
+        BodyMetric(
+            "肌肉率", Icons.Rounded.Accessibility, pct(comp?.skeletalMusclePct),
+            comp?.skeletalMusclePct, muscleRate, 20.0, 55.0, musclePctBands
+        ),
+        BodyMetric(
+            "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
+            comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands
+        ),
+        BodyMetric(
+            "骨量", Icons.Rounded.Spa, kg(comp?.boneMassKg, 2), comp?.boneMassKg,
+            boneRate, 1.0, 5.0, boneBands
+        ),
+        BodyMetric(
+            "内脏脂肪", Icons.Rounded.Favorite,
+            comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
+            visceralRate, 1.0, 20.0, visceralBands
+        ),
+        BodyMetric(
+            "基础代谢", Icons.Rounded.LocalFireDepartment,
             comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
-            comp?.metabolismKcal,
-            bmrRate,
-            800.0,
-            2500.0,
-            bmrBands
+            comp?.metabolismKcal, bmrRate, 800.0, 2500.0, bmrBands
         ),
         BodyMetric(
-            "蛋白质率",
-            pct(comp?.proteinPct),
-            comp?.proteinPct,
-            proteinRate,
-            10.0,
-            25.0,
-            proteinBands
+            "蛋白质率", Icons.Rounded.Restaurant, pct(comp?.proteinPct),
+            comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands
         )
     )
 
     SectionTitle("所有指标")
     FlatPanel {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-            metrics.forEach { BodyMetricRow(it) }
-        }
-    }
-
-    // Six calendar months of weigh-ins, newest first: every reading is listed,
-    // with its composition when that day came from the scale.
-    val windowStart = LocalDate.now().minusMonths(6)
-    val history = points
-        .filter { dayOf(it) >= windowStart && dayOf(it) <= LocalDate.now() }
-        .sortedByDescending { it.epochMs }
-    SectionTitle("近 6 个月")
-    FlatPanel {
-        if (history.isEmpty()) {
-            Text(
-                "近 6 个月没有称重记录",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp)
-            )
-        } else {
-            Column(
-                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                history.take(12).forEach { point ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        Text(
-                            Fmt.date(dayOf(point)),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            buildString {
-                                append("${Fmt.oneDecimal(point.weightKg)} kg")
-                                point.bodyFatPct?.let { append(" · 体脂 ${Fmt.oneDecimal(it)}%") }
-                                point.skeletalMuscleKg?.let { append(" · 肌肉 ${Fmt.oneDecimal(it)} kg") }
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                            modifier = Modifier.weight(1.6f)
-                        )
-                    }
-                }
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            metrics.forEachIndexed { index, metric ->
+                BodyMetricRow(metric)
+                if (index != metrics.lastIndex) MetricDivider()
             }
         }
     }
+
+    // Three trends in one card, over the last 170 days, each with the change
+    // against the previous weighing and against the reading 170 days ago.
+    BodyTrendCard(points)
 }
 
 /** How far a body-composition reading is from its healthy band. */
@@ -1807,6 +1765,7 @@ private enum class BodyTone { NORMAL, WARN, BAD }
 
 private class BodyMetric(
     val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
     val value: String,
     val numeric: Double?,
     val rating: Pair<String, BodyTone>?,
@@ -1820,6 +1779,7 @@ private class BodyMetric(
 private fun BodyMetricRow(metric: BodyMetric) {
     val palette = LocalZgPalette.current
     val primary = MaterialTheme.colorScheme.primary
+    val surface = MaterialTheme.colorScheme.surface
     fun colorOf(tone: BodyTone): Color = when (tone) {
         BodyTone.WARN -> palette.warn
         BodyTone.BAD -> palette.critical
@@ -1828,9 +1788,16 @@ private fun BodyMetricRow(metric: BodyMetric) {
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                metric.icon,
+                contentDescription = null,
+                tint = colorOf(metric.rating?.second ?: BodyTone.NORMAL),
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.size(8.dp))
             Text(
                 metric.label,
                 style = MaterialTheme.typography.labelMedium,
@@ -1848,7 +1815,7 @@ private fun BodyMetricRow(metric: BodyMetric) {
             }
             Text(metric.value, style = MaterialTheme.typography.titleSmall)
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(10.dp))
         if (metric.numeric != null) {
             BaselineScaleBar(
                 value = metric.numeric,
@@ -1857,6 +1824,8 @@ private fun BodyMetricRow(metric: BodyMetric) {
                 max = metric.max,
                 bands = metric.bands.map { ScaleBand(it.first, it.second, colorOf(it.third)) },
                 markerColor = colorOf(metric.rating?.second ?: BodyTone.NORMAL),
+                // Threshold cuts are thick white bars, same as the HRV gauge.
+                bandDivider = surface,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(26.dp)
@@ -1871,6 +1840,18 @@ private fun BodyMetricRow(metric: BodyMetric) {
             )
         }
     }
+}
+
+/** Short dash between two metric rows. */
+@Composable
+private fun MetricDivider() {
+    Box(
+        Modifier
+            .padding(vertical = 2.dp)
+            .width(28.dp)
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant)
+    )
 }
 
 /** 100 inside the healthy band, falling off linearly outside it. */
@@ -1974,6 +1955,148 @@ private fun mifflinBmr(body: com.genkaim.zeppglass.data.BodyProfile?, weightKg: 
     if (age !in 5..110) return null
     val base = 10.0 * weight + 6.25 * height - 5.0 * age
     return base + if (male) 5.0 else -161.0
+}
+
+/** One card with three small trends: weight, body fat and skeletal muscle. */
+@Composable
+private fun BodyTrendCard(points: List<WeightPoint>) {
+    val palette = LocalZgPalette.current
+    val today = LocalDate.now()
+    val start = today.minusDays(170)
+    SectionTitle("趋势", trailing = "近 170 天")
+    FlatPanel {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            BodyTrendRow("体重", "kg", points, start, today, palette.accent) { it.weightKg }
+            MetricDivider()
+            BodyTrendRow("体脂", "%", points, start, today, palette.warn) { it.bodyFatPct }
+            MetricDivider()
+            BodyTrendRow("骨骼肌", "kg", points, start, today, palette.sleepLight) {
+                it.skeletalMuscleKg
+            }
+        }
+    }
+}
+
+@Composable
+private fun BodyTrendRow(
+    title: String,
+    unit: String,
+    points: List<WeightPoint>,
+    start: LocalDate,
+    today: LocalDate,
+    color: Color,
+    selector: (WeightPoint) -> Double?
+) {
+    val zone = ZoneId.systemDefault()
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val series = points
+        .mapNotNull { point ->
+            val value = selector(point) ?: return@mapNotNull null
+            point.epochMs to value
+        }
+        .sortedBy { it.first }
+    fun dayOf(epochMs: Long): LocalDate =
+        Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+    val window = series.filter { dayOf(it.first) in start..today }
+    val current = window.lastOrNull()?.second
+    val previous = window.dropLast(1).lastOrNull()?.second
+    // "170 days ago" is the newest reading on or before the window start.
+    val base = series.lastOrNull { dayOf(it.first) <= start }?.second
+    fun delta(value: Double?): String =
+        value?.let { Fmt.signedOneDecimal(it) + " $unit" } ?: "--"
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelMedium,
+                color = muted,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                current?.let { Fmt.oneDecimal(it) + " $unit" } ?: "--",
+                style = MaterialTheme.typography.titleSmall
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(
+                "较上次 " + delta(current?.let { cur -> previous?.let { cur - it } }),
+                style = MaterialTheme.typography.labelSmall,
+                color = muted
+            )
+            Text(
+                "较 170 天前 " + delta(current?.let { cur -> base?.let { cur - it } }),
+                style = MaterialTheme.typography.labelSmall,
+                color = muted
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        if (window.size >= 2) {
+            MiniTrendChart(
+                values = window,
+                start = start,
+                today = today,
+                color = color,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+            )
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Text(Fmt.date(start), style = MaterialTheme.typography.labelSmall, color = muted)
+            Spacer(Modifier.weight(1f))
+            Text(Fmt.date(today), style = MaterialTheme.typography.labelSmall, color = muted)
+        }
+    }
+}
+
+/** Bare polyline for one body metric: no axes, the dates sit under the card. */
+@Composable
+private fun MiniTrendChart(
+    values: List<Pair<Long, Double>>,
+    start: LocalDate,
+    today: LocalDate,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val zone = ZoneId.systemDefault()
+    Canvas(modifier) {
+        val startMs = start.atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
+        val endMs = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
+        val xSpan = (endMs - startMs).coerceAtLeast(1f)
+        val minV = values.minOf { it.second }
+        val maxV = values.maxOf { it.second }
+        val pad = ((maxV - minV) * 0.15).coerceAtLeast(0.5)
+        val low = (minV - pad).toFloat()
+        val spanY = ((maxV + pad).toFloat() - low).coerceAtLeast(0.1f)
+        fun xOf(epochMs: Long) =
+            ((epochMs.toFloat() - startMs) / xSpan * size.width).coerceIn(0f, size.width)
+        fun yOf(value: Double) =
+            (size.height - (value.toFloat() - low) / spanY * size.height)
+                .coerceIn(0f, size.height)
+
+        val path = Path()
+        values.forEachIndexed { index, (epochMs, value) ->
+            if (index == 0) path.moveTo(xOf(epochMs), yOf(value))
+            else path.lineTo(xOf(epochMs), yOf(value))
+        }
+        drawPath(
+            path,
+            color = color,
+            style = Stroke(
+                width = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+        val last = values.last()
+        drawCircle(color, radius = 3.dp.toPx(), center = Offset(xOf(last.first), yOf(last.second)))
+    }
 }
 
 // ---------------- SpO2 ----------------

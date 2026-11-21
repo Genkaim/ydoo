@@ -71,6 +71,7 @@ import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.components.AxisBarChart
 import com.genkaim.zeppglass.ui.components.AxisLineChart
+import com.genkaim.zeppglass.ui.components.BaselineScaleBar
 import com.genkaim.zeppglass.ui.components.BarChart
 import com.genkaim.zeppglass.ui.components.DataRow
 import com.genkaim.zeppglass.ui.components.FlatPanel
@@ -88,6 +89,7 @@ import com.genkaim.zeppglass.ui.components.ProgressRing
 import com.genkaim.zeppglass.ui.components.RoutePath
 import com.genkaim.zeppglass.ui.components.RoutePlaceholder
 import com.genkaim.zeppglass.ui.components.Rule
+import com.genkaim.zeppglass.ui.components.ScaleBand
 import com.genkaim.zeppglass.ui.components.ScaleBar
 import com.genkaim.zeppglass.ui.components.SignedBarChart
 import com.genkaim.zeppglass.ui.components.SectionTitle
@@ -2138,8 +2140,24 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
                     color = rhrVerdict.second
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            BaselineRow("基线", day.rhrBaseline, "次/分", value)
+            // Centre is the personal baseline, the fill runs up to today: right
+            // of the centre reads higher than usual, left reads lower.
+            day.rhrBaseline?.let { base ->
+                Spacer(Modifier.height(14.dp))
+                BaselineScaleBar(
+                    value = value.toDouble(),
+                    baseline = base.toDouble(),
+                    min = base * 0.6,
+                    max = base * 1.4,
+                    fillColor = MaterialTheme.colorScheme.primary,
+                    leftLabel = "低",
+                    centerLabel = "基线 ${base}次/分",
+                    rightLabel = "高",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                )
+            }
         }
     }
 
@@ -2236,8 +2254,24 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                     color = hrvVerdict.second
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            BaselineRow("基线", day.hrvBaseline, "毫秒", value)
+            // Same gauge as resting heart rate: baseline in the middle, today's
+            // value filled in, higher to the right.
+            day.hrvBaseline?.let { base ->
+                Spacer(Modifier.height(14.dp))
+                BaselineScaleBar(
+                    value = value.toDouble(),
+                    baseline = base.toDouble(),
+                    min = base * 0.6,
+                    max = base * 1.4,
+                    fillColor = MaterialTheme.colorScheme.primary,
+                    leftLabel = "低",
+                    centerLabel = "基线 ${base}毫秒",
+                    rightLabel = "高",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                )
+            }
         }
     }
 
@@ -2288,43 +2322,6 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                 "HRV（rMSSD）是相邻心跳间隔的细微差异，单位毫秒。数值高通常说明恢复好、压力低；持续偏低往往意味着疲劳、睡眠不足或生病。",
                 style = MaterialTheme.typography.bodySmall
             )
-        }
-    }
-}
-
-/** Official baseline with the actual day's value compared against it. */
-@Composable
-private fun BaselineRow(label: String, baseline: Int?, unit: String, value: Int) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.weight(1f))
-        if (baseline == null) {
-            Text(
-                "暂未给出",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    "$baseline $unit",
-                    style = MaterialTheme.typography.titleSmall
-                )
-                val diff = value - baseline
-                Text(
-                    when {
-                        diff < 0 -> "比基线低 ${-diff} $unit"
-                        diff > 0 -> "比基线高 $diff $unit"
-                        else -> "与基线相同"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
     }
 }
@@ -2831,6 +2828,35 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                 )
             }
             Text(verdict.first, style = MaterialTheme.typography.titleSmall, color = verdict.second)
+            if (delta != null) {
+                Spacer(Modifier.height(14.dp))
+                // Fixed ±1.5℃ scale split at the ±0.5 and ±1 thresholds, the way
+                // the Zepp app draws it: only the normal stretch is filled, and
+                // the marker takes the rating colour when tonight left it.
+                BaselineScaleBar(
+                    value = delta,
+                    baseline = 0.0,
+                    min = -1.5,
+                    max = 1.5,
+                    markerColor = if (abnormal) verdict.second else palette.accent,
+                    bands = listOf(
+                        ScaleBand(-1.5, -1.0, palette.grid),
+                        ScaleBand(-1.0, -0.5, palette.grid),
+                        ScaleBand(-0.5, 0.5, palette.accent),
+                        ScaleBand(0.5, 1.0, palette.grid),
+                        ScaleBand(1.0, 1.5, palette.grid)
+                    ),
+                    tickLabels = listOf(
+                        -1.0 to "-1℃",
+                        -0.5 to "-0.5℃",
+                        0.5 to "+0.5℃",
+                        1.0 to "+1℃"
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                )
+            }
         }
     }
 

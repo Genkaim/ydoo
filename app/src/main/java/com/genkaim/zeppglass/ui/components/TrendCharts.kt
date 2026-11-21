@@ -152,9 +152,9 @@ fun SignedBarChart(
     val bound = if (decimals == 0) {
         ceil(maxAbs.coerceAtLeast(5f) / 5f) * 5f
     } else {
-        // Tenths-scale readings (skin temperature) would be flattened by the
-        // fixed ±5 training-status scale, so pick the tightest round bound.
-        listOf(0.5f, 1f, 2f, 5f, 10f, 20f, 50f).firstOrNull { it >= maxAbs }
+        // Tenths-scale readings (skin temperature): start at ±1 so the axis is
+        // the familiar +1.0 / ±0.0 / -1.0, and only widen for bigger swings.
+        listOf(1f, 2f, 5f, 10f, 20f, 50f).firstOrNull { it >= maxAbs }
             ?: (ceil(maxAbs / 50f) * 50f)
     }
     fun rounded(v: Float): Float =
@@ -189,7 +189,10 @@ fun SignedBarChart(
         listOf(bound, 0f, -bound).forEach { value ->
             val y = yOf(value)
             drawLine(grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
-            val layout = measurer.measure(plain(value), axisStyle)
+            val layout = measurer.measure(
+                if (decimals == 0) plain(value) else signedLabel(value),
+                axisStyle
+            )
             drawText(layout, topLeft = Offset(0f, y - layout.size.height / 2f))
         }
 

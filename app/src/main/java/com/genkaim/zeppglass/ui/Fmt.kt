@@ -72,8 +72,10 @@ object Fmt {
     fun signedOneDecimal(value: Double?): String = value?.let {
         val text = String.format(Locale.CHINA, "%+.1f", it)
         when (text) {
-            "+0.0", "-0.0" -> "±0.0"
-            else -> text
+            // A night right on the baseline is "±0" in the Zepp app, not "+0.0".
+            "+0.0", "-0.0" -> "±0"
+            // Whole degrees drop the ".0": "+1" rather than "+1.0".
+            else -> text.removeSuffix(".0")
         }
     } ?: "--"
 

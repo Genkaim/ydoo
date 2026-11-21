@@ -201,6 +201,21 @@ fun DetailScreen(
 
         // Pinned header: opaque behind the title, the page colour fades out
         // below it so the cards scroll underneath instead of meeting a hard line.
+        // The body page's date follows the chosen source: it is the day of that
+        // source's newest reading, not necessarily the day the page was opened.
+        val subtitleText = if (target.kind == DetailKind.WEIGHT) {
+            val zone = ZoneId.systemDefault()
+            val latest = data?.weights.orEmpty()
+                .filter {
+                    if (settings.bodySource == "watch") !it.hasComposition
+                    else it.hasComposition
+                }
+                .maxByOrNull { it.epochMs }
+            latest?.let { Fmt.date(Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate()) }
+                ?: subtitle(target, data)
+        } else {
+            subtitle(target, data)
+        }
         PinnedPageHeader(
             modifier = Modifier.align(Alignment.TopCenter),
             onHeight = { headerHeight = it }
@@ -218,9 +233,9 @@ fun DetailScreen(
                     Text(title(target), style = MaterialTheme.typography.titleLarge)
                     // Workout pages carry their own numbers; a subtitle there just
                     // crowded the header.
-                    if (target.kind != DetailKind.WORKOUT && subtitle(target, data).isNotBlank()) {
+                    if (target.kind != DetailKind.WORKOUT && subtitleText.isNotBlank()) {
                         Text(
-                            subtitle(target, data),
+                            subtitleText,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2080,9 +2095,9 @@ private fun BodyTrendRow(
     } else {
         null
     }
-    // The curve spans at least the 170 days the comparison talks about, and
+    // The curve spans 200 days so the 170-day comparison always has room, and
     // reaches back to the earlier reading when that one is older still.
-    val windowStart = lastDate?.minusDays(170)
+    val windowStart = lastDate?.minusDays(200)
     val rangeStart = when {
         windowStart == null -> null
         basePoint != null && dayOf(basePoint.first) < windowStart -> dayOf(basePoint.first)

@@ -152,6 +152,8 @@ fun BodySourceToggle(
     ).value
     BoxWithConstraints(
         modifier
+            .width(88.dp)
+            .height(22.dp)
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(2.dp)
@@ -161,11 +163,11 @@ fun BodySourceToggle(
             Modifier
                 .offset(x = segment * slide)
                 .width(segment)
-                .height(24.dp)
+                .fillMaxHeight()
                 .clip(RoundedCornerShape(50))
                 .background(MaterialTheme.colorScheme.surface)
         )
-        Row(Modifier.height(24.dp)) {
+        Row(Modifier.fillMaxHeight()) {
             options.forEachIndexed { index, (key, label) ->
                 Box(
                     Modifier

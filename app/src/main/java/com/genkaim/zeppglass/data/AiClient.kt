@@ -487,6 +487,8 @@ object AiContext {
                         r.sleepRhr?.let { add("睡眠静息心率 $it bpm") }
                         r.mentalScore?.let { add("精神分 $it") }
                         r.physicalScore?.let { add("体力分 $it") }
+                        r.skinTempDeltaC?.let { add("皮肤温度 ${"%+.1f".format(it)}℃") }
+                        r.skinTempScore?.let { add("皮肤温度分 $it") }
                     }.joinToString("，").ifEmpty { "没有记录" }
                 )
             }
@@ -506,7 +508,46 @@ object AiContext {
                         r.sleepHrv?.let { add("睡眠 HRV $it ms") }
                         r.sleepRhr?.let { add("睡眠静息心率 $it bpm") }
                         r.skinTempScore?.let { add("皮肤温度分 $it") }
+                        r.skinTempDeltaC?.let { add("皮肤温度 ${"%+.1f".format(it)}℃") }
                     }.joinToString("，")
+                )
+            }
+        }
+
+        // Respiration and the night's breathing/O2 summary. Both are optional
+        // streams: absent days are missing measurements, not zeros.
+        val respiration = data.respiration.takeLast(days)
+        if (respiration.isNotEmpty()) {
+            builder.appendLine("\n呼吸率（次/分，夜间睡眠期间）：")
+            respiration.forEach {
+                builder.appendLine("- ${it.date}: ${"%.1f".format(it.value)}")
+            }
+        }
+        val breathing = data.nightBreathing.takeLast(days)
+        if (breathing.isNotEmpty()) {
+            builder.appendLine("\n夜间低通气（血氧 ODI / 呼吸暂停；没列出的项就是没有采样，不是 0）：")
+            breathing.forEach { b ->
+                val parts = buildList {
+                    b.apneaIndex?.let { add("低通气指数 ${"%.1f".format(it)} 次/时") }
+                    b.apneaEvents?.let { add("呼吸事件 $it 次") }
+                    b.oxygenScore?.let { add("血氧评分 $it") }
+                    b.measuredMinutes?.let { add("监测 $it 分钟") }
+                }
+                if (parts.isNotEmpty()) builder.appendLine("- ${b.date}: " + parts.joinToString("，"))
+            }
+        }
+
+        val spo2ByDay = data.spo2
+            .groupBy { Instant.ofEpochMilli(it.epochMs).atZone(ZoneId.systemDefault()).toLocalDate() }
+            .toSortedMap()
+            .entries
+            .toList()
+            .takeLast(days)
+        if (spo2ByDay.isNotEmpty()) {
+            builder.appendLine("\n血氧（%；每晚平均值与最低值）：")
+            spo2ByDay.forEach { (day, points) ->
+                builder.appendLine(
+                    "- $day: 平均 ${points.map { it.value }.average().toInt()}%，最低 ${points.minOf { it.value }}%"
                 )
             }
         }

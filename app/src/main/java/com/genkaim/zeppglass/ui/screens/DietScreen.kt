@@ -378,9 +378,10 @@ fun DietDetail(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "今日剩余",
+            if (remaining != null && remaining < 0) "已过量" else "今日剩余",
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (remaining != null && remaining < 0) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(verticalAlignment = Alignment.Bottom) {
             Text(

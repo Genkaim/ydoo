@@ -109,7 +109,7 @@ object AiChatSession {
 ```query
 {"table":"sleep","from":"2026-11-10","to":"2026-11-17"}
 ```
-table 只能取 daily / sleep / charge / readiness / stress / pai / load / weight / spo2 / workouts / strain 之一；也可以只写 {"table":"sleep","days":7}。一次最多一个查询，最多查 1 次；已有摘要里有的数据不要重复查。
+table 只能取 daily / sleep / charge / readiness / stress / pai / load / weight / spo2 / respiration / breathing / workouts / strain 之一；也可以只写 {"table":"sleep","days":7}。一次最多一个查询，最多查 1 次；已有摘要里有的数据不要重复查。
 最终回答使用 Markdown。需要展示图形化卡片时，在正文后追加 card 代码块，type 可以是 metric / sleep / charge / activity：
 ```card
 {"type":"sleep","date":"2026-11-16"}

@@ -32,6 +32,8 @@ object AiTools {
             appendLine("- load：日期、当天负荷、7 天负荷、合适下限、合适上限")
             appendLine("- weight：时间、来源 scale/watch、体重 kg、BMI、体脂 %、肌肉 kg、骨骼肌 kg、体水分 %、骨量 kg、内脏脂肪、基础代谢 kcal、蛋白质 %")
             appendLine("- spo2：时间、血氧 %")
+            appendLine("- respiration：日期、夜间呼吸率 次/分（brpm）")
+            appendLine("- breathing：日期、低通气指数 次/时、呼吸事件次数、血氧评分、监测分钟（夜间 ODI/呼吸暂停）")
             appendLine("- workouts：时间、类型、分钟、公里、配速、平均心率、最高心率、负荷")
             appendLine("- strain：日期、每日负荷(0-21)、心率负荷、平均心率、最高心率、五个心率区间分钟")
             appendLine("- diet：日期、摄入千卡、目标千卡、剩余千卡、蛋白/碳水/脂肪克数、每餐时间与食物条目（本机饮食记录，热量为识别估算）")
@@ -121,6 +123,7 @@ object AiTools {
                         r.mentalScore?.let { put("mental", it) }
                         r.ahiScore?.let { put("breathing", it) }
                         r.skinTempScore?.let { put("skin_temp", it) }
+                        r.skinTempDeltaC?.let { put("skin_temp_delta_c", "%.1f".format(it)) }
                         if (r.officialScore == null) put("score_given", false)
                     }
                 )
@@ -185,6 +188,26 @@ object AiTools {
             }.takeLast(limit).forEach { p ->
                 rows.put(JSONObject().put("time", FmtIso(p.epochMs)).put("spo2", p.value))
             }
+            "respiration" -> data.respiration.filter { inRange(it.date) }.takeLast(limit)
+                .forEach { r ->
+                    rows.put(
+                        JSONObject()
+                            .put("date", r.date.toString())
+                            .put("brpm", "%.1f".format(r.value))
+                    )
+                }
+            "breathing" -> data.nightBreathing.filter { inRange(it.date) }.takeLast(limit)
+                .forEach { b ->
+                    rows.put(
+                        JSONObject().apply {
+                            put("date", b.date.toString())
+                            b.apneaIndex?.let { put("apnea_index_per_hour", "%.1f".format(it)) }
+                            b.apneaEvents?.let { put("apnea_events", it) }
+                            b.oxygenScore?.let { put("oxygen_score", it) }
+                            b.measuredMinutes?.let { put("measured_minutes", it) }
+                        }
+                    )
+                }
             "workouts" -> data.workouts.filter {
                 val d = Instant.ofEpochSecond(it.endEpochSec).atZone(zone).toLocalDate()
                 inRange(d)

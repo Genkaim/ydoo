@@ -261,31 +261,17 @@ fun OverviewScreen(
     Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
         val haptics = LocalHapticFeedback.current
-        // A buzz once the pull is far enough to release into a refresh. It is
-        // gated on a finger actually being on the page: a background refresh
-        // (widget alarm, opening the app) never buzzes, and neither does the
-        // indicator animating back.
-        var fingerDown by remember { mutableStateOf(false) }
-        val pullReady = fingerDown && pullState.distanceFraction >= 1f
-        LaunchedEffect(pullReady) {
-            if (pullReady) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
+        // The buzz belongs to a manual pull: the indicator fires onRefresh only
+        // after a real pull-and-release, while a background refresh (widget,
+        // opening the app) never comes through here.
         PullToRefreshBox(
             isRefreshing = state.refreshing,
-            onRefresh = { store.refresh() },
+            onRefresh = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                store.refresh()
+            },
             state = pullState,
-            modifier = Modifier
-                .fillMaxSize()
-                // Observes presses without consuming them, so the pull gesture
-                // still reaches PullToRefreshBox.
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                            fingerDown = event.changes.any { it.pressed }
-                        }
-                    }
-                },
+            modifier = Modifier.fillMaxSize(),
             // The page never moves with the finger. Pulling only reveals this
             // small dial under the header, and it withdraws the moment the finger
             // lifts; the dial itself reports the request.
@@ -1386,14 +1372,22 @@ private fun DietCard(
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
+                val over = target != null && intake > target
                 Text(
-                    target?.let { (it - intake).coerceAtLeast(0).toString() } ?: "--",
-                    style = MaterialTheme.typography.headlineSmall
+                    when {
+                        target == null -> "--"
+                        over -> (intake - target).toString()
+                        else -> (target - intake).toString()
+                    },
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (over) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "kcal 今日剩余",
+                    if (over) "kcal 已过量" else "kcal 今日剩余",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (over) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

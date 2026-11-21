@@ -76,7 +76,10 @@ fun BaselineScaleBar(
         val apexY = baseY + markerHeight
         val barTop = apexY - 3.dp.toPx()
         val barBottom = barTop + barHeight
-        val corner = 3.dp.toPx()
+        // The filled reading is a progress bar, so its two ends are half-round;
+        // the zone scale keeps a smaller radius so each stretch still reads as
+        // a segment.
+        val corner = if (fillColor != null) barHeight / 2f else 3.dp.toPx()
         fun xOf(v: Double): Float {
             val t = ((v - min) / (max - min)).coerceIn(0.0, 1.0)
             return (size.width * t).toFloat()

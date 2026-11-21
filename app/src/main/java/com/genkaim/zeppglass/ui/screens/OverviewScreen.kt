@@ -98,6 +98,7 @@ import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.LoadDay
 import com.genkaim.zeppglass.data.SleepNight
+import com.genkaim.zeppglass.data.resolveBodySource
 import com.genkaim.zeppglass.data.WeightPoint
 import com.genkaim.zeppglass.data.morningScore
 import com.genkaim.zeppglass.ui.DetailKind
@@ -184,7 +185,8 @@ fun OverviewScreen(
     // weightType 0 is the 体脂秤, everything else is the wearable/manual side.
     val watchWeight = dayWeights.filter { it.weightType != 0 }.maxByOrNull { it.epochMs }
     val scaleWeight = dayWeights.filter { it.weightType == 0 }.maxByOrNull { it.epochMs }
-    val bodyPoint = if (settings.bodySource == "watch") watchWeight else scaleWeight
+    val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
+    val bodyPoint = if (bodySource == "watch") watchWeight else scaleWeight
     val spo2 = data?.spo2?.lastOrNull { dateOf(it.epochMs) == date }
     val morningCharge = charge?.morningScore(night?.endEpochSec)
     // Same number the detail page leads with: average over the sleep window, not

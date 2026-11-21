@@ -71,15 +71,26 @@ class AppSettings private constructor(context: Context) {
 
     /**
      * Which readings the body-composition card follows: "scale" for the scale
-     * (体脂秤, with fat/muscle) or "watch" for the watch/manual entries. Kept
-     * across launches so the card does not flip back after every restart.
+     * (体脂秤) or "watch" for the wearable/manual entries. Empty means "not
+     * chosen yet": the page then follows whichever source has the newer
+     * reading. Once the user taps the switch, [bodySourceManual] turns the
+     * choice into a fixed one.
      */
-    var bodySource: String by mutableStateOf(prefs.getString(KEY_BODY_SOURCE, "scale") ?: "scale")
+    var bodySource: String by mutableStateOf(prefs.getString(KEY_BODY_SOURCE, "") ?: "")
+        private set
+
+    var bodySourceManual: Boolean by mutableStateOf(
+        prefs.getBoolean(KEY_BODY_SOURCE_MANUAL, false)
+    )
         private set
 
     fun updateBodySource(source: String) {
         bodySource = source
-        prefs.edit().putString(KEY_BODY_SOURCE, source).apply()
+        bodySourceManual = true
+        prefs.edit()
+            .putString(KEY_BODY_SOURCE, source)
+            .putBoolean(KEY_BODY_SOURCE_MANUAL, true)
+            .apply()
     }
 
     /**
@@ -352,6 +363,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_AI_SESSION = "ai_session"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_BODY_SOURCE = "body_source"
+        private const val KEY_BODY_SOURCE_MANUAL = "body_source_manual"
         private const val KEY_DIET_GOAL = "diet_goal"
         private const val KEY_SUMMARY_TEXT = "daily_summary_text"
         private const val KEY_SUMMARY_DAY = "daily_summary_day"
@@ -375,3 +387,20 @@ class AppSettings private constructor(context: Context) {
 
 
 
+
+
+/**
+ * The body-composition source to show. The user's pick wins once made; until
+ * then the page follows whichever of 手表 / 体脂秤 has the newer reading.
+ */
+fun AppSettings.resolveBodySource(weights: List<WeightPoint>): String {
+    if (bodySourceManual) return bodySource
+    val scale = weights.filter { it.weightType == 0 }.maxByOrNull { it.epochMs }
+    val watch = weights.filter { it.weightType != 0 }.maxByOrNull { it.epochMs }
+    return when {
+        scale == null -> "watch"
+        watch == null -> "scale"
+        watch.epochMs >= scale.epochMs -> "watch"
+        else -> "scale"
+    }
+}

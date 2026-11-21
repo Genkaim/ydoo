@@ -72,6 +72,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.resolveBodySource
 import com.genkaim.zeppglass.data.BodyProfile
 import com.genkaim.zeppglass.data.ChatMessage
 import com.genkaim.zeppglass.data.DietGoal
@@ -536,27 +537,17 @@ fun DietDetail(
 
     // 体重 / 体脂 / 骨骼肌 sit next to the calorie numbers because they are the
     // other half of the same question: what goes in, and what it builds.
-    val weightsUpToDay = remember(data, day) {
+    // Same source as the body-composition card: the user's pick, or whichever of
+    // 手表 / 体脂秤 has the newer reading. Weight and composition both come from
+    // that one source, even when the readings are on different days.
+    val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
+    val bodyPoints = remember(data, bodySource) {
         data?.weights.orEmpty().filter {
-            Instant.ofEpochMilli(it.epochMs).atZone(ZoneId.systemDefault()).toLocalDate() <= day
+            if (bodySource == "watch") it.weightType != 0 else it.weightType == 0
         }
     }
-    val bodyPoint = weightsUpToDay.maxByOrNull { it.epochMs }
-    // The newest reading is often a plain weight (phone sync, hand entry) with no
-    // impedance, while an older scale reading still has fat/muscle. Take those two
-    // numbers from the newest reading that actually carries them.
-    val compositionPoint = remember(weightsUpToDay) {
-        val withComposition = weightsUpToDay.filter {
-            it.bodyFatPct != null || it.skeletalMusclePct != null || it.skeletalMuscleKg != null
-        }
-        // A shared scale can store another person's much lighter reading; keep the
-        // composition of a body close to the current weight, then take the newest.
-        val latestKg = weightsUpToDay.maxByOrNull { it.epochMs }?.weightKg
-        val sameBody = if (latestKg == null) withComposition else withComposition.filter {
-            it.weightKg == null || kotlin.math.abs(it.weightKg - latestKg) <= 8.0
-        }
-        (sameBody.ifEmpty { withComposition }).maxByOrNull { it.epochMs }
-    }
+    val bodyPoint = bodyPoints.maxByOrNull { it.epochMs }
+    val compositionPoint = bodyPoints.filter { it.hasComposition }.maxByOrNull { it.epochMs }
     if (bodyPoint != null) {
         BodyCompositionCard(bodyPoint, compositionPoint, data?.body)
     }

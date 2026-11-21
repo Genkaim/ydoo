@@ -21,6 +21,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -77,6 +83,7 @@ import com.genkaim.zeppglass.data.ChargeDay
 import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
+import com.genkaim.zeppglass.data.resolveBodySource
 import com.genkaim.zeppglass.data.PaiDay
 import com.genkaim.zeppglass.data.morningScore
 import com.genkaim.zeppglass.data.ReadinessDay
@@ -151,6 +158,7 @@ fun DetailScreen(
     photoPath: String? = null
 ) {
     val data = store.displayData
+    val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
     val palette = LocalZgPalette.current
     var headerHeight by remember { mutableStateOf(0.dp) }
     Box(
@@ -176,7 +184,7 @@ fun DetailScreen(
                 DetailKind.ACTIVITY -> ActivityDetail(data, target.date ?: LocalDate.now())
                 DetailKind.LOAD -> LoadDetail(data, target.date)
                 DetailKind.PAI -> PaiDetail(data, target.date)
-                DetailKind.WEIGHT -> WeightDetail(data, target.date, settings)
+                DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
                 DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store)
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
@@ -207,7 +215,7 @@ fun DetailScreen(
             val zone = ZoneId.systemDefault()
             val latest = data?.weights.orEmpty()
                 .filter {
-                    if (settings.bodySource == "watch") it.weightType != 0
+                    if (bodySource == "watch") it.weightType != 0
                     else it.weightType == 0
                 }
                 .maxByOrNull { it.epochMs }
@@ -244,7 +252,7 @@ fun DetailScreen(
                 // The body page's source switch lives in the header, on the right.
                 if (target.kind == DetailKind.WEIGHT) {
                     BodySourceToggle(
-                        source = settings.bodySource,
+                        source = bodySource,
                         onChange = { settings.updateBodySource(it) },
                         modifier = Modifier.padding(end = 20.dp)
                     )
@@ -1454,10 +1462,10 @@ private fun PaiZoneColumn(
 // ---------------- weight ----------------
 
 @Composable
-private fun WeightDetail(data: HealthData?, date: LocalDate?, settings: AppSettings) {
+private fun WeightDetail(data: HealthData?, date: LocalDate?, source: String) {
     // Switching source fades the cards; only the toggle's own pill slides.
     AnimatedContent(
-        targetState = settings.bodySource,
+        targetState = source,
         transitionSpec = {
             fadeIn(tween(200)) togetherWith fadeOut(tween(150))
         },
@@ -2131,11 +2139,14 @@ private fun BodyTrendRow(
                 start = rangeStart,
                 end = lastDate,
                 color = color,
+                valueLabel = { Fmt.oneDecimal(it) + unit },
+                current = current,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .height(64.dp)
             )
         }
+        Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth()) {
             Text(
                 rangeStart?.let { Fmt.date(it) } ?: "--",
@@ -2159,19 +2170,29 @@ private fun MiniTrendChart(
     start: LocalDate,
     end: LocalDate,
     color: Color,
+    valueLabel: (Double) -> String,
+    current: Double?,
     modifier: Modifier = Modifier
 ) {
     val zone = ZoneId.systemDefault()
+    val measurer = rememberTextMeasurer()
+    val labelStyle = TextStyle(
+        fontSize = 9.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)
+    val grid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+
     Canvas(modifier) {
-        // X runs over the whole comparison window, so the curve shows at least
-        // the 170 days the text talks about.
+        // X runs over the whole comparison window, so the curve shows the recent
+        // month even when there are only a couple of readings.
         val inset = 4.dp.toPx()
         val startMs = start.atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
         val endMs = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }
-        val pad = ((maxV - minV) * 0.15).coerceAtLeast(0.5)
+        val pad = ((maxV - minV) * 0.18).coerceAtLeast(0.5)
         val low = (minV - pad).toFloat()
         val spanY = ((maxV + pad).toFloat() - low).coerceAtLeast(0.1f)
         fun xOf(epochMs: Long) =
@@ -2180,6 +2201,40 @@ private fun MiniTrendChart(
         fun yOf(value: Double) =
             (size.height - (value.toFloat() - low) / spanY * size.height)
                 .coerceIn(0f, size.height)
+
+        fun levelLine(
+            value: Double,
+            lineColor: Color,
+            label: String?,
+            labelAbove: Boolean
+        ) {
+            val y = yOf(value)
+            drawLine(
+                color = lineColor,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 1.dp.toPx()
+            )
+            if (label != null) {
+                val layout = measurer.measure(label, labelStyle)
+                val top = if (labelAbove) y - layout.size.height - 1.dp.toPx()
+                else y + 1.dp.toPx()
+                drawText(
+                    layout,
+                    topLeft = Offset(
+                        inset,
+                        top.coerceIn(0f, size.height - layout.size.height)
+                    )
+                )
+            }
+        }
+
+        // Highest and lowest of the window, labelled above/below their own line
+        // on the left; the current level is a plain grey line (its number is
+        // already above the chart).
+        levelLine(maxV, color.copy(alpha = 0.55f), valueLabel(maxV), labelAbove = true)
+        levelLine(minV, color.copy(alpha = 0.55f), valueLabel(minV), labelAbove = false)
+        current?.let { levelLine(it, grid, null, labelAbove = true) }
 
         val path = Path()
         values.forEachIndexed { index, (epochMs, value) ->

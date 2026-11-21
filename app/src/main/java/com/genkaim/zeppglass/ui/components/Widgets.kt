@@ -5,6 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -129,7 +134,8 @@ fun PageHeader(
  */
 /**
  * Two-state switch for the body-composition card: watch entries on the left,
- * scale readings on the right. Deliberately tiny — it sits in a card corner.
+ * scale readings on the right. The white capsule slides between the labels;
+ * the page itself only fades.
  */
 @Composable
 fun BodySourceToggle(
@@ -137,29 +143,45 @@ fun BodySourceToggle(
     onChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    val options = listOf("watch" to "手表", "scale" to "体脂秤")
+    val selected = if (source == "scale") 1 else 0
+    val slide = animateFloatAsState(
+        targetValue = selected.toFloat(),
+        animationSpec = tween(220),
+        label = "source-pill"
+    ).value
+    BoxWithConstraints(
         modifier
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(2.dp)
     ) {
-        listOf("watch" to "手表", "scale" to "体脂秤").forEach { (key, label) ->
-            val selected = source == key
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.surface else Color.Transparent
+        val segment = maxWidth / 2
+        Box(
+            Modifier
+                .offset(x = segment * slide)
+                .width(segment)
+                .height(24.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surface)
+        )
+        Row(Modifier.height(24.dp)) {
+            options.forEachIndexed { index, (key, label) ->
+                Box(
+                    Modifier
+                        .width(segment)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onChange(key) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (index == selected) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    .clickable { onChange(key) }
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (selected) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                }
             }
         }
     }

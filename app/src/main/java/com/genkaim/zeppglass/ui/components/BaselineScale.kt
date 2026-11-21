@@ -109,11 +109,19 @@ fun BaselineScaleBar(
             // threshold is a thick white bar, matching the HRV gauge; without it
             // a 3dp gap separates them instead.
             val gap = if (bandDivider == null && bands.size > 1) 1.5.dp.toPx() else 0f
+            // With a divider the coloured stretches stop half a bar short of the
+            // cut and the white bar fills that gap, so no colour can peek out
+            // around its edges.
+            val halfDivider = if (bandDivider != null) 1.dp.toPx() else 0f
             bands.forEachIndexed { index, band ->
                 var x1 = xOf(band.from)
                 var x2 = xOf(band.to)
                 if (index > 0) x1 += gap
                 if (index < bands.lastIndex) x2 -= gap
+                if (bandDivider != null) {
+                    if (index > 0) x1 += halfDivider
+                    if (index < bands.lastIndex) x2 -= halfDivider
+                }
                 if (x2 > x1) {
                     if (bandDivider != null) {
                         // Flush zones: only the two outer ends of the whole bar
@@ -143,11 +151,10 @@ fun BaselineScaleBar(
             if (bandDivider != null) {
                 bands.drop(1).forEach { band ->
                     val x = xOf(band.from)
-                    drawLine(
-                        bandDivider,
-                        Offset(x, barTop),
-                        Offset(x, barBottom),
-                        2.dp.toPx()
+                    drawRect(
+                        color = bandDivider,
+                        topLeft = Offset(x - halfDivider, barTop),
+                        size = Size(halfDivider * 2f, barHeight)
                     )
                 }
             }

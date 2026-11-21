@@ -230,7 +230,8 @@ fun DetailScreen(
                 if (target.kind == DetailKind.WEIGHT) {
                     BodySourceToggle(
                         source = settings.bodySource,
-                        onChange = { settings.updateBodySource(it) }
+                        onChange = { settings.updateBodySource(it) },
+                        modifier = Modifier.padding(end = 10.dp)
                     )
                 }
             }
@@ -1439,13 +1440,11 @@ private fun PaiZoneColumn(
 
 @Composable
 private fun WeightDetail(data: HealthData?, date: LocalDate?, settings: AppSettings) {
-    // Switching source slides the white cards sideways instead of swapping them.
+    // Switching source fades the cards; only the toggle's own pill slides.
     AnimatedContent(
         targetState = settings.bodySource,
         transitionSpec = {
-            val forward = targetState == "scale"
-            (slideInHorizontally(tween(220)) { if (forward) it / 3 else -it / 3 } + fadeIn(tween(200))) togetherWith
-                (slideOutHorizontally(tween(220)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(150)))
+            fadeIn(tween(200)) togetherWith fadeOut(tween(150))
         },
         label = "body-source"
     ) { source ->
@@ -1475,15 +1474,18 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         // Mifflin-St Jeor from the Zepp profile: used only to rate the scale's
         // metabolism figure, never shown as a reading of its own.
         val bmrEstimate = mifflinBmr(data?.body, latest?.weightKg ?: comp?.weightKg)
-        val score = bodyScore(
+        // A watch entry has weight and BMI only: a score or body age built from
+        // that alone would read as "0 / 偏低" and mislead, so both need a scale
+        // reading with composition.
+        val score = if (comp == null) null else bodyScore(
             bmi = bmi,
-            fat = comp?.bodyFatPct,
-            muscle = comp?.skeletalMusclePct,
-            water = comp?.bodyWaterPct,
-            visceral = comp?.visceralFat,
-            protein = comp?.proteinPct,
-            bone = comp?.boneMassKg,
-            bmr = comp?.metabolismKcal,
+            fat = comp.bodyFatPct,
+            muscle = comp.skeletalMusclePct,
+            water = comp.bodyWaterPct,
+            visceral = comp.visceralFat,
+            protein = comp.proteinPct,
+            bone = comp.boneMassKg,
+            bmr = comp.metabolismKcal,
             bmrEstimate = bmrEstimate
         )
         val ink = MaterialTheme.colorScheme.onSurface
@@ -1595,6 +1597,8 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             value?.let { String.format(java.util.Locale.CHINA, "%.1f%%", it) } ?: "--"
         fun kg(value: Double?, digits: Int = 1) =
             value?.let { String.format(java.util.Locale.CHINA, "%.${digits}f kg", it) } ?: "--"
+        fun cut(value: Double, digits: Int = 0) =
+            String.format(java.util.Locale.CHINA, "%.${digits}f", value)
 
         // Each row rates the reading the same way the skin-temperature page does:
         // a word, one colour, and a bar cut into the healthy / warning / bad bands
@@ -1721,48 +1725,72 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             Triple(bodyWeight * 0.50, muscleKgMax, BodyTone.NORMAL)
         ) else emptyList()
 
+        // Threshold numbers printed under each bar at the colour cuts.
+        val weightTicks = if (heightM != null) listOf(
+            18.5 * heightM * heightM to cut(18.5 * heightM * heightM),
+            24.0 * heightM * heightM to cut(24.0 * heightM * heightM),
+            28.0 * heightM * heightM to cut(28.0 * heightM * heightM)
+        ) else emptyList()
+        val muscleKgTicks = if (bodyWeight != null) listOf(
+            bodyWeight * 0.35 to cut(bodyWeight * 0.35, 1),
+            bodyWeight * 0.50 to cut(bodyWeight * 0.50, 1)
+        ) else emptyList()
+        val bmrTicks = bmrEstimate?.let { est ->
+            listOf(
+                est * 0.95 to cut(est * 0.95),
+                est * 1.05 to cut(est * 1.05)
+            )
+        }.orEmpty()
+
         val metrics = listOf(
             BodyMetric(
                 "体重", Icons.Rounded.MonitorWeight, kg(latest?.weightKg), latest?.weightKg,
-                bmiRate, 30.0, weightMax, weightBands
+                bmiRate, 30.0, weightMax, weightBands, weightTicks
             ),
             BodyMetric(
                 "BMI", Icons.Rounded.Straighten, Fmt.oneDecimal(bmi), bmi,
-                bmiRate, 15.0, 40.0, bmiBands
+                bmiRate, 15.0, 40.0, bmiBands,
+                listOf(18.5 to "18.5", 24.0 to "24", 28.0 to "28")
             ),
             BodyMetric(
                 "体脂率", Icons.Rounded.Percent, pct(comp?.bodyFatPct), comp?.bodyFatPct,
-                fatRate, 5.0, 40.0, fatBands
+                fatRate, 5.0, 40.0, fatBands,
+                listOf(15.0 to "15", 25.0 to "25", 30.0 to "30")
             ),
             BodyMetric(
                 "骨骼肌", Icons.Rounded.FitnessCenter, kg(comp?.skeletalMuscleKg),
-                comp?.skeletalMuscleKg, muscleRate, 5.0, muscleKgMax, muscleKgBands
+                comp?.skeletalMuscleKg, muscleRate, 5.0, muscleKgMax, muscleKgBands, muscleKgTicks
             ),
             BodyMetric(
                 "肌肉率", Icons.Rounded.Accessibility, pct(comp?.skeletalMusclePct),
-                comp?.skeletalMusclePct, muscleRate, 20.0, 55.0, musclePctBands
+                comp?.skeletalMusclePct, muscleRate, 20.0, 55.0, musclePctBands,
+                listOf(40.0 to "40")
             ),
             BodyMetric(
                 "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
-                comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands
+                comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands,
+                listOf(50.0 to "50", 65.0 to "65")
             ),
             BodyMetric(
                 "骨量", Icons.Rounded.Spa, kg(comp?.boneMassKg, 2), comp?.boneMassKg,
-                boneRate, 1.0, 5.0, boneBands
+                boneRate, 1.0, 5.0, boneBands,
+                listOf(2.0 to "2", 4.0 to "4")
             ),
             BodyMetric(
                 "内脏脂肪", Icons.Rounded.Favorite,
                 comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
-                visceralRate, 1.0, 20.0, visceralBands
+                visceralRate, 1.0, 20.0, visceralBands,
+                listOf(9.0 to "9", 14.0 to "14")
             ),
             BodyMetric(
                 "基础代谢", Icons.Rounded.LocalFireDepartment,
                 comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
-                comp?.metabolismKcal, bmrRate, 800.0, 2500.0, bmrBands
+                comp?.metabolismKcal, bmrRate, 800.0, 2500.0, bmrBands, bmrTicks
             ),
             BodyMetric(
                 "蛋白质率", Icons.Rounded.Restaurant, pct(comp?.proteinPct),
-                comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands
+                comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands,
+                listOf(16.0 to "16", 20.0 to "20")
             )
         )
 
@@ -1795,7 +1823,9 @@ private class BodyMetric(
     val rating: Pair<String, BodyTone>?,
     val min: Double,
     val max: Double,
-    val bands: List<Triple<Double, Double, BodyTone>>
+    val bands: List<Triple<Double, Double, BodyTone>>,
+    /** Threshold numbers printed under the bar at the colour cuts. */
+    val ticks: List<Pair<Double, String>> = emptyList()
 )
 
 /** One body metric: label, rating, value, and a band-split bar at its value. */
@@ -1854,12 +1884,13 @@ private fun BodyMetricRow(metric: BodyMetric) {
                 min = metric.min,
                 max = metric.max,
                 bands = metric.bands.map { ScaleBand(it.first, it.second, colorOf(it.third)) },
+                tickLabels = metric.ticks,
                 markerColor = colorOf(metric.rating?.second ?: BodyTone.NORMAL),
                 // Threshold cuts are thick white bars, same as the HRV gauge.
                 bandDivider = surface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(26.dp)
+                    .height(40.dp)
             )
         } else {
             Box(
@@ -2032,19 +2063,36 @@ private fun BodyTrendRow(
     val current = currentPoint?.second
     val previous = series.dropLast(1).lastOrNull()?.second
     val lastDate = currentPoint?.let { dayOf(it.first) }
-    // "170 days ago" = the newest reading on or before that date.
-    val base = lastDate?.let { end ->
-        series.lastOrNull { dayOf(it.first) <= end.minusDays(170) }?.second
-    }
-    // Plot the last 170 days; when the data is older than that, fall back to the
-    // readings themselves so the curve still appears.
-    val windowStart = lastDate?.minusDays(170)
-    val recent = if (windowStart != null) {
-        series.filter { dayOf(it.first) in windowStart..lastDate }
+    // Compare against the reading closest to 170 days before the newest one; if
+    // that lands on an empty stretch, the nearest reading is used and the text
+    // says how many days back it actually is.
+    val targetDate = lastDate?.minusDays(170)
+    val basePoint = if (targetDate != null) {
+        series
+            .filter { currentPoint == null || it.first != currentPoint.first }
+            .minByOrNull { abs(dayOf(it.first).toEpochDay() - targetDate.toEpochDay()) }
     } else {
-        emptyList()
+        null
     }
-    val plot = if (recent.size >= 2) recent else series.takeLast(8)
+    val base = basePoint?.second
+    val baseDays = if (basePoint != null && lastDate != null) {
+        (lastDate.toEpochDay() - dayOf(basePoint.first).toEpochDay()).toInt()
+    } else {
+        null
+    }
+    // The curve spans at least the 170 days the comparison talks about, and
+    // reaches back to the earlier reading when that one is older still.
+    val windowStart = lastDate?.minusDays(170)
+    val rangeStart = when {
+        windowStart == null -> null
+        basePoint != null && dayOf(basePoint.first) < windowStart -> dayOf(basePoint.first)
+        else -> windowStart
+    }
+    val plot = if (rangeStart != null && lastDate != null) {
+        series.filter { dayOf(it.first) in rangeStart..lastDate }
+    } else {
+        series
+    }
     fun delta(value: Double?): String =
         value?.let { Fmt.signedOneDecimal(it) + " $unit" } ?: "--"
 
@@ -2073,15 +2121,18 @@ private fun BodyTrendRow(
                 color = muted
             )
             Text(
-                "较 170 天前 " + delta(current?.let { cur -> base?.let { cur - it } }),
+                "较 ${baseDays ?: 170} 天前 " +
+                    delta(current?.let { cur -> base?.let { cur - it } }),
                 style = MaterialTheme.typography.labelSmall,
                 color = muted
             )
         }
         Spacer(Modifier.height(8.dp))
-        if (plot.size >= 2) {
+        if (plot.size >= 2 && rangeStart != null && lastDate != null) {
             MiniTrendChart(
                 values = plot,
+                start = rangeStart,
+                end = lastDate,
                 color = color,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2090,13 +2141,13 @@ private fun BodyTrendRow(
         }
         Row(Modifier.fillMaxWidth()) {
             Text(
-                plot.firstOrNull()?.let { Fmt.date(dayOf(it.first)) } ?: "--",
+                rangeStart?.let { Fmt.date(it) } ?: "--",
                 style = MaterialTheme.typography.labelSmall,
                 color = muted
             )
             Spacer(Modifier.weight(1f))
             Text(
-                plot.lastOrNull()?.let { Fmt.date(dayOf(it.first)) } ?: "--",
+                lastDate?.let { Fmt.date(it) } ?: "--",
                 style = MaterialTheme.typography.labelSmall,
                 color = muted
             )
@@ -2108,17 +2159,18 @@ private fun BodyTrendRow(
 @Composable
 private fun MiniTrendChart(
     values: List<Pair<Long, Double>>,
+    start: LocalDate,
+    end: LocalDate,
     color: Color,
     modifier: Modifier = Modifier
 ) {
+    val zone = ZoneId.systemDefault()
     Canvas(modifier) {
-        // Span from the first reading to the last, with a small margin, so two
-        // readings on the same day still spread across the card.
-        val firstMs = values.first().first
-        val lastMs = values.last().first
-        val padMs = maxOf(3_600_000L, (lastMs - firstMs) / 10)
-        val startMs = (firstMs - padMs).toFloat()
-        val endMs = (lastMs + padMs).toFloat()
+        // X runs over the whole comparison window, so the curve shows at least
+        // the 170 days the text talks about.
+        val inset = 4.dp.toPx()
+        val startMs = start.atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
+        val endMs = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }
@@ -2126,7 +2178,8 @@ private fun MiniTrendChart(
         val low = (minV - pad).toFloat()
         val spanY = ((maxV + pad).toFloat() - low).coerceAtLeast(0.1f)
         fun xOf(epochMs: Long) =
-            ((epochMs.toFloat() - startMs) / xSpan * size.width).coerceIn(0f, size.width)
+            (inset + (epochMs.toFloat() - startMs) / xSpan * (size.width - inset * 2f))
+                .coerceIn(inset, size.width - inset)
         fun yOf(value: Double) =
             (size.height - (value.toFloat() - low) / spanY * size.height)
                 .coerceIn(0f, size.height)

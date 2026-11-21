@@ -93,15 +93,57 @@ fun BaselineScaleBar(
             cornerRadius = CornerRadius(corner)
         )
 
-        if (fillColor != null) {
-            // Solid reading: filled from the low end up to today's value.
-            val end = xOf(value).coerceAtLeast(corner * 2f)
-            drawRoundRect(
-                color = fillColor,
-                topLeft = Offset(0f, barTop),
-                size = Size(end, barHeight),
-                cornerRadius = CornerRadius(corner)
+        // Draw a stretch of the bar; the outer ends get the pill rounding and
+        // any inner cut stays square.
+        fun drawStretch(
+            left: Float,
+            right: Float,
+            roundLeft: Boolean,
+            roundRight: Boolean,
+            color: Color
+        ) {
+            if (right <= left) return
+            val radius = CornerRadius(corner)
+            val none = CornerRadius.Zero
+            val rect = androidx.compose.ui.geometry.RoundRect(
+                left = left,
+                top = barTop,
+                right = right,
+                bottom = barBottom,
+                topLeftCornerRadius = if (roundLeft) radius else none,
+                bottomLeftCornerRadius = if (roundLeft) radius else none,
+                topRightCornerRadius = if (roundRight) radius else none,
+                bottomRightCornerRadius = if (roundRight) radius else none
             )
+            drawPath(Path().apply { addRoundRect(rect) }, color)
+        }
+
+        if (fillColor != null) {
+            // Solid reading: filled from the low end up to today's value, with
+            // the baseline notch cut out of the colour instead of painted over —
+            // an overlay leaves a coloured fringe on its edges.
+            val end = xOf(value).coerceAtLeast(corner * 2f)
+            val notchX = xOf(baseline)
+            val half = 1.dp.toPx()
+            val notchLeft = notchX - half
+            val notchRight = notchX + half
+            if (end <= notchLeft) {
+                drawRoundRect(
+                    color = fillColor,
+                    topLeft = Offset(0f, barTop),
+                    size = Size(end, barHeight),
+                    cornerRadius = CornerRadius(corner)
+                )
+            } else {
+                drawStretch(0f, notchLeft, true, false, fillColor)
+                drawStretch(notchRight, end, false, true, fillColor)
+                // The notch itself is the card colour, level with the bar.
+                drawRect(
+                    color = surface,
+                    topLeft = Offset(notchLeft, barTop),
+                    size = Size(half * 2f, barHeight)
+                )
+            }
         }
 
         if (bands.isNotEmpty()) {
@@ -167,16 +209,6 @@ fun BaselineScaleBar(
                     1.dp.toPx()
                 )
             }
-        } else {
-            // Baseline mark: a white notch cut into the fill, the point the whole
-            // scale is read against.
-            val centerX = xOf(baseline)
-            drawLine(
-                surface,
-                Offset(centerX, barTop),
-                Offset(centerX, barBottom),
-                2.dp.toPx()
-            )
         }
 
         // Today's value: a rounded arrow pointing down, its tip overlapping the

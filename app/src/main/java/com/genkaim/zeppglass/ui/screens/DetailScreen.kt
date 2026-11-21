@@ -2143,7 +2143,7 @@ private fun BodyTrendRow(
                 current = current,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(96.dp)
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -2217,8 +2217,9 @@ private fun MiniTrendChart(
             )
             if (label != null) {
                 val layout = measurer.measure(label, labelStyle)
-                val top = if (labelAbove) y - layout.size.height - 1.dp.toPx()
-                else y + 1.dp.toPx()
+                val gap = 6.dp.toPx()
+                val top = if (labelAbove) y - layout.size.height - gap
+                else y + gap
                 drawText(
                     layout,
                     topLeft = Offset(

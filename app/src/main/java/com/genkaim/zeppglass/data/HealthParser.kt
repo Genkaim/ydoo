@@ -583,6 +583,7 @@ object HealthParser {
             out.add(
                 WeightPoint(
                     epochMs = seconds * 1000,
+                    weightType = item.anyNumber("weightType")?.roundToInt(),
                     weightKg = weight,
                     bmi = summary.anyNumber("bmi"),
                     bodyFatPct = summary.anyNumber("bodyFatRate")

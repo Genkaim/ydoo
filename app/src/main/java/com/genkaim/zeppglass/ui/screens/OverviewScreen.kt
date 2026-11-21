@@ -181,18 +181,9 @@ fun OverviewScreen(
     // not stand in for this one. The watch and scale readings are kept apart,
     // because the corner switch picks which set the card follows.
     val dayWeights = data?.weights?.filter { dateOf(it.epochMs) == date }.orEmpty()
-    val watchWeight = dayWeights.filter { !it.hasComposition }.maxByOrNull { it.epochMs }
-    // Same rule as the detail page: the scale may hold another person's much
-    // lighter reading, so only composition near the current weight counts.
-    val anchorWeight = watchWeight?.weightKg ?: data?.body?.weightKg
-    val scaleWeight = dayWeights
-        .filter { it.hasComposition }
-        .filter { point ->
-            val w = point.weightKg
-            anchorWeight == null || w == null ||
-                abs(w - anchorWeight) <= maxOf(8.0, anchorWeight * 0.12)
-        }
-        .maxByOrNull { it.epochMs }
+    // weightType 0 is the 体脂秤, everything else is the wearable/manual side.
+    val watchWeight = dayWeights.filter { it.weightType != 0 }.maxByOrNull { it.epochMs }
+    val scaleWeight = dayWeights.filter { it.weightType == 0 }.maxByOrNull { it.epochMs }
     val bodyPoint = if (settings.bodySource == "watch") watchWeight else scaleWeight
     val spo2 = data?.spo2?.lastOrNull { dateOf(it.epochMs) == date }
     val morningCharge = charge?.morningScore(night?.endEpochSec)

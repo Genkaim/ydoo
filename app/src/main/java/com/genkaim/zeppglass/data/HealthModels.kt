@@ -197,6 +197,8 @@ data class Spo2Point(val epochMs: Long, val value: Int, val automatic: Boolean)
 
 data class WeightPoint(
     val epochMs: Long,
+    /** Cloud `weightType`: 0 = 体脂秤, 5 = 穿戴设备体成分, 1/7 = 手动录入. */
+    val weightType: Int? = null,
     val weightKg: Double?,
     val bmi: Double?,
     val bodyFatPct: Double?,

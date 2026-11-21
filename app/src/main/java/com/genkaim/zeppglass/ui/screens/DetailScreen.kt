@@ -205,10 +205,20 @@ fun DetailScreen(
         // source's newest reading, not necessarily the day the page was opened.
         val subtitleText = if (target.kind == DetailKind.WEIGHT) {
             val zone = ZoneId.systemDefault()
-            val latest = data?.weights.orEmpty()
+            val weightsAll = data?.weights.orEmpty()
+            // Same plausibility rule as the page body, so the header date matches
+            // the cards below it.
+            val anchor = weightsAll.filter { !it.hasComposition }
+                .maxByOrNull { it.epochMs }?.weightKg
+            val latest = weightsAll
                 .filter {
                     if (settings.bodySource == "watch") !it.hasComposition
                     else it.hasComposition
+                }
+                .filter { point ->
+                    val w = point.weightKg
+                    anchor == null || w == null ||
+                        abs(w - anchor) <= maxOf(8.0, anchor * 0.12)
                 }
                 .maxByOrNull { it.epochMs }
             latest?.let { Fmt.date(Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate()) }
@@ -1474,17 +1484,36 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         val all = data?.weights.orEmpty()
         fun dayOf(point: WeightPoint): LocalDate =
             Instant.ofEpochMilli(point.epochMs).atZone(zone).toLocalDate()
-        // The corner switch picks one source, and the page follows it everywhere:
-        // 体脂秤 = readings that carry composition, 手表 = the plain entries.
-            val points = all.filter { if (source == "watch") !it.hasComposition else it.hasComposition }
+        // The corner switch picks one source for the list and the trends. A
+        // shared scale also stores other people's readings (65 kg against a
+        // 103 kg profile), so anything far from the current weight is dropped.
+        // The current weight comes from the newest plain entry, not the profile,
+        // which can lag behind.
+        val profileWeight = data?.body?.weightKg
+        val anchorWeight = all
+            .filter { !it.hasComposition }
+            .maxByOrNull { it.epochMs }
+            ?.weightKg
+            ?: profileWeight
+        fun plausible(point: WeightPoint): Boolean {
+            val w = point.weightKg ?: return true
+            val anchor = anchorWeight ?: return true
+            return abs(w - anchor) <= maxOf(8.0, anchor * 0.12)
+        }
+        val sourcePoints = all.filter {
+            if (source == "watch") !it.hasComposition else it.hasComposition
+        }
+        // Never let the plausibility check empty the page: if everything is far
+        // from the anchor, show the source as it is.
+        val points = sourcePoints.filter { plausible(it) }.ifEmpty { sourcePoints }
         // The overview card is the selected day only; this page always leads with
         // the most recent reading of the chosen source.
         val latest = date
             ?.let { day -> points.filter { dayOf(it) == day }.maxByOrNull { it.epochMs } }
             ?: points.maxByOrNull { it.epochMs }
-        // Composition (fat, muscle, water, bone, metabolism) only arrives from a
-        // scale reading, and the newest one may be older than the newest weight.
-        val comp = points.filter { it.hasComposition }.maxByOrNull { it.epochMs }
+        val comp = all
+            .filter { it.hasComposition && plausible(it) }
+            .maxByOrNull { it.epochMs }
         val body = data?.body
         val male = body?.isMale ?: true
         val heightM = body?.heightCm?.takeIf { it > 100 }?.div(100.0)
@@ -1525,9 +1554,9 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             ?.let { LocalDate.now().year - it }
             ?.takeIf { it in 5..110 }
 
-        // A watch entry has no composition, so the score and body age are not
-        // shown at all — an empty "--" block would just be noise.
-        if (source != "watch") {
+        // The score and body age come from the newest scale reading close to the
+        // current weight, so a watch-only day still carries them.
+        run {
             FlatPanel {
                 Column(
                     Modifier
@@ -1827,14 +1856,23 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             )
         )
 
-        // The date on the right is when the composition reading was taken, so an
-        // old scale reading is never mistaken for today's.
-        SectionTitle("所有指标", trailing = latest?.let { Fmt.date(dayOf(it)) })
+        // Two cards: weight and BMI may come from today while the composition
+        // figures come from an older scale reading, so each card carries its own
+        // date on the right.
+        val basicMetrics = metrics.take(2)
+        val bodyMetrics = metrics.drop(2)
+        SectionTitle("体重与 BMI", trailing = latest?.let { Fmt.date(dayOf(it)) })
         FlatPanel {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                metrics.forEachIndexed { index, metric ->
+                basicMetrics.forEach { BodyMetricRow(it) }
+            }
+        }
+        SectionTitle("其他指标", trailing = comp?.let { Fmt.date(dayOf(it)) })
+        FlatPanel {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                bodyMetrics.forEachIndexed { index, metric ->
                     BodyMetricRow(metric)
-                    if (index != metrics.lastIndex) MetricDivider()
+                    if (index != bodyMetrics.lastIndex) MetricDivider()
                 }
             }
         }

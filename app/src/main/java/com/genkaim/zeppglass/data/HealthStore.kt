@@ -326,7 +326,10 @@ class HealthStore private constructor(
                 runCatching {
                     api.weights(
                         userId,
-                        today.minusDays(365).atStartOfDay(zone).toInstant().epochSecond,
+                        // Three years: the body-composition card needs the last
+                        // scale reading even when it is older than a year (the
+                        // official app shows an August 2025 reading in 2026).
+                        today.minusDays(1090).atStartOfDay(zone).toInstant().epochSecond,
                         today.plusDays(1).atStartOfDay(zone).toInstant().epochSecond
                     )
                 }.onSuccess { weights = it }.onFailure { warnings.add("体重：${it.friendly()}") }

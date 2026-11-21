@@ -298,7 +298,8 @@ private fun ChargeHero(charge: ChargeDay) {
         else -> base
     }
     val physicalColor = tier(charge.physical, MaterialTheme.colorScheme.primary)
-    val mentalColor = tier(charge.mental, MaterialTheme.colorScheme.tertiary)
+    // 精力 shares the main accent now: the split is in the label, not the colour.
+    val mentalColor = tier(charge.mental, MaterialTheme.colorScheme.primary)
     val totalColor = tier(charge.total?.toDouble(), MaterialTheme.colorScheme.primary)
     Column(
         Modifier
@@ -523,7 +524,7 @@ private fun SplitTrend(
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 12.dp)
                 .height(140.dp),
-            color = MaterialTheme.colorScheme.tertiary
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }

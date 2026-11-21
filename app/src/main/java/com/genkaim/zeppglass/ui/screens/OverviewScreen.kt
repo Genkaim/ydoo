@@ -33,7 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.filled.Bloodtype
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bolt
@@ -510,7 +510,7 @@ fun OverviewScreen(
                                     label = "血氧",
                                     value = (nightSpo2 ?: spo2?.value)?.toString() ?: "--",
                                     unit = "%",
-                                    icon = Icons.Rounded.Air,
+                                    icon = Icons.Filled.Bloodtype,
                                     modifier = Modifier.weight(1f),
                                     verdict = (nightSpo2 ?: spo2?.value)?.let {
                                         when {

@@ -570,6 +570,58 @@ object AiContext {
             }
         }
 
+        // Body composition: the scale and the wearable each keep their own latest
+        // reading, so the two dates can differ. Scores are local calculations,
+        // not Zepp's numbers.
+        if (data.weights.isNotEmpty()) {
+            val body = data.body
+            val male = body?.isMale ?: true
+            val heightM = body?.heightCm?.takeIf { it > 100 }?.div(100.0)
+            builder.appendLine("\n体重与身体成分（体脂秤与穿戴设备分开列，日期不同是正常的）：")
+            fun describe(label: String, point: WeightPoint?) {
+                if (point == null) {
+                    builder.appendLine("- $label：没有记录")
+                    return
+                }
+                val date = Instant.ofEpochMilli(point.epochMs)
+                    .atZone(ZoneId.systemDefault()).toLocalDate()
+                val parts = buildList {
+                    point.weightKg?.let { add("体重 ${"%.1f".format(it)} kg") }
+                    point.bmi?.let { add("BMI ${"%.1f".format(it)}") }
+                    point.bodyFatPct?.let { add("体脂 ${"%.1f".format(it)}%") }
+                    point.muscleKg?.let { add("肌肉 ${"%.1f".format(it)} kg") }
+                    point.skeletalMuscleKg?.let { add("骨骼肌 ${"%.1f".format(it)} kg") }
+                    point.bodyWaterPct?.let { add("体水分 ${"%.1f".format(it)}%") }
+                    point.boneMassKg?.let { add("骨量 ${"%.2f".format(it)} kg") }
+                    point.visceralFat?.let { add("内脏脂肪 ${it.toInt()}") }
+                    point.metabolismKcal?.let { add("基础代谢 ${it.toInt()} kcal") }
+                    point.proteinPct?.let { add("蛋白质 ${"%.1f".format(it)}%") }
+                }
+                val bmrEstimate = mifflinBmr(body, point.weightKg)
+                val score = bodyCompositionScore(
+                    bmi = point.bmi,
+                    fat = point.bodyFatPct,
+                    muscleKg = point.muscleKg,
+                    water = point.bodyWaterPct,
+                    visceral = point.visceralFat,
+                    protein = point.proteinPct,
+                    bone = point.boneMassKg,
+                    bmr = point.metabolismKcal,
+                    bmrEstimate = bmrEstimate,
+                    heightM = heightM,
+                    male = male
+                )
+                val age = deurenbergAge(point.bmi, point.bodyFatPct, male)
+                builder.appendLine(
+                    "- $label（$date）：" + parts.joinToString("，").ifEmpty { "没有身体成分" } +
+                        (score?.let { "，身体得分 $it" } ?: "") +
+                        (age?.let { "，身体年龄 $it 岁" } ?: "")
+                )
+            }
+            describe("体脂秤最近一条", data.weights.filter { it.weightType == 0 }.maxByOrNull { it.epochMs })
+            describe("穿戴设备最近一条", data.weights.filter { it.weightType != 0 }.maxByOrNull { it.epochMs })
+        }
+
         // Diet log. The numbers are the user's own entries (AI estimates they
         // can edit), so they are labelled as estimates rather than as measured.
         val dietDays = DietStore.meals
@@ -618,6 +670,19 @@ object AiContext {
 
         data.latestWeight()?.let { w ->
             builder.appendLine("\n体重：${w.weightKg} kg" + (w.bmi?.let { "，BMI ${"%.1f".format(it)}" } ?: ""))
+        }
+        data.weights.filter { it.hasComposition }.maxByOrNull { it.epochMs }?.let { c ->
+            builder.appendLine(
+                "身体成分：" + listOfNotNull(
+                    c.bodyFatPct?.let { "体脂 ${"%.1f".format(it)}%" },
+                    c.muscleKg?.let { "肌肉 ${"%.1f".format(it)} kg" },
+                    c.bodyWaterPct?.let { "水分 ${"%.1f".format(it)}%" },
+                    c.boneMassKg?.let { "骨量 ${"%.2f".format(it)} kg" },
+                    c.visceralFat?.let { "内脏脂肪 ${it.toInt()}" },
+                    c.metabolismKcal?.let { "基础代谢 ${it.toInt()} kcal" },
+                    c.proteinPct?.let { "蛋白质 ${"%.1f".format(it)}%" }
+                ).joinToString("，")
+            )
         }
         if (data.spo2.isNotEmpty()) {
             val recent = data.spo2.takeLast(20).map { it.value }

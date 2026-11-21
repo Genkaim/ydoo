@@ -30,7 +30,7 @@ object AiTools {
             appendLine("- stress：日期、平均、最低、最高（0-100）")
             appendLine("- pai：日期、当日、累计、低/中/高强度分钟")
             appendLine("- load：日期、当天负荷、7 天负荷、合适下限、合适上限")
-            appendLine("- weight：时间、体重 kg、BMI、体脂 %")
+            appendLine("- weight：时间、来源 scale/watch、体重 kg、BMI、体脂 %、肌肉 kg、骨骼肌 kg、体水分 %、骨量 kg、内脏脂肪、基础代谢 kcal、蛋白质 %")
             appendLine("- spo2：时间、血氧 %")
             appendLine("- workouts：时间、类型、分钟、公里、配速、平均心率、最高心率、负荷")
             appendLine("- strain：日期、每日负荷(0-21)、心率负荷、平均心率、最高心率、五个心率区间分钟")
@@ -165,9 +165,17 @@ object AiTools {
                 rows.put(
                     JSONObject().apply {
                         put("time", FmtIso(w.epochMs))
+                        put("source", if (w.weightType == 0) "scale" else "watch")
                         w.weightKg?.let { put("kg", it) }
                         w.bmi?.let { put("bmi", "%.1f".format(it)) }
                         w.bodyFatPct?.let { put("fat", "%.1f".format(it)) }
+                        w.muscleKg?.let { put("muscle_kg", "%.1f".format(it)) }
+                        w.skeletalMuscleKg?.let { put("skeletal_muscle_kg", "%.1f".format(it)) }
+                        w.bodyWaterPct?.let { put("water", "%.1f".format(it)) }
+                        w.boneMassKg?.let { put("bone_kg", "%.2f".format(it)) }
+                        w.visceralFat?.let { put("visceral_fat", it.toInt()) }
+                        w.metabolismKcal?.let { put("bmr_kcal", it.toInt()) }
+                        w.proteinPct?.let { put("protein", "%.1f".format(it)) }
                     }
                 )
             }

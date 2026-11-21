@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -514,6 +515,28 @@ fun OverviewScreen(
                                         }
                                     },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.SPO2, date)) }
+                                )
+                            }
+
+                            // Blood pressure and glucose have no cloud source yet, so
+                            // they follow the same rule as every other metric: a card
+                            // that reads "--" until a reading exists.
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MetricTile(
+                                    label = "血压",
+                                    value = "--",
+                                    unit = "mmHg",
+                                    icon = Icons.Rounded.Favorite,
+                                    tint = LocalZgPalette.current.critical,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MetricTile(
+                                    label = "血糖",
+                                    value = "--",
+                                    unit = "mmol/L",
+                                    icon = Icons.Rounded.WaterDrop,
+                                    tint = LocalZgPalette.current.warn,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
 

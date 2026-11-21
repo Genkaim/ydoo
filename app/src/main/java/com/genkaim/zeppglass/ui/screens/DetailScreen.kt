@@ -2141,8 +2141,14 @@ private fun RhrDetail(data: HealthData?, date: LocalDate?) {
                 )
             }
             // Centre is the personal baseline, the fill runs up to today: right
-            // of the centre reads higher than usual, left reads lower.
-            day.rhrBaseline?.let { base ->
+            // of the centre reads higher than usual, left reads lower. A day
+            // without a baseline of its own borrows the nearest day's, so the
+            // gauge is there on every date instead of only on today.
+            val rhrGaugeBase = day.rhrBaseline ?: source.readiness
+                .filter { it.rhrBaseline != null }
+                .minByOrNull { abs(it.date.toEpochDay() - day.date.toEpochDay()) }
+                ?.rhrBaseline
+            rhrGaugeBase?.let { base ->
                 Spacer(Modifier.height(14.dp))
                 BaselineScaleBar(
                     value = value.toDouble(),
@@ -2254,9 +2260,14 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                     color = hrvVerdict.second
                 )
             }
-            // Same gauge as resting heart rate: baseline in the middle, today's
-            // value filled in, higher to the right.
-            day.hrvBaseline?.let { base ->
+            // Same gauge as resting heart rate, and the same fallback: dates
+            // without their own baseline use the nearest one so the bar is
+            // always there.
+            val hrvGaugeBase = day.hrvBaseline ?: source.readiness
+                .filter { it.hrvBaseline != null }
+                .minByOrNull { abs(it.date.toEpochDay() - day.date.toEpochDay()) }
+                ?.hrvBaseline
+            hrvGaugeBase?.let { base ->
                 Spacer(Modifier.height(14.dp))
                 BaselineScaleBar(
                     value = value.toDouble(),

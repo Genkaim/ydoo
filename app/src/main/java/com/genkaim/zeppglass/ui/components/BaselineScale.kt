@@ -9,6 +9,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -59,14 +62,21 @@ fun BaselineScaleBar(
     val trackColor = palette.grid
     val tickColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.40f)
     val markerPaint = markerColor ?: fillColor ?: MaterialTheme.colorScheme.onSurface
+    val surface = MaterialTheme.colorScheme.surface
 
     Canvas(modifier) {
-        val markerHeight = 8.dp.toPx()
-        val markerWidth = 9.dp.toPx()
-        val barHeight = 6.dp.toPx()
-        val barTop = markerHeight + 1.dp.toPx()
+        // Generous marker: the arrow overlaps the bar and carries a thin
+        // surface-coloured ring so it stays separate from the fill under it.
+        val halo = 2.dp.toPx()
+        val edge = 1.5.dp.toPx()
+        val markerHeight = 10.dp.toPx()
+        val markerWidth = 12.dp.toPx()
+        val barHeight = 9.dp.toPx()
+        val baseY = halo + edge
+        val apexY = baseY + markerHeight
+        val barTop = apexY - 3.dp.toPx()
         val barBottom = barTop + barHeight
-        val corner = 2.dp.toPx()
+        val corner = 3.dp.toPx()
         fun xOf(v: Double): Float {
             val t = ((v - min) / (max - min)).coerceIn(0.0, 1.0)
             return (size.width * t).toFloat()
@@ -118,26 +128,43 @@ fun BaselineScaleBar(
                 )
             }
         } else {
-            // Baseline mark: a hairline at the personal value, the point the
-            // whole scale is read against.
+            // Baseline mark: a white notch cut into the fill, the point the whole
+            // scale is read against.
             val centerX = xOf(baseline)
             drawLine(
-                tickColor,
-                Offset(centerX, barTop - 1.dp.toPx()),
-                Offset(centerX, barBottom + 1.dp.toPx()),
-                1.dp.toPx()
+                surface,
+                Offset(centerX, barTop),
+                Offset(centerX, barBottom),
+                2.dp.toPx()
             )
         }
 
-        // Today's value: a small triangle pointing down at the track.
+        // Today's value: a rounded arrow pointing down, its tip overlapping the
+        // bar. Drawn as a white ring first, then the fill plus a round-joined
+        // stroke of the same colour, which rounds the triangle's corners.
         val valueX = xOf(value)
         val marker = Path().apply {
-            moveTo(valueX - markerWidth / 2f, 0f)
-            lineTo(valueX + markerWidth / 2f, 0f)
-            lineTo(valueX, markerHeight)
+            moveTo(valueX - markerWidth / 2f, baseY)
+            lineTo(valueX + markerWidth / 2f, baseY)
+            lineTo(valueX, apexY)
             close()
         }
+        val coloredEdge = edge * 2f
+        drawPath(
+            marker,
+            color = surface,
+            style = Stroke(
+                width = coloredEdge + halo * 2f,
+                join = StrokeJoin.Round,
+                cap = StrokeCap.Round
+            )
+        )
         drawPath(marker, color = markerPaint)
+        drawPath(
+            marker,
+            color = markerPaint,
+            style = Stroke(width = coloredEdge, join = StrokeJoin.Round, cap = StrokeCap.Round)
+        )
 
         // Labels under the track.
         val labelTop = barBottom + 5.dp.toPx()

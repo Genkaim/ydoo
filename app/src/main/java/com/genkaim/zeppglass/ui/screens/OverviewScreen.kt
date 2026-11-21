@@ -43,7 +43,6 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.MonitorHeart
-import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Schedule
@@ -480,14 +479,11 @@ fun OverviewScreen(
                                 )
                             }
 
-                            LastNightCard(
-                                night = night,
-                                onClick = { onOpenDetail(DetailTarget(DetailKind.SLEEP, date)) }
-                            )
-
-                            ChargeCurveCard(
-                                charge = charge,
-                                onClick = { onOpenTab(AppTab.CHARGE) }
+                            // The body-composition card sits where the sleep and
+                            // Charge cards used to be.
+                            BodyCompositionCard(
+                                point = weightToday,
+                                onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -521,11 +517,6 @@ fun OverviewScreen(
                                 date = date,
                                 today = today,
                                 onOpen = ::openWorkout
-                            )
-
-                            BodyCompositionCard(
-                                point = weightToday,
-                                onClick = { onOpenDetail(DetailTarget(DetailKind.WEIGHT, date)) }
                             )
 
                             if (isToday) {
@@ -1676,13 +1667,6 @@ private fun BodyCompositionCard(point: WeightPoint?, onClick: () -> Unit) {
     FlatPanel(onClick = onClick) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.MonitorWeight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.size(6.dp))
                 Text("身体成分", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Icon(
                     Icons.Rounded.ChevronRight,

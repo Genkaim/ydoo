@@ -1421,9 +1421,6 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
         Missing("还没有称重记录")
         return
     }
-    val ink = MaterialTheme.colorScheme.onSurface
-    val warnTone = LocalZgPalette.current.warn
-    val criticalTone = LocalZgPalette.current.critical
     // Composition (fat, muscle, water, bone, metabolism) only arrives from a
     // scale reading, and the newest one may be older than the newest weight.
     val comp = points
@@ -1433,71 +1430,188 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
         }
         .maxByOrNull { it.epochMs }
     val bmi = latest.bmi
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("体重", Fmt.oneDecimal(latest.weightKg), "kg", Modifier.weight(1f))
-        MetricTile(
-            label = "BMI",
-            value = Fmt.oneDecimal(bmi),
-            unit = null,
-            verdict = bmi?.let {
-                when {
-                    it < 18.5 -> "偏轻" to warnTone
-                    it < 24.0 -> "正常" to ink
-                    it < 28.0 -> "偏高" to warnTone
-                    else -> "肥胖" to criticalTone
-                }
-            },
-            modifier = Modifier.weight(1f)
-        )
+    // Mifflin-St Jeor from the Zepp profile: used only to rate the scale's
+    // metabolism figure, never shown as a reading of its own.
+    val bmrEstimate = mifflinBmr(data?.body, latest.weightKg ?: comp?.weightKg)
+    val score = bodyScore(
+        bmi = bmi,
+        fat = comp?.bodyFatPct,
+        muscle = comp?.skeletalMusclePct,
+        water = comp?.bodyWaterPct,
+        visceral = comp?.visceralFat,
+        protein = comp?.proteinPct,
+        bone = comp?.boneMassKg,
+        bmr = comp?.metabolismKcal,
+        bmrEstimate = bmrEstimate
+    )
+    val ink = MaterialTheme.colorScheme.onSurface
+    val warnTone = LocalZgPalette.current.warn
+    val criticalTone = LocalZgPalette.current.critical
+    val scoreVerdict: Pair<String, Color>? = score?.let {
+        when {
+            it >= 85 -> "优秀" to ink
+            it >= 70 -> "良好" to ink
+            it >= 55 -> "一般" to warnTone
+            else -> "偏低" to criticalTone
+        }
     }
-    Spacer(Modifier.height(12.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val fat = comp?.bodyFatPct
-        MetricTile(
-            label = "体脂",
-            value = fat?.let { Fmt.oneDecimal(it) } ?: "--",
-            unit = "%",
-            verdict = fat?.let {
-                when {
-                    it < 15.0 -> "偏低" to warnTone
-                    it <= 25.0 -> "正常" to ink
-                    it <= 30.0 -> "偏高" to warnTone
-                    else -> "偏高" to criticalTone
-                }
-            },
-            modifier = Modifier.weight(1f)
-        )
-        val musclePct = comp?.skeletalMusclePct
-        MetricTile(
-            label = "骨骼肌",
-            value = comp?.skeletalMuscleKg?.let { Fmt.oneDecimal(it) } ?: "--",
-            unit = "kg",
-            verdict = musclePct?.let {
-                if (it < 40.0) "偏低" to warnTone else "正常" to ink
-            },
-            modifier = Modifier.weight(1f)
-        )
+    val scoreAbnormal = scoreVerdict != null && scoreVerdict.first !in setOf("优秀", "良好")
+
+    SectionTitle("身体得分", trailing = comp?.let { Fmt.date(dayOf(it)) })
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 18.dp, horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    score?.toString() ?: "--",
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (scoreAbnormal) scoreVerdict!!.second else ink
+                )
+                Text(
+                    " 分",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (scoreAbnormal) scoreVerdict!!.second else ink,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            if (scoreVerdict != null) {
+                Text(
+                    scoreVerdict.first,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = scoreVerdict.second
+                )
+            }
+            if (score == null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "体脂秤读数为空，暂时算不出得分",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 
     fun pct(value: Double?) =
         value?.let { String.format(java.util.Locale.CHINA, "%.1f%%", it) } ?: "--"
     fun kg(value: Double?, digits: Int = 1) =
         value?.let { String.format(java.util.Locale.CHINA, "%.${digits}f kg", it) } ?: "--"
+    fun ratio(value: Double?, min: Double, max: Double): Float =
+        value?.let { ((it - min) / (max - min)).coerceIn(0.0, 1.0).toFloat() } ?: 0f
 
-    SectionTitle("身体成分", trailing = comp?.let { Fmt.date(dayOf(it)) } ?: "暂无")
+    // Each row rates the reading the same way the HRV page rates HRV: a word,
+    // one colour, and a bar that fills with the figure's place on its scale.
+    val bmiRate: Pair<String, BodyTone>? = bmi?.let {
+        when {
+            it < 18.5 -> "偏轻" to BodyTone.WARN
+            it < 24.0 -> "正常" to BodyTone.NORMAL
+            it < 28.0 -> "偏高" to BodyTone.WARN
+            else -> "肥胖" to BodyTone.BAD
+        }
+    }
+    val fatRate = comp?.bodyFatPct?.let {
+        when {
+            it < 15.0 -> "偏低" to BodyTone.WARN
+            it <= 25.0 -> "正常" to BodyTone.NORMAL
+            it <= 30.0 -> "偏高" to BodyTone.WARN
+            else -> "偏高" to BodyTone.BAD
+        }
+    }
+    val muscleRate = comp?.skeletalMusclePct?.let {
+        if (it < 40.0) "偏低" to BodyTone.WARN else "正常" to BodyTone.NORMAL
+    }
+    val waterRate = comp?.bodyWaterPct?.let {
+        when {
+            it < 50.0 -> "偏低" to BodyTone.WARN
+            it <= 65.0 -> "正常" to BodyTone.NORMAL
+            else -> "偏高" to BodyTone.WARN
+        }
+    }
+    val boneRate = comp?.boneMassKg?.let {
+        when {
+            it < 2.0 -> "偏低" to BodyTone.WARN
+            it <= 4.0 -> "正常" to BodyTone.NORMAL
+            else -> "偏高" to BodyTone.WARN
+        }
+    }
+    val visceralRate = comp?.visceralFat?.let {
+        when {
+            it <= 9.0 -> "正常" to BodyTone.NORMAL
+            it <= 14.0 -> "偏高" to BodyTone.WARN
+            else -> "高" to BodyTone.BAD
+        }
+    }
+    val bmrRate = comp?.metabolismKcal?.let { bmr ->
+        bmrEstimate?.let { est ->
+            val diff = (bmr - est) / est
+            when {
+                abs(diff) <= 0.05 -> "正常" to BodyTone.NORMAL
+                diff < 0 && diff >= -0.10 -> "偏低" to BodyTone.WARN
+                diff > 0 && diff <= 0.10 -> "偏高" to BodyTone.WARN
+                diff < 0 -> "偏低" to BodyTone.BAD
+                else -> "偏高" to BodyTone.BAD
+            }
+        }
+    }
+    val proteinRate = comp?.proteinPct?.let {
+        when {
+            it < 16.0 -> "偏低" to BodyTone.WARN
+            it <= 20.0 -> "正常" to BodyTone.NORMAL
+            else -> "偏高" to BodyTone.WARN
+        }
+    }
+
+    val metrics = listOf(
+        BodyMetric("体重", kg(latest.weightKg), bmiRate, ratio(bmi, 15.0, 35.0)),
+        BodyMetric("BMI", Fmt.oneDecimal(bmi), bmiRate, ratio(bmi, 15.0, 35.0)),
+        BodyMetric("体脂率", pct(comp?.bodyFatPct), fatRate, ratio(comp?.bodyFatPct, 5.0, 40.0)),
+        BodyMetric(
+            "骨骼肌",
+            kg(comp?.skeletalMuscleKg),
+            muscleRate,
+            ratio(comp?.skeletalMusclePct, 20.0, 55.0)
+        ),
+        BodyMetric(
+            "肌肉率",
+            pct(comp?.skeletalMusclePct),
+            muscleRate,
+            ratio(comp?.skeletalMusclePct, 20.0, 55.0)
+        ),
+        BodyMetric(
+            "体水分率",
+            pct(comp?.bodyWaterPct),
+            waterRate,
+            ratio(comp?.bodyWaterPct, 35.0, 75.0)
+        ),
+        BodyMetric("骨量", kg(comp?.boneMassKg, 2), boneRate, ratio(comp?.boneMassKg, 1.0, 5.0)),
+        BodyMetric(
+            "内脏脂肪",
+            comp?.visceralFat?.roundToInt()?.toString() ?: "--",
+            visceralRate,
+            ratio(comp?.visceralFat, 1.0, 20.0)
+        ),
+        BodyMetric(
+            "基础代谢",
+            comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
+            bmrRate,
+            ratio(comp?.metabolismKcal, 800.0, 2500.0)
+        ),
+        BodyMetric(
+            "蛋白质率",
+            pct(comp?.proteinPct),
+            proteinRate,
+            ratio(comp?.proteinPct, 10.0, 25.0)
+        )
+    )
+
+    SectionTitle("所有指标")
     FlatPanel {
-        Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            DataRow("体脂率", pct(comp?.bodyFatPct))
-            DataRow("肌肉量", kg(comp?.skeletalMuscleKg))
-            DataRow("肌肉率", pct(comp?.skeletalMusclePct))
-            DataRow("体水分率", pct(comp?.bodyWaterPct))
-            DataRow("骨量", kg(comp?.boneMassKg, digits = 2))
-            DataRow("内脏脂肪", comp?.visceralFat?.roundToInt()?.toString() ?: "--")
-            DataRow("基础代谢", comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--")
-            DataRow("蛋白质率", pct(comp?.proteinPct))
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            metrics.forEach { BodyMetricRow(it) }
         }
     }
 
@@ -1544,6 +1658,126 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?) {
             }
         }
     }
+}
+
+/** How far a body-composition reading is from its healthy band. */
+private enum class BodyTone { NORMAL, WARN, BAD }
+
+private class BodyMetric(
+    val label: String,
+    val value: String,
+    val rating: Pair<String, BodyTone>?,
+    val fraction: Float
+)
+
+/** One body metric: label, rating, value, and a bar coloured by the rating. */
+@Composable
+private fun BodyMetricRow(metric: BodyMetric) {
+    val palette = LocalZgPalette.current
+    val tone = metric.rating?.second
+    val barColor = when (tone) {
+        BodyTone.WARN -> palette.warn
+        BodyTone.BAD -> palette.critical
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                metric.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            metric.rating?.let {
+                Text(
+                    it.first,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (it.second) {
+                        BodyTone.WARN -> palette.warn
+                        BodyTone.BAD -> palette.critical
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+            Text(metric.value, style = MaterialTheme.typography.titleSmall)
+        }
+        Spacer(Modifier.height(7.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(50))
+                .background(palette.grid)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(metric.fraction.coerceIn(0f, 1f))
+                    .height(6.dp)
+                    .background(barColor, RoundedCornerShape(50))
+            )
+        }
+    }
+}
+
+/** 100 inside the healthy band, falling off linearly outside it. */
+private fun bandScore(value: Double, low: Double, high: Double, span: Double): Double =
+    when {
+        value < low -> 100.0 - (low - value) / span * 100.0
+        value > high -> 100.0 - (value - high) / span * 100.0
+        else -> 100.0
+    }
+
+/**
+ * 身体得分: a 0–100 summary of the scale reading, weighted towards the figures
+ * people act on (BMI, body fat, muscle). Only the fields present are counted,
+ * so a scale without, say, visceral fat still produces a score.
+ */
+private fun bodyScore(
+    bmi: Double?,
+    fat: Double?,
+    muscle: Double?,
+    water: Double?,
+    visceral: Double?,
+    protein: Double?,
+    bone: Double?,
+    bmr: Double?,
+    bmrEstimate: Double?
+): Int? {
+    var sum = 0.0
+    var total = 0.0
+    fun add(score: Double, weight: Double) {
+        sum += score.coerceIn(0.0, 100.0) * weight
+        total += weight
+    }
+    bmi?.let { add(bandScore(it, 18.5, 24.0, 6.0), 20.0) }
+    fat?.let { add(bandScore(it, 15.0, 25.0, 10.0), 25.0) }
+    muscle?.let { add((it / 45.0 * 100.0), 20.0) }
+    water?.let { add(bandScore(it, 50.0, 65.0, 10.0), 15.0) }
+    visceral?.let { add(100.0 - (it - 9.0).coerceAtLeast(0.0) * 8.0, 10.0) }
+    protein?.let { add(bandScore(it, 16.0, 20.0, 5.0), 5.0) }
+    bone?.let { add(bandScore(it, 2.0, 4.0, 1.5), 5.0) }
+    if (bmr != null && bmrEstimate != null && bmrEstimate > 0.0) {
+        add(100.0 - abs(bmr - bmrEstimate) / bmrEstimate * 400.0, 10.0)
+    }
+    if (total == 0.0) return null
+    return (sum / total).roundToInt()
+}
+
+/** Mifflin-St Jeor basal rate from the Zepp profile; null when it is incomplete. */
+private fun mifflinBmr(body: com.genkaim.zeppglass.data.BodyProfile?, weightKg: Double?): Double? {
+    val height = body?.heightCm ?: return null
+    val birthYear = body?.birthYear ?: return null
+    val male = body?.isMale ?: return null
+    val weight = weightKg ?: body?.weightKg ?: return null
+    val age = LocalDate.now().year - birthYear
+    if (age !in 5..110) return null
+    val base = 10.0 * weight + 6.25 * height - 5.0 * age
+    return base + if (male) 5.0 else -161.0
 }
 
 // ---------------- SpO2 ----------------

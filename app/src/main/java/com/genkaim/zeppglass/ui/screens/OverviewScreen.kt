@@ -215,9 +215,22 @@ fun OverviewScreen(
 
     LaunchedEffect(Unit) { DailySummary.attach(settings) }
 
-    // One summary per logical day (05:00 boundary), and only for today.
-    LaunchedEffect(raw?.fetchedAt, settings.aiApiKey, isToday) {
-        if (raw != null && isToday && settings.aiApiKey.isNotBlank()) {
+    // One summary per logical day (05:00 boundary), and only for today — and only
+    // once the snapshot belongs to this logical day. Without that second check the
+    // effect could fire while the opening sync was still running and hand the
+    // model yesterday's numbers; it re-runs when the refresh lands.
+    val logicalDayStartMs = remember(today, zone) {
+        val nowMs = System.currentTimeMillis()
+        var start = java.time.LocalDate.now(zone).atStartOfDay(zone)
+            .plusHours(DailySummary.DAY_START_HOUR)
+        if (start.toInstant().toEpochMilli() > nowMs) start = start.minusDays(1)
+        start.toInstant().toEpochMilli()
+    }
+    val summaryDataReady = raw != null &&
+        !state.loading && !state.refreshing &&
+        raw.fetchedAt >= logicalDayStartMs
+    LaunchedEffect(summaryDataReady, raw?.fetchedAt, settings.aiApiKey, isToday) {
+        if (summaryDataReady && isToday && settings.aiApiKey.isNotBlank()) {
             DailySummary.ensureToday(settings, raw)
         }
     }

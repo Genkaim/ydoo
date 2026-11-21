@@ -21,7 +21,7 @@ import java.time.LocalDateTime
  */
 object DailySummary {
 
-    private const val DAY_START_HOUR = 5L
+    const val DAY_START_HOUR = 5L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null

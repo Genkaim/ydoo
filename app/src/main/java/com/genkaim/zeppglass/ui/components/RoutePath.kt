@@ -182,7 +182,9 @@ private fun fitPath(
     val thinned = thin(projected, speed, minStep = 1.4f)
     var smoothPoints: List<Offset> = thinned.first
     var smoothSpeed: List<Float> = thinned.second
-    repeat(2) {
+    // Three passes: the second already removes most of the shiver, the third
+    // turns what is left into a clean flowing line.
+    repeat(3) {
         if (smoothPoints.size >= 3) {
             val nextPoints = ArrayList<Offset>(smoothPoints.size * 2)
             val nextSpeed = ArrayList<Float>(smoothPoints.size * 2)
@@ -255,29 +257,30 @@ private fun DrawScope.drawTrack(
 ) {
     if (shape.points.size < 2) return
 
-    // A white halo under everything, so the colours stay readable in both
-    // themes; it follows the same smoothed line as the colours.
-    val outline = Path()
-    outline.moveTo(shape.points.first().x, shape.points.first().y)
-    for (i in 1 until shape.points.size) {
-        outline.lineTo(shape.points[i].x, shape.points[i].y)
-    }
-    drawPath(
-        outline,
-        Color.White.copy(alpha = 0.85f),
-        style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-    )
-
-    // A line per pair of smoothed points, each in its own speed colour. Round
-    // caps make the joints seamless.
-    val stroke = 3.dp.toPx()
+    // A line per pair of fixes, each in its own speed colour. Round caps make
+    // the joints seamless. No white halo: the track is meant to sit on the page
+    // as a thin coloured line, not as an outlined ribbon.
+    val stroke = 2.6.dp.toPx()
+    // Eight colour bins instead of one path per segment: thousands of single
+    // strokes would stutter while the page scrolls.
+    val bins = 8
+    val paths = Array(bins) { Path() }
+    val started = BooleanArray(bins)
     for (i in 0 until shape.points.size - 1) {
-        drawLine(
-            color = rampColor(ramp, (shape.speed[i] + shape.speed[i + 1]) / 2f),
-            start = shape.points[i],
-            end = shape.points[i + 1],
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
+        val speed = (shape.speed[i] + shape.speed[i + 1]) / 2f
+        val bin = (speed * bins).toInt().coerceIn(0, bins - 1)
+        if (!started[bin]) {
+            paths[bin].moveTo(shape.points[i].x, shape.points[i].y)
+            started[bin] = true
+        }
+        paths[bin].lineTo(shape.points[i + 1].x, shape.points[i + 1].y)
+    }
+    paths.forEachIndexed { bin, path ->
+        if (!started[bin]) return@forEachIndexed
+        drawPath(
+            path,
+            rampColor(ramp, (bin + 0.5f) / bins),
+            style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }
 

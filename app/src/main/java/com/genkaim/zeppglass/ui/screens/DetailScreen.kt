@@ -2314,13 +2314,15 @@ private fun PinnedTrack(points: List<GeoPoint>, scroll: ScrollState, modifier: M
             .height(260.dp)
             .graphicsLayer {
                 val p = progress
-                val shrink = 1f - 0.12f * p
+                val shrink = 1f - 0.06f * p
                 scaleX = shrink
                 scaleY = shrink
-                translationY = 30.dp.toPx() * p
-                alpha = 1f - 0.62f * p
+                // Scroll up, track up: it leaves with the page instead of
+                // hanging around, and is gone by the time the cards arrive.
+                translationY = -40.dp.toPx() * p
+                alpha = 1f - p
             }
-            .blur((8f * progress).dp)
+            .blur((6f * progress).dp)
     )
 }
 

@@ -1,5 +1,16 @@
 package com.genkaim.zeppglass.ui.theme
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -175,7 +186,39 @@ fun ZeppGlassTheme(
         MaterialTheme(
             colorScheme = scheme,
             typography = DefaultTypography.codexStyle(),
-            content = content
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                content()
+                ThemeChangeFade(darkTheme)
+            }
+        }
+    }
+}
+
+/**
+ * A theme switch redraws every surface in one frame, which reads as a hard
+ * cut. This lays the *previous* page colour over the new one for a moment and
+ * fades it away, so the switch looks like a dip through the background instead
+ * of a flash. It never takes touches.
+ */
+@Composable
+private fun ThemeChangeFade(dark: Boolean) {
+    var lastDark by remember { mutableStateOf(dark) }
+    var fadeColor by remember { mutableStateOf(Color.Transparent) }
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(dark) {
+        if (lastDark != dark) {
+            fadeColor = if (lastDark) Color(0xFF07080A) else Color(0xFFF2F3F5)
+            lastDark = dark
+            alpha.snapTo(1f)
+            alpha.animateTo(0f, animationSpec = tween(320))
+        }
+    }
+    if (alpha.value > 0f) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(fadeColor.copy(alpha = alpha.value * 0.9f))
         )
     }
 }

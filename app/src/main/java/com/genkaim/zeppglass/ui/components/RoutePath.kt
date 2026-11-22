@@ -260,23 +260,26 @@ private fun DrawScope.drawTrack(
     // A line per pair of fixes, each in its own speed colour. Round caps make
     // the joints seamless. No white halo: the track is meant to sit on the page
     // as a thin coloured line, not as an outlined ribbon.
-    val stroke = 2.6.dp.toPx()
+    val stroke = 3.2.dp.toPx()
     // Eight colour bins instead of one path per segment: thousands of single
-    // strokes would stutter while the page scrolls.
+    // strokes would stutter while the page scrolls. Each bin keeps its own last
+    // segment index — without it, a bin that is used again later would draw a
+    // straight chord back to wherever it stopped, which is what put a dozen
+    // crossing lines over the track.
     val bins = 8
     val paths = Array(bins) { Path() }
-    val started = BooleanArray(bins)
+    val lastIndex = IntArray(bins) { -2 }
     for (i in 0 until shape.points.size - 1) {
         val speed = (shape.speed[i] + shape.speed[i + 1]) / 2f
         val bin = (speed * bins).toInt().coerceIn(0, bins - 1)
-        if (!started[bin]) {
+        if (lastIndex[bin] != i - 1) {
             paths[bin].moveTo(shape.points[i].x, shape.points[i].y)
-            started[bin] = true
         }
         paths[bin].lineTo(shape.points[i + 1].x, shape.points[i + 1].y)
+        lastIndex[bin] = i
     }
     paths.forEachIndexed { bin, path ->
-        if (!started[bin]) return@forEachIndexed
+        if (lastIndex[bin] < 0) return@forEachIndexed
         drawPath(
             path,
             rampColor(ramp, (bin + 0.5f) / bins),
@@ -332,14 +335,15 @@ private fun DrawScope.drawFinishBadge(at: Offset, color: Color) {
 }
 
 /**
- * Arrowheads at a few points along the way, each turned to the direction of
- * travel there. They sit on the line in white with a hairline edge so they read
- * on top of every speed colour.
+ * Direction chevrons — a small rounded ">" every so often, turned to the
+ * direction of travel. White and no wider than the line's own thickness, so it
+ * reads as part of the track rather than a marker sitting on top of it.
  */
 private fun DrawScope.drawArrows(points: List<Offset>) {
     if (points.size < 8) return
     val fractions = listOf(0.18f, 0.42f, 0.66f, 0.88f)
-    val size = 5.5.dp.toPx()
+    val size = 4.2.dp.toPx()
+    val strokeWidth = 1.5.dp.toPx()
     for (fraction in fractions) {
         val index = (points.size * fraction).toInt().coerceIn(1, points.lastIndex - 1)
         val from = points[index - 1]
@@ -350,20 +354,23 @@ private fun DrawScope.drawArrows(points: List<Offset>) {
         if (length < 0.5f) continue
         val ux = dx / length
         val uy = dy / length
-        val tip = Offset(points[index].x + ux * size, points[index].y + uy * size)
-        val backX = points[index].x - ux * size
-        val backY = points[index].y - uy * size
-        val arrow = Path().apply {
-            moveTo(tip.x, tip.y)
-            lineTo(backX - uy * size * 0.8f, backY + ux * size * 0.8f)
-            lineTo(backX + uy * size * 0.8f, backY - ux * size * 0.8f)
-            close()
+        val nx = -uy
+        val ny = ux
+        val center = points[index]
+        // Tip forward, two wings back and to either side: ">" along the line.
+        val tip = Offset(center.x + ux * size * 0.45f, center.y + uy * size * 0.45f)
+        val backX = center.x - ux * size * 0.45f
+        val backY = center.y - uy * size * 0.45f
+        val wing = size * 0.55f
+        val chevron = Path().apply {
+            moveTo(backX + nx * wing, backY + ny * wing)
+            lineTo(tip.x, tip.y)
+            lineTo(backX - nx * wing, backY - ny * wing)
         }
-        drawPath(arrow, Color.White)
         drawPath(
-            arrow,
-            Color.Black.copy(alpha = 0.18f),
-            style = Stroke(width = 1f, join = StrokeJoin.Round)
+            chevron,
+            Color.White,
+            style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }
 }

@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -192,19 +195,19 @@ fun DetailScreen(
         workoutDetail = workout?.let { store.loadWorkoutDetail(it) }
     }
 
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .navigationBarsPadding()
     ) {
         val scrollState = rememberScrollState()
         Column(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
+                .padding(start = 18.dp, end = 18.dp, bottom = 24.dp + navBottom),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Spacer(Modifier.height(headerHeight + 4.dp))

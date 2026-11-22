@@ -22,6 +22,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
@@ -182,6 +183,17 @@ fun DetailScreen(
     val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
     val palette = LocalZgPalette.current
     var headerHeight by remember { mutableStateOf(0.dp) }
+    // A workout header is just the title row (no subtitle), so its height is
+    // known before layout: 48 dp icon button plus 8/6 dp padding. Measuring it
+    // instead would seat the track and the first card 4 dp from the top for one
+    // frame and then push them down 62 dp — the height jump on open.
+    val headerSlot = if (target.kind == DetailKind.WORKOUT) 62.dp else headerHeight
+    // The whole workout page rises into place in one quick fade, so the cards and
+    // the track read as arriving together rather than snapping in one by one.
+    val reveal = remember { Animatable(if (target.kind == DetailKind.WORKOUT) 0f else 1f) }
+    LaunchedEffect(target.kind) {
+        if (target.kind == DetailKind.WORKOUT) reveal.animateTo(1f, tween(180))
+    }
 
     // The workout detail is loaded here, not inside the page content: the track
     // is pinned above the scrolling column, and a payload that arrives after the
@@ -209,10 +221,11 @@ fun DetailScreen(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(start = 18.dp, end = 18.dp, bottom = 24.dp + navBottom),
+                .padding(start = 18.dp, end = 18.dp, bottom = 24.dp + navBottom)
+                .graphicsLayer { alpha = reveal.value },
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Spacer(Modifier.height(headerHeight + 4.dp))
+            Spacer(Modifier.height(headerSlot + 4.dp))
             when (target.kind) {
                 DetailKind.SLEEP -> SleepDetail(data, target.date, onOpen)
                 DetailKind.CHARGE -> ChargeDetail(data, target.date)
@@ -268,7 +281,7 @@ fun DetailScreen(
                 scroll = scrollState,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(start = 18.dp, end = 18.dp, top = headerHeight + 4.dp)
+                    .padding(start = 18.dp, end = 18.dp, top = headerSlot + 4.dp)
             )
         }
 

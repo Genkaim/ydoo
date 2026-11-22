@@ -96,7 +96,7 @@ fun RoutePath(
                 // track; fading it in keeps that arrival from looking like a pop.
                 val reveal = remember { Animatable(0f) }
                 LaunchedEffect(ready) {
-                    if (ready != null) reveal.animateTo(1f, tween(280))
+                    if (ready != null) reveal.animateTo(1f, tween(180))
                 }
                 if (ready != null) {
                     Canvas(

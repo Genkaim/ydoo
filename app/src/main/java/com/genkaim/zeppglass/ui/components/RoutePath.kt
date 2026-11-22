@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +32,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.GeoPoint
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan
@@ -58,6 +62,7 @@ fun RoutePath(
     val startColor = MaterialTheme.colorScheme.tertiary
     val endColor = MaterialTheme.colorScheme.primary
     val ramp = listOf(palette.sleepLight, palette.accent, palette.warn, palette.critical)
+    val chevronSize = with(LocalDensity.current) { 6.5.dp.toPx() }
 
     Box(
         modifier
@@ -70,11 +75,23 @@ fun RoutePath(
             // Room for the finish flag, which stands above its point.
             val padding = with(LocalDensity.current) { 20.dp.toPx() }
             if (points.size >= 2 && width > 0f && height > 0f && width != Int.MAX_VALUE.toFloat()) {
-                val shape = remember(points, width, height, padding) {
-                    fitPath(points, width, height, padding)
+                // Projecting, smoothing and packing the paths is real work on a
+                // long track; doing it while composing the page is what made
+                // some workouts freeze for a moment before the route showed.
+                // It runs on a worker and the track appears a frame later.
+                val shape by produceState<TrackShape?>(
+                    initialValue = null,
+                    points, width, height, padding, chevronSize
+                ) {
+                    value = withContext(Dispatchers.Default) {
+                        fitPath(points, width, height, padding, chevronSize)
+                    }
                 }
-                Canvas(Modifier.fillMaxSize()) {
-                    drawTrack(shape, ramp, startColor, endColor)
+                val ready = shape
+                if (ready != null) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawTrack(ready, ramp, startColor, endColor)
+                    }
                 }
                 // 慢 → 快, so the colours are not a mystery.
                 Row(
@@ -120,17 +137,27 @@ fun RoutePlaceholder(text: String, modifier: Modifier = Modifier) {
  * The projected track: one canvas point and one relative speed per fix, in the
  * same order as the input. Speed is 0–1, where 0 is the slowest tenth of the
  * session and 1 the fastest.
+ *
+ * The coloured paths and the direction chevrons are built here, once, off the
+ * main thread. Drawing used to rebuild them on every frame, which is why a long
+ * track also stuttered while its page scrolled.
  */
 private class TrackShape(
     val points: List<Offset>,
-    val speed: List<Float>
+    val speed: List<Float>,
+    /** One path per speed bin, with the 0–1 position its colour comes from. */
+    val bins: List<TrackBin>,
+    val chevrons: List<Path>
 )
+
+private class TrackBin(val path: Path, val t: Float)
 
 private fun fitPath(
     track: List<GeoPoint>,
     width: Float,
     height: Float,
-    padding: Float
+    padding: Float,
+    chevronSize: Float
 ): TrackShape {
     // Web-Mercator at zoom 0: one 256 px tile for the whole world. Only the
     // relative positions matter here, so any fixed zoom level does.
@@ -176,10 +203,16 @@ private fun fitPath(
         if (high - low < 1e-3f) 0.5f else ((value - low) / (high - low)).coerceIn(0f, 1f)
     }
 
-    // Two Chaikin passes round every corner. They run on the projected points,
-    // and each new point carries an interpolated speed, so the colours follow
-    // the same curve the line does.
-    val thinned = thin(projected, speed, minStep = 2.5f)
+    // A long ride carries thousands of one-second fixes. The card is a few
+    // hundred dp tall, so anything past ~700 points is detail nobody can see,
+    // and every extra point costs smoothing passes, paths and memory. The step
+    // grows with the track's own length, so short runs keep their shape.
+    var length = 0f
+    for (i in 1 until projected.size) {
+        length += (projected[i] - projected[i - 1]).getDistance()
+    }
+    val thinStep = maxOf(2.5f, length / 700f)
+    val thinned = thin(projected, speed, minStep = thinStep)
     // A wide pass first: a wobble from bad GPS is usually a few fixes long, not
     // one, so it has to be averaged over five points before the narrow passes
     // can flatten what is left. Then two tight passes away from the edges.
@@ -189,9 +222,10 @@ private fun fitPath(
     smoothSpeed = lowPassFloat(smoothSpeed, fallback = 0.5f)
     smoothPoints = lowPass(smoothPoints)
     smoothSpeed = lowPassFloat(smoothSpeed, fallback = 0.5f)
-    // Three passes: every corner is cut again, so the line flows instead of
-    // stepping from fix to fix.
-    repeat(3) {
+    // Chaikin cuts every corner, but each pass doubles the point count. Two
+    // passes already read as a flow at this size; the third is only worth its
+    // cost when the thinned track is still short.
+    repeat(if (smoothPoints.size > 420) 2 else 3) {
         if (smoothPoints.size >= 3) {
             val nextPoints = ArrayList<Offset>(smoothPoints.size * 2)
             val nextSpeed = ArrayList<Float>(smoothPoints.size * 2)
@@ -211,7 +245,39 @@ private fun fitPath(
             smoothSpeed = nextSpeed
         }
     }
-    return TrackShape(smoothPoints, smoothSpeed)
+    return TrackShape(
+        points = smoothPoints,
+        speed = smoothSpeed,
+        bins = buildBins(smoothPoints, smoothSpeed),
+        chevrons = buildChevrons(smoothPoints, chevronSize)
+    )
+}
+
+/**
+ * Eight colour bins instead of one path per segment: one `drawPath` per bin is
+ * what keeps scrolling smooth. Each bin keeps its own last segment index —
+ * without it, a bin that is used again later would draw a straight chord back to
+ * wherever it stopped, which is what put a dozen crossing lines over the track.
+ */
+private fun buildBins(points: List<Offset>, speed: List<Float>): List<TrackBin> {
+    if (points.size < 2) return emptyList()
+    val bins = 8
+    val paths = Array(bins) { Path() }
+    val lastIndex = IntArray(bins) { -2 }
+    for (i in 0 until points.size - 1) {
+        val value = (speed[i] + speed[i + 1]) / 2f
+        val bin = (value * bins).toInt().coerceIn(0, bins - 1)
+        if (lastIndex[bin] != i - 1) {
+            paths[bin].moveTo(points[i].x, points[i].y)
+        }
+        paths[bin].lineTo(points[i + 1].x, points[i + 1].y)
+        lastIndex[bin] = i
+    }
+    val out = ArrayList<TrackBin>(bins)
+    paths.forEachIndexed { bin, path ->
+        if (lastIndex[bin] >= 0) out.add(TrackBin(path, (bin + 0.5f) / bins))
+    }
+    return out
 }
 
 /**
@@ -346,37 +412,16 @@ private fun DrawScope.drawTrack(
 ) {
     if (shape.points.size < 2) return
 
-    // A line per pair of fixes, each in its own speed colour. Round caps make
-    // the joints seamless. No white halo: the track is meant to sit on the page
-    // as a thin coloured line, not as an outlined ribbon.
-    val stroke = 4.6.dp.toPx()
-    // Eight colour bins instead of one path per segment: thousands of single
-    // strokes would stutter while the page scrolls. Each bin keeps its own last
-    // segment index — without it, a bin that is used again later would draw a
-    // straight chord back to wherever it stopped, which is what put a dozen
-    // crossing lines over the track.
-    val bins = 8
-    val paths = Array(bins) { Path() }
-    val lastIndex = IntArray(bins) { -2 }
-    for (i in 0 until shape.points.size - 1) {
-        val speed = (shape.speed[i] + shape.speed[i + 1]) / 2f
-        val bin = (speed * bins).toInt().coerceIn(0, bins - 1)
-        if (lastIndex[bin] != i - 1) {
-            paths[bin].moveTo(shape.points[i].x, shape.points[i].y)
-        }
-        paths[bin].lineTo(shape.points[i + 1].x, shape.points[i + 1].y)
-        lastIndex[bin] = i
+    // The bins were built once, off the main thread; drawing them is a handful
+    // of `drawPath` calls per frame instead of thousands of segments.
+    val stroke = Stroke(4.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+    shape.bins.forEach { bin ->
+        drawPath(bin.path, rampColor(ramp, bin.t), style = stroke)
     }
-    paths.forEachIndexed { bin, path ->
-        if (lastIndex[bin] < 0) return@forEachIndexed
-        drawPath(
-            path,
-            rampColor(ramp, (bin + 0.5f) / bins),
-            style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
+    val arrowStroke = Stroke(1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+    shape.chevrons.forEach { chevron ->
+        drawPath(chevron, Color.White, style = arrowStroke)
     }
-
-    drawArrows(shape.points)
 
     val start = shape.points.first()
     drawCircle(Color.White, radius = 6.dp.toPx(), center = start)
@@ -427,12 +472,14 @@ private fun DrawScope.drawFinishBadge(at: Offset, color: Color) {
  * Direction chevrons — a small rounded ">" every so often, turned to the
  * direction of travel. White and no wider than the line's own thickness, so it
  * reads as part of the track rather than a marker sitting on top of it.
+ *
+ * Built with the rest of the shape (the size arrives in pixels) so the draw pass
+ * only has to stroke a few ready paths.
  */
-private fun DrawScope.drawArrows(points: List<Offset>) {
-    if (points.size < 12) return
+private fun buildChevrons(points: List<Offset>, size: Float): List<Path> {
+    if (points.size < 12) return emptyList()
     val fractions = listOf(0.18f, 0.42f, 0.66f, 0.88f)
-    val size = 6.5.dp.toPx()
-    val strokeWidth = 1.9.dp.toPx()
+    val out = ArrayList<Path>(fractions.size)
     for (fraction in fractions) {
         val index = (points.size * fraction).toInt().coerceIn(6, points.lastIndex - 6)
         // Tangent over a short window, not the single neighbouring pair: on a
@@ -454,17 +501,15 @@ private fun DrawScope.drawArrows(points: List<Offset>) {
         val backX = center.x - ux * size * 0.45f
         val backY = center.y - uy * size * 0.45f
         val wing = size * 0.55f
-        val chevron = Path().apply {
-            moveTo(backX + nx * wing, backY + ny * wing)
-            lineTo(tip.x, tip.y)
-            lineTo(backX - nx * wing, backY - ny * wing)
-        }
-        drawPath(
-            chevron,
-            Color.White,
-            style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        out.add(
+            Path().apply {
+                moveTo(backX + nx * wing, backY + ny * wing)
+                lineTo(tip.x, tip.y)
+                lineTo(backX - nx * wing, backY - ny * wing)
+            }
         )
     }
+    return out
 }
 
 /** Web-Mercator pixel position of a coordinate at [zoom], in a 256 px tile grid. */

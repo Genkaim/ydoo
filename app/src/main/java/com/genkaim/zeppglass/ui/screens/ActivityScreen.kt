@@ -36,7 +36,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +68,6 @@ import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.TrackRings
 import com.genkaim.zeppglass.ui.components.TrendLineChart
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
-import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -139,16 +137,20 @@ fun ActivityScreen(
         ?: day?.restingHr)?.takeIf { it in 20..200 }
 
     var headerHeight by remember { mutableStateOf(0.dp) }
-    val scope = rememberCoroutineScope()
 
-    // Fetch the per-second detail before opening, so the workout page does not
-    // draw half of itself and then pop the charts in.
+    // Warm the per-second payload for the sessions this list shows. Tapping one
+    // then opens with its curves and track already there; the requests run one
+    // after another on the store's IO dispatcher, never on the frame.
+    LaunchedEffect(data?.fetchedAt) {
+        data?.workouts?.take(3)?.forEach { store.loadWorkoutDetail(it) }
+    }
+
+    // Open straight away: the summary is already in memory, and the per-second
+    // detail loads on the workout page itself. Waiting for that request here
+    // made the tap look dead for a second or two on workouts whose detail was
+    // not cached yet.
     fun openWorkout(id: String) {
-        val workout = data?.workouts?.firstOrNull { it.id == id }
-        scope.launch {
-            workout?.let { store.loadWorkoutDetail(it) }
-            onOpenDetail(DetailTarget(DetailKind.WORKOUT, workoutId = id))
-        }
+        onOpenDetail(DetailTarget(DetailKind.WORKOUT, workoutId = id))
     }
 
     Box(modifier.fillMaxSize()) {

@@ -89,7 +89,7 @@ fun RouteMap(
     FlatPanel(
         modifier = modifier,
         color = surface,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(32.dp),
         onClick = onClick
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -156,7 +156,6 @@ fun RouteMap(
 @Composable
 fun FullscreenRouteMap(
     points: List<GeoPoint>,
-    onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalZgPalette.current
@@ -260,18 +259,6 @@ fun FullscreenRouteMap(
                 .align(Alignment.BottomStart)
                 .padding(10.dp)
         )
-        IconButton(
-            onClick = onClose,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(start = 8.dp, top = 8.dp)
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-        ) {
-            Icon(Icons.Rounded.Close, contentDescription = "关闭地图")
-        }
     }
 }
 

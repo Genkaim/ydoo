@@ -98,12 +98,12 @@ fun AxisBarChart(
                 // Sit right on top of the bar instead of in one shared row at
                 // the top of the chart.
                 val layout = measurer.measure(
-                    valueLabel?.invoke(value) ?: "${value.toInt()}$valueSuffix",
+                    valueLabel?.invoke(value) ?: "${value.roundToInt()}$valueSuffix",
                     valueStyle
                 )
                 drawLabel(
                     measurer,
-                    valueLabel?.invoke(value) ?: "${value.toInt()}$valueSuffix",
+                    valueLabel?.invoke(value) ?: "${value.roundToInt()}$valueSuffix",
                     valueStyle,
                     centerX,
                     (chartTop + chartHeight - h - layout.size.height / 2f - 3.dp.toPx())
@@ -221,7 +221,7 @@ fun AxisLineChart(
             drawCircle(dotColor, radius = 1.5.dp.toPx(), center = center)
             drawLabel(
                 measurer,
-                "${lastValue.toInt()}$valueSuffix",
+                "${lastValue.roundToInt()}$valueSuffix",
                 valueStyle,
                 center.x,
                 center.y - 11.dp.toPx(),

@@ -40,7 +40,7 @@ class RouteMapActivity : ComponentActivity() {
             }
             SideEffect { applyZeppChrome(dark) }
             ZeppGlassTheme(darkTheme = dark) {
-                FullscreenRouteMap(points = points, onClose = { finish() })
+                FullscreenRouteMap(points = points)
             }
         }
     }

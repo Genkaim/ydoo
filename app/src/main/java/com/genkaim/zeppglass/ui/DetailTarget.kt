@@ -18,7 +18,10 @@ enum class DetailKind {
     NIGHT_SPO2,
 
     /** Blood-pressure readings: today's hourly range and a week of both arms. */
-    BLOOD_PRESSURE
+    BLOOD_PRESSURE,
+
+    /** The workout's leftover tiles and every raw field the watch sent. */
+    WORKOUT_MORE
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */

@@ -654,7 +654,12 @@ object HealthParser {
                     maxCadence = item.anyNumber("max_cadence")?.takeIf { it > 0 },
                     location = item.anyString("location"),
                     city = item.anyString("city"),
-                    vo2Max = item.anyNumber("VO2_max")?.takeIf { it in 10.0..90.0 }?.roundToInt()
+                    vo2Max = item.anyNumber("VO2_max")?.takeIf { it in 10.0..90.0 }?.roundToInt(),
+                    // Training effect: the watch sends tenths (te=9 -> 0.9),
+                    // aerobic first, then the anaerobic side of the same scale.
+                    aerobicTe = item.anyNumber("te")?.div(10.0)?.takeIf { it in 0.0..5.0 },
+                    anaerobicTe = item.anyNumber("anaerobic_te")?.div(10.0)
+                        ?.takeIf { it in 0.0..5.0 }
                 )
             )
         }

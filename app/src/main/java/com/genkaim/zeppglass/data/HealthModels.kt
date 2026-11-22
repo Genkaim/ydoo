@@ -260,7 +260,11 @@ data class Workout(
     val location: String? = null,
     val city: String? = null,
     /** Watch-estimated VO2 max attached to some running workouts. */
-    val vo2Max: Int? = null
+    val vo2Max: Int? = null,
+    /** Aerobic training effect, 0–5 on the watch's own scale. */
+    val aerobicTe: Double? = null,
+    /** Anaerobic training effect, same 0–5 scale. */
+    val anaerobicTe: Double? = null
 ) {
     val name: String get() = SportTypes.label(typeCode)
     val paceSecPerKm: Double?

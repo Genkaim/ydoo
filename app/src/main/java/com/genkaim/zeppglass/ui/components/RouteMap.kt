@@ -89,7 +89,7 @@ fun RouteMap(
     FlatPanel(
         modifier = modifier,
         color = surface,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(28.dp),
         onClick = onClick
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -107,11 +107,16 @@ fun RouteMap(
                     tiles.forEach { (key, image) ->
                         drawImage(
                             image = image,
+                            // Round down and grow by a pixel: neighbouring tiles
+                            // then overlap instead of leaving a hairline seam.
                             dstOffset = IntOffset(
-                                (key.first * TILE_SIZE - plan.originX).toInt(),
-                                (key.second * TILE_SIZE - plan.originY).toInt()
+                                floor((key.first * TILE_SIZE - plan.originX) * plan.scale).toInt(),
+                                floor((key.second * TILE_SIZE - plan.originY) * plan.scale).toInt()
                             ),
-                            dstSize = IntSize(TILE_SIZE, TILE_SIZE),
+                            dstSize = IntSize(
+                                (TILE_SIZE * plan.scale).toInt() + 1,
+                                (TILE_SIZE * plan.scale).toInt() + 1
+                            ),
                             colorFilter = if (palette.isDark) darkTiles else null,
                             filterQuality = FilterQuality.Medium
                         )
@@ -119,7 +124,15 @@ fun RouteMap(
                     // A light map under a dark page is a lamp in the face: the
                     // scrim dims it while streets stay lighter than the land.
                     if (palette.isDark) drawRect(Color.Black.copy(alpha = 0.42f))
-                    drawRoute(shifted, plan.zoom, plan.originX, plan.originY, 1f, color, startColor)
+                    drawRoute(
+                        shifted,
+                        plan.zoom,
+                        plan.originX,
+                        plan.originY,
+                        plan.scale,
+                        color,
+                        startColor
+                    )
                 }
                 Text(
                     "© 高德地图",
@@ -154,12 +167,14 @@ fun FullscreenRouteMap(
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            // A neutral base instead of the page black: while the first tiles
+            // are still downloading the screen shows a soft panel, not a wipe.
+            .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
         val width = constraints.maxWidth.toFloat()
         val height = constraints.maxHeight.toFloat()
         val fitted = remember(shifted, width, height) { fitCamera(shifted, width, height) }
-        var zoom by remember(fitted) { mutableStateOf(fitted.second.toFloat()) }
+        var zoom by remember(fitted) { mutableStateOf(fitted.second) }
         var center by remember(fitted) { mutableStateOf(fitted.first) }
 
         // One finger drags, two fingers zoom — the gesture every map app has.
@@ -205,10 +220,13 @@ fun FullscreenRouteMap(
                 val top = (key.second * TILE_SIZE - centerWorld.y) * scale + size.height / 2f
                 drawImage(
                     image = image,
-                    dstOffset = IntOffset(left.toInt(), top.toInt()),
+                    // Floor the corner and add a pixel so adjacent tiles overlap:
+                    // rounding each one on its own left a dark hairline between
+                    // them at fractional scales.
+                    dstOffset = IntOffset(floor(left).toInt(), floor(top).toInt()),
                     dstSize = IntSize(
-                        (TILE_SIZE * scale).toInt(),
-                        (TILE_SIZE * scale).toInt()
+                        (TILE_SIZE * scale).toInt() + 1,
+                        (TILE_SIZE * scale).toInt() + 1
                     ),
                     colorFilter = if (palette.isDark) darkTiles else null,
                     filterQuality = FilterQuality.Medium
@@ -343,10 +361,13 @@ private fun DrawScope.drawRoute(
 /**
  * One zoom level, the tiles it needs, and where the canvas sits in the world's
  * flattened pixel plane. Everything is pre-computed so drawing is a plain
- * subtraction per point.
+ * subtraction per point. [scale] is the fraction between [zoom] and the next
+ * level, which is what makes the card fill exactly instead of stopping at the
+ * nearest whole zoom.
  */
 private class MapPlan(
     val zoom: Int,
+    val scale: Float,
     val tiles: List<Pair<Int, Int>>,
     val originX: Float,
     val originY: Float
@@ -355,51 +376,61 @@ private class MapPlan(
         private const val MAX_TILES = 24
 
         fun fit(points: List<GeoPoint>, width: Float, height: Float): MapPlan {
-            var zoom = fitCamera(points, width, height).second
+            val (center, fitted) = fitCamera(points, width, height)
+            var zoom = fitted
             while (true) {
-                val (center, at) = fitCamera(points, width, height, maxZoom = zoom)
-                val world = worldPx(center.lat, center.lon, at)
-                val originX = world.x - width / 2f
-                val originY = world.y - height / 2f
-                val tiles = tileRange(at, originX, originY, width, height)
+                val tileZoom = floor(zoom).toInt()
+                val scale = 2f.pow(zoom - tileZoom)
+                val world = worldPx(center.lat, center.lon, tileZoom)
+                val originX = world.x - width / (2f * scale)
+                val originY = world.y - height / (2f * scale)
+                val tiles = tileRange(
+                    tileZoom,
+                    originX,
+                    originY,
+                    width / scale,
+                    height / scale
+                )
                 // Pulling more than a couple of dozen tiles for one card is
-                // wasteful; step back a level instead.
-                if (tiles.size <= MAX_TILES || at <= 2) {
-                    return MapPlan(at, tiles, originX, originY)
+                // wasteful; step back instead.
+                if (tiles.size <= MAX_TILES || zoom <= 3f) {
+                    return MapPlan(tileZoom, scale, tiles, originX, originY)
                 }
-                zoom = at - 1
+                zoom -= 0.5f
             }
         }
     }
 }
 
-/** Centre and integer zoom at which [points] fill the given box. */
+/**
+ * Centre and *fractional* zoom at which [points] exactly fill the given box.
+ * A whole-number zoom always leaves a margin — the next level up is twice as
+ * large — which is why the track used to sit in the middle of a wide empty map.
+ */
 private fun fitCamera(
     points: List<GeoPoint>,
     width: Float,
-    height: Float,
-    maxZoom: Int = 17
-): Pair<GeoPoint, Int> {
+    height: Float
+): Pair<GeoPoint, Float> {
     val latMin = points.minOf { it.lat }
     val latMax = points.maxOf { it.lat }
     val lonMin = points.minOf { it.lon }
     val lonMax = points.maxOf { it.lon }
-    val pad = 36f
-    var zoom = maxZoom
-    while (zoom > 2) {
-        val topLeft = worldPx(latMax, lonMin, zoom)
-        val bottomRight = worldPx(latMin, lonMax, zoom)
-        val fits = bottomRight.x - topLeft.x <= width - pad &&
-            bottomRight.y - topLeft.y <= height - pad
-        if (fits) break
-        zoom--
-    }
-    val topLeft = worldPx(latMax, lonMin, zoom)
-    val bottomRight = worldPx(latMin, lonMax, zoom)
+    val pad = 48f
+
+    // Span measured at zoom 0 (one 256 px tile for the whole world).
+    val topLeft = worldPx(latMax, lonMin, 0)
+    val bottomRight = worldPx(latMin, lonMax, 0)
+    val spanX = (bottomRight.x - topLeft.x).coerceAtLeast(1e-4f)
+    val spanY = (bottomRight.y - topLeft.y).coerceAtLeast(1e-4f)
+    val targetX = (width - pad).coerceAtLeast(1f)
+    val targetY = (height - pad).coerceAtLeast(1f)
+    val zoom = minOf(log2(targetX / spanX), log2(targetY / spanY))
+        .coerceIn(3f, 19f)
     val center = geoOf(
         (topLeft.x + bottomRight.x) / 2f,
         (topLeft.y + bottomRight.y) / 2f,
-        zoom
+        0
     )
     return center to zoom
 }

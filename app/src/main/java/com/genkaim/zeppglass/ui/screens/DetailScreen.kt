@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -196,9 +198,11 @@ fun DetailScreen(
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
-                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store) { points ->
+                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store, onOpenMap = { points ->
                     context.startActivity(RouteMapActivity.intent(context, points))
-                }
+                }, onOpenMore = {
+                    onOpen(DetailTarget(DetailKind.WORKOUT_MORE, workoutId = target.workoutId))
+                })
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
                 DetailKind.VO2 -> Vo2Detail(data)
                 DetailKind.RHR -> RhrDetail(data, target.date)
@@ -217,6 +221,7 @@ fun DetailScreen(
                 DetailKind.MORNING_CHARGE -> MorningChargeDetail(data, target.date)
                 DetailKind.NIGHT_SPO2 -> NightSpo2Detail(data, target.date)
                 DetailKind.BLOOD_PRESSURE -> BloodPressureDetail(data, target.date)
+                DetailKind.WORKOUT_MORE -> WorkoutMoreDetail(data, target.workoutId, store)
             }
         }
 
@@ -298,6 +303,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.MORNING_CHARGE -> "晨起 Charge"
     DetailKind.NIGHT_SPO2 -> "夜间血氧"
     DetailKind.BLOOD_PRESSURE -> "血压"
+    DetailKind.WORKOUT_MORE -> "其他数据"
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -323,6 +329,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.MORNING_CHARGE -> target.date?.let(Fmt::date) ?: "起床时的能量，近 7 天趋势"
     DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
     DetailKind.BLOOD_PRESSURE -> target.date?.let(Fmt::date) ?: "收缩压 / 舒张压，mmHg"
+    DetailKind.WORKOUT_MORE -> "本次运动未展示的数值与手表原始字段"
 }
 
 // ---------------- sleep ----------------
@@ -2252,7 +2259,8 @@ private fun WorkoutDetail(
     data: HealthData?,
     workoutId: String?,
     store: HealthStore,
-    onOpenMap: (List<GeoPoint>) -> Unit
+    onOpenMap: (List<GeoPoint>) -> Unit,
+    onOpenMore: () -> Unit
 ) {
     val workout: Workout? = data?.workouts?.firstOrNull { it.id == workoutId }
         ?: data?.workouts?.firstOrNull()
@@ -2311,6 +2319,7 @@ private fun WorkoutDetail(
     // The three numbers people look for first, laid out like the heart-rate
     // strip on the activity page. A strength session has no distance, so that
     // slot shows its average heart rate instead.
+    val palette = LocalZgPalette.current
     val distanceKm = workout.distanceM?.takeIf { it > 0.0 }
     val showsDistance = distanceKm != null
     FlatPanel {
@@ -2361,27 +2370,66 @@ private fun WorkoutDetail(
     // Everything else the watch attached to the session. Only the values that
     // are actually there get a tile: a missing field is left out rather than
     // printed as a dash, because this grid is about what the watch measured.
-    val extras = buildList {
-        workout.paceSecPerKm?.let { add(Triple("配速", Fmt.pace(it), "/km")) }
-        // 平均心率 only earns a tile when the strip above does not already show it.
-        if (showsDistance) {
-            workout.avgHr?.let { add(Triple("平均心率", it.roundToInt().toString(), "bpm")) }
-        }
-        workout.maxHr?.let { add(Triple("最高心率", it.roundToInt().toString(), "bpm")) }
-        workout.load?.let { add(Triple("训练负荷", it.roundToInt().toString(), null)) }
-        workout.steps?.let { add(Triple("步数", it.toString(), "步")) }
-        workout.avgCadence?.let { add(Triple("平均步频", it.roundToInt().toString(), "spm")) }
-        workout.maxCadence?.let { add(Triple("最高步频", it.roundToInt().toString(), "spm")) }
-        workout.altitudeGainM?.let { add(Triple("累计爬升", it.roundToInt().toString(), "m")) }
-        workout.altitudeLossM?.let { add(Triple("累计下降", it.roundToInt().toString(), "m")) }
-        workout.vo2Max?.let { add(Triple("最大摄氧量", it.toString(), "ml/kg/min")) }
-    }
-    extras.chunked(2).forEach { pair ->
+    val extras = workoutStats(workout, showsDistance)
+    // The grid reads as pairs. An odd tile would sit alone in half a row, so the
+    // last one moves into 其他数据 together with the raw watch fields.
+    val paired = extras.size - extras.size % 2
+    extras.take(paired).chunked(2).forEach { pair ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            pair.forEach { (label, value, unit) ->
-                MetricTile(label, value, unit, Modifier.weight(1f))
+            pair.forEach { stat ->
+                MetricTile(stat.label, stat.value, stat.unit, Modifier.weight(1f))
             }
-            if (pair.size == 1) Spacer(Modifier.weight(1f))
+        }
+    }
+    val hasMore = extras.size > paired || !detail?.fields.isNullOrEmpty()
+    if (hasMore) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { onOpenMore() }
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "其他数据",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+
+    // 训练效果: the watch's two 0–5 scales, drawn the way the Zepp app does —
+    // a segmented arc that fills from the bottom-left, value in the middle.
+    if (workout.aerobicTe != null || workout.anaerobicTe != null) {
+        FlatPanel {
+            Column(Modifier.padding(16.dp)) {
+                Text("训练效果", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    EffectGauge(
+                        "有氧",
+                        workout.aerobicTe,
+                        palette.sleepLight,
+                        Modifier.weight(1f)
+                    )
+                    EffectGauge(
+                        "无氧",
+                        workout.anaerobicTe,
+                        palette.warn,
+                        Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 
@@ -2455,6 +2503,161 @@ private fun WorkoutDetail(
     // Every remaining raw field the detail payload carried, with the keys that
     // have a known meaning translated. Unknown keys are still shown under their
     // own name, so a new watch metric appears without a code change.
+}
+
+/** One tile of the workout grid: what it is called, the reading, its unit. */
+private data class WorkoutStat(val label: String, val value: String, val unit: String?)
+
+/**
+ * The workout's secondary numbers, in display order. Shared by the page and by
+ * 其他数据, which shows exactly the tail this list leaves over.
+ */
+private fun workoutStats(workout: Workout, showsDistance: Boolean): List<WorkoutStat> {
+    val out = mutableListOf<WorkoutStat>()
+    workout.paceSecPerKm?.let { out.add(WorkoutStat("配速", Fmt.pace(it), "/km")) }
+    // 平均心率 only earns a tile when the strip above does not already show it.
+    if (showsDistance) {
+        workout.avgHr?.let { out.add(WorkoutStat("平均心率", it.roundToInt().toString(), "bpm")) }
+    }
+    workout.maxHr?.let { out.add(WorkoutStat("最高心率", it.roundToInt().toString(), "bpm")) }
+    workout.load?.let { out.add(WorkoutStat("训练负荷", it.roundToInt().toString(), null)) }
+    workout.steps?.let { out.add(WorkoutStat("步数", it.toString(), "步")) }
+    workout.avgCadence?.let { out.add(WorkoutStat("平均步频", it.roundToInt().toString(), "spm")) }
+    workout.maxCadence?.let { out.add(WorkoutStat("最高步频", it.roundToInt().toString(), "spm")) }
+    workout.altitudeGainM?.let { out.add(WorkoutStat("累计爬升", it.roundToInt().toString(), "m")) }
+    workout.altitudeLossM?.let { out.add(WorkoutStat("累计下降", it.roundToInt().toString(), "m")) }
+    workout.vo2Max?.let { out.add(WorkoutStat("最大摄氧量", it.toString(), "ml/kg/min")) }
+    return out
+}
+
+/** The workout's last unpaired tile plus every raw field the watch sent. */
+@Composable
+private fun WorkoutMoreDetail(data: HealthData?, workoutId: String?, store: HealthStore) {
+    val workout = data?.workouts?.firstOrNull { it.id == workoutId }
+        ?: data?.workouts?.firstOrNull()
+    if (workout == null) {
+        Missing("还没有运动记录")
+        return
+    }
+    var detail by remember(workout.id) { mutableStateOf<WorkoutDetail?>(null) }
+    LaunchedEffect(workout.id) { detail = store.loadWorkoutDetail(workout) }
+
+    val distanceKm = workout.distanceM?.takeIf { it > 0.0 }
+    val stats = workoutStats(workout, showsDistance = distanceKm != null)
+    val leftovers = stats.drop(stats.size - stats.size % 2)
+    if (leftovers.isNotEmpty()) {
+        SectionTitle("补充数据")
+        leftovers.chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                pair.forEach { stat ->
+                    MetricTile(stat.label, stat.value, stat.unit, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+
+    val fields = detail?.fields.orEmpty()
+    if (fields.isNotEmpty()) {
+        SectionTitle("手表原始字段")
+        FlatPanel {
+            Column(Modifier.padding(vertical = 6.dp)) {
+                fields.forEach { (key, value) ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            workoutFieldLabel(key),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            value,
+                            style = MaterialTheme.typography.labelMedium,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.weight(1.2f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+    if (fields.isEmpty() && leftovers.isEmpty()) {
+        Text(
+            "这次运动没有额外的数据。",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** 训练效果 gauge: a segmented 0–5 arc that fills from the lower left. */
+@Composable
+private fun EffectGauge(label: String, value: Double?, color: Color, modifier: Modifier = Modifier) {
+    val palette = LocalZgPalette.current
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(118.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val stroke = 9.dp.toPx()
+                val radius = minOf(size.width, size.height) / 2f - stroke
+                if (radius <= 0f) return@Canvas
+                val segments = 12
+                val start = 160f
+                val sweep = 220f
+                val gap = (sweep / segments) * 0.24f
+                val filled = value?.let { ((it / 5.0) * segments).toInt().coerceIn(0, segments) } ?: 0
+                val center = Offset(size.width / 2f, size.height / 2f)
+                for (i in 0 until segments) {
+                    drawArc(
+                        color = if (i < filled) color else palette.grid,
+                        startAngle = start + sweep * i / segments + gap / 2f,
+                        sweepAngle = sweep / segments - gap,
+                        useCenter = false,
+                        topLeft = Offset(center.x - radius, center.y - radius),
+                        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+                        style = Stroke(stroke, cap = StrokeCap.Round)
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    Fmt.oneDecimal(value),
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    trainingEffectWord(value),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (value == null) MaterialTheme.colorScheme.onSurfaceVariant else color
+                )
+            }
+        }
+    }
+}
+
+/** The watch's own wording for a 0–5 training-effect score. */
+private fun trainingEffectWord(value: Double?): String = when {
+    value == null -> "--"
+    value < 1.0 -> "无效果"
+    value < 2.0 -> "轻松"
+    value < 3.0 -> "维持体能"
+    value < 4.0 -> "改善体能"
+    value < 5.0 -> "大幅提升"
+    else -> "过度"
 }
 
 /** Colour per curve; anything the watch adds later falls back to the muted ink. */

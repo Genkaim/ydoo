@@ -870,14 +870,21 @@ object HealthParser {
             var systolic = read(listOf("systolic", "sbp", "systolicPressure", "systolic_pressure", "high"))
             var diastolic = read(listOf("diastolic", "dbp", "diastolicPressure", "diastolic_pressure", "low"))
             if (systolic == null || diastolic == null) {
-                // A hand-typed "118/76".
-                val text = nested.anyString("value") ?: item.anyString("value") ?: item.anyString("bp")
-                val parts = text?.split('/', ',', ' ', '|')
-                    ?.mapNotNull { it.trim().toIntOrNull() }
-                    .orEmpty()
-                if (parts.size >= 2) {
-                    systolic = parts[0]
-                    diastolic = parts[1]
+                // The health_data stream stores manual entries as one string:
+                // {"subType":"blood_sugar","rawValue":"20.0"} — so a blood
+                // pressure entry arrives as "118/76" in `rawValue`, not as two
+                // numbers. Accept any separator and a unit suffix.
+                val text = item.anyString("rawValue")
+                    ?: nested.anyString("rawValue")
+                    ?: nested.anyString("value")
+                    ?: item.anyString("value")
+                    ?: item.anyString("bp")
+                val pair = text?.let {
+                    Regex("""(\d{2,3})\D+(\d{2,3})""").find(it)
+                }
+                if (pair != null) {
+                    systolic = pair.groupValues[1].toIntOrNull()
+                    diastolic = pair.groupValues[2].toIntOrNull()
                 }
             }
             val sys = systolic ?: continue

@@ -188,6 +188,24 @@ class HealthParserTest {
     }
 
     @Test
+    fun bloodPressureReadsTheHealthDataRawValue() {
+        // The real shape of a manual entry on this stream, taken from a
+        // blood_sugar record: subType + timestamp + one rawValue string.
+        val payload = JSONObject(
+            """
+            {"items":[{"userId":"1068970287","eventType":"health_data",
+              "subType":"blood_pressure","timestamp":1795249745611,
+              "rawValue":"118/76","lastUpdateTime":1795249745611}]}
+            """.trimIndent()
+        )
+        val readings = HealthParser.parseBloodPressure(payload)
+        assertEquals(1, readings.size)
+        assertEquals(118, readings[0].systolic)
+        assertEquals(76, readings[0].diastolic)
+        assertEquals(1795249745611L, readings[0].epochMs)
+    }
+
+    @Test
     fun altitudeSentinelsStayEmpty() {
         // -2000000 is the watch's "no barometer" marker; it must not become a
         // -20000 m cliff or be carried forward as a flat fake reading.

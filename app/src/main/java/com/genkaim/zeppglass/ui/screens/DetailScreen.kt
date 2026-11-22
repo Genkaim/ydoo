@@ -2403,34 +2403,27 @@ private fun WorkoutDetail(
         }
     }
 
-    // The entry sits under the last card as a small pill that wraps the words.
+    // The entry sits under the last card, text and chevron kept together.
     if (hasMore) {
-        Box(
+        Row(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp),
-            contentAlignment = Alignment.Center
+                .clickable { onOpenMore() }
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { onOpenMore() }
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "其他数据",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Icon(
-                    Icons.Rounded.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
+            Text(
+                "其他数据",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 
@@ -2639,6 +2632,24 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                     }
                 }
 
+                // Thin surface-coloured cuts between the bands, drawn under the
+                // highlighted band: its own colour reaches the border, the
+                // neighbour stops a hair short of it.
+                listOf(1.0, 2.0, 3.0, 4.0).forEach { border ->
+                    val theta = Math.toRadians(angleOf(border).toDouble())
+                    val cos = kotlin.math.cos(theta).toFloat()
+                    val sin = kotlin.math.sin(theta).toFloat()
+                    val inner = radius - stroke * 0.75f
+                    val outer = radius + stroke * 0.75f
+                    drawLine(
+                        color = surface,
+                        start = Offset(center.x + cos * inner, center.y + sin * inner),
+                        end = Offset(center.x + cos * outer, center.y + sin * outer),
+                        strokeWidth = stroke * 0.55f,
+                        cap = StrokeCap.Butt
+                    )
+                }
+
                 if (score != null) {
                     drawArc(
                         color = active.color,
@@ -2648,23 +2659,6 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                         topLeft = topLeft,
                         size = arcSize,
                         style = Stroke(stroke, cap = StrokeCap.Round)
-                    )
-                }
-
-                // A surface-coloured bar across the ring at each rating border,
-                // painted over the arcs so the two colours meet on a clean cut.
-                listOf(1.0, 2.0, 3.0, 4.0).forEach { border ->
-                    val theta = Math.toRadians(angleOf(border).toDouble())
-                    val cos = kotlin.math.cos(theta).toFloat()
-                    val sin = kotlin.math.sin(theta).toFloat()
-                    val inner = radius - stroke * 0.9f
-                    val outer = radius + stroke * 0.9f
-                    drawLine(
-                        color = surface,
-                        start = Offset(center.x + cos * inner, center.y + sin * inner),
-                        end = Offset(center.x + cos * outer, center.y + sin * outer),
-                        strokeWidth = stroke * 1.35f,
-                        cap = StrokeCap.Round
                     )
                 }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +31,7 @@ class SettingsActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            LaunchedEffect(dark) { applyZeppChrome(dark) }
+            SideEffect { applyZeppChrome(dark) }
             ZeppGlassTheme(darkTheme = dark) {
                 var showLogin by remember { mutableStateOf(false) }
                 Surface(

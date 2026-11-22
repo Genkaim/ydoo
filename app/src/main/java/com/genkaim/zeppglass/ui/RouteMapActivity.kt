@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.GeoPoint
 import com.genkaim.zeppglass.ui.components.FullscreenRouteMap
@@ -37,7 +38,7 @@ class RouteMapActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            LaunchedEffect(dark) { applyZeppChrome(dark) }
+            SideEffect { applyZeppChrome(dark) }
             ZeppGlassTheme(darkTheme = dark) {
                 FullscreenRouteMap(points = points, onClose = { finish() })
             }

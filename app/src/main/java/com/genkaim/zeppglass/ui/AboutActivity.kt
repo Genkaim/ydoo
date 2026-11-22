@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.ui.screens.AboutScreen
@@ -28,7 +29,7 @@ class AboutActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            LaunchedEffect(dark) { applyZeppChrome(dark) }
+            SideEffect { applyZeppChrome(dark) }
             ZeppGlassTheme(darkTheme = dark) {
                 Surface(
                     modifier = Modifier.statusBarsPadding(),

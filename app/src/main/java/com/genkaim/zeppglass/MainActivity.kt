@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.ZgApp
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
                 "dark" -> true
                 else -> systemDark
             }
-            LaunchedEffect(dark) { applyZeppChrome(dark) }
+            SideEffect { applyZeppChrome(dark) }
             ZeppGlassTheme(darkTheme = dark) {
                 ZgApp()
             }

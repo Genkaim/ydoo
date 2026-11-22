@@ -183,11 +183,13 @@ fun SettingsScreen(
 
             // Title on the left, three icon-only keys on the right: the labels
             // were only repeating the icons, so they are gone from the row.
+            // 42 dp buttons + 7 dp padding each side make the same 56 dp row
+            // height as the cards padded by 16 dp around a 24 dp icon.
             FlatPanel {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                        .padding(start = 16.dp, end = 12.dp, top = 7.dp, bottom = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(

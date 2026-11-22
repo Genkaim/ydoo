@@ -207,8 +207,13 @@ fun OverviewScreen(
     LaunchedEffect(Unit) { DietStore.attach(context) }
 
     // Workout detail is fetched before the page opens, so the charts are already
-    // there on the first frame.
+    // there on the first frame. A fast double tap must open one page only: two
+    // launches in a row used to stack two identical detail pages.
+    var lastWorkoutOpenAt by remember { mutableStateOf(0L) }
     fun openWorkout(id: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastWorkoutOpenAt < 800L) return
+        lastWorkoutOpenAt = now
         val workout = data?.workouts?.firstOrNull { it.id == id }
         scope.launch {
             workout?.let { store.loadWorkoutDetail(it) }

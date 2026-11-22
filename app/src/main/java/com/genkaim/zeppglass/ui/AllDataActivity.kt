@@ -9,6 +9,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.ui.screens.AllDataScreen
@@ -28,7 +29,7 @@ class AllDataActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            LaunchedEffect(dark) { applyZeppChrome(dark) }
+            SideEffect { applyZeppChrome(dark) }
             ZeppGlassTheme(darkTheme = dark) {
                 Surface(
                     color = MaterialTheme.colorScheme.background,

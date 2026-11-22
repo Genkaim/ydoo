@@ -89,7 +89,7 @@ fun RouteMap(
     FlatPanel(
         modifier = modifier,
         color = surface,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(24.dp),
         onClick = onClick
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -290,12 +290,37 @@ private fun DrawScope.drawRoute(
             (world.y - originY) * scale
         )
     }
+    val projected = points.map(::project)
+    if (projected.size < 2) return
+
+    // GPS fixes arrive once a second with a metre of jitter, so a plain
+    // lineTo per point draws a sawtooth. Each fix becomes the control point of
+    // a quadratic curve that ends halfway to the next one: the line runs
+    // smoothly through the real positions instead of shaking around them.
     val path = Path()
-    points.forEachIndexed { index, point ->
-        val projected = project(point)
-        if (index == 0) path.moveTo(projected.x, projected.y)
-        else path.lineTo(projected.x, projected.y)
+    path.moveTo(projected.first().x, projected.first().y)
+    if (projected.size == 2) {
+        path.lineTo(projected[1].x, projected[1].y)
+    } else {
+        for (i in 1 until projected.lastIndex) {
+            val current = projected[i]
+            val next = projected[i + 1]
+            path.quadraticBezierTo(
+                current.x,
+                current.y,
+                (current.x + next.x) / 2f,
+                (current.y + next.y) / 2f
+            )
+        }
+        val last = projected.last()
+        path.quadraticBezierTo(
+            projected[projected.lastIndex - 1].x,
+            projected[projected.lastIndex - 1].y,
+            last.x,
+            last.y
+        )
     }
+
     // White halo first: a thin coloured line disappears over dark map features.
     drawPath(
         path,
@@ -307,8 +332,8 @@ private fun DrawScope.drawRoute(
         color,
         style = Stroke(2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
     )
-    val start = project(points.first())
-    val end = project(points.last())
+    val start = projected.first()
+    val end = projected.last()
     drawCircle(Color.White, radius = 6.dp.toPx(), center = start)
     drawCircle(startColor, radius = 4.dp.toPx(), center = start)
     drawCircle(Color.White, radius = 6.dp.toPx(), center = end)

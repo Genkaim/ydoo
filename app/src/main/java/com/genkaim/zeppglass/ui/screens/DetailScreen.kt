@@ -2606,8 +2606,8 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
             // The dial is inset from the sides and the top; the bottom needs no
             // padding because a 220° arc already stops ~0.34·r above the box
             // bottom, which is exactly the space the name sits in.
-            val sidePad = 10.dp
-            val topPad = 6.dp
+            val sidePad = 18.dp
+            val topPad = 2.dp
             val usableWidth = (maxWidth - sidePad * 2).coerceAtLeast(24.dp)
             val usableHeight = (maxHeight - topPad).coerceAtLeast(24.dp)
             val radius = minOf(

@@ -70,10 +70,14 @@ import kotlin.math.sqrt
 /**
  * The route of a workout on a real map.
  *
- * Tiles come from AMap's raster service and are stitched by hand: one fixed
- * zoom that fits the whole track, no panning, no zooming. Tapping the card
- * opens [FullscreenRouteMap], which does pan and zoom. Keeping a map SDK out of
- * the build keeps the APK small and the app entirely Compose.
+ * Tiles come from 天地图 (National Platform for Common Geospatial Information
+ * Services) and are stitched by hand: one fixed zoom that fits the whole track,
+ * no panning, no zooming. Tapping the card opens [FullscreenRouteMap], which
+ * does pan and zoom. Keeping a map SDK out of the build keeps the APK small and
+ * the app entirely Compose.
+ *
+ * 天地图's tiles are CGCS2000, which is WGS-84 for this purpose — the same datum
+ * the watch records — so the track is drawn without the GCJ-02 shift AMap needs.
  */
 @Composable
 fun RouteMap(
@@ -96,36 +100,18 @@ fun RouteMap(
             val widthPx = constraints.maxWidth
             val heightPx = constraints.maxHeight
             if (points.size >= 2 && widthPx > 0 && heightPx > 0 && widthPx != Int.MAX_VALUE) {
-                // The track is WGS-84 from the watch; the base map is GCJ-02.
-                // Shift once, then the fit, the tiles and the line agree.
-                val shifted = remember(points) { points.map { it.gcj } }
-                val plan = remember(shifted, widthPx, heightPx) {
-                    MapPlan.fit(shifted, widthPx.toFloat(), heightPx.toFloat())
+                val plan = remember(points, widthPx, heightPx) {
+                    MapPlan.fit(points, widthPx.toFloat(), heightPx.toFloat())
                 }
                 val tiles = rememberTiles(plan.zoom, plan.tiles)
                 Canvas(Modifier.fillMaxSize()) {
-                    tiles.forEach { (key, image) ->
-                        drawImage(
-                            image = image,
-                            // Round down and grow by a pixel: neighbouring tiles
-                            // then overlap instead of leaving a hairline seam.
-                            dstOffset = IntOffset(
-                                floor((key.first * TILE_SIZE - plan.originX) * plan.scale).toInt(),
-                                floor((key.second * TILE_SIZE - plan.originY) * plan.scale).toInt()
-                            ),
-                            dstSize = IntSize(
-                                (TILE_SIZE * plan.scale).toInt() + 1,
-                                (TILE_SIZE * plan.scale).toInt() + 1
-                            ),
-                            colorFilter = if (palette.isDark) darkTiles else null,
-                            filterQuality = FilterQuality.Medium
-                        )
-                    }
+                    drawTiles(tiles.base, plan.originX, plan.originY, plan.scale, palette.isDark)
+                    drawTiles(tiles.labels, plan.originX, plan.originY, plan.scale, palette.isDark)
                     // A light map under a dark page is a lamp in the face: the
                     // scrim dims it while streets stay lighter than the land.
                     if (palette.isDark) drawRect(Color.Black.copy(alpha = 0.42f))
                     drawRoute(
-                        shifted,
+                        points,
                         plan.zoom,
                         plan.originX,
                         plan.originY,
@@ -135,7 +121,7 @@ fun RouteMap(
                     )
                 }
                 Text(
-                    "© 高德地图",
+                    "© 天地图",
                     style = MaterialTheme.typography.labelSmall,
                     color = attribution.copy(alpha = 0.75f),
                     modifier = Modifier
@@ -161,7 +147,6 @@ fun FullscreenRouteMap(
     val palette = LocalZgPalette.current
     val startColor = MaterialTheme.colorScheme.tertiary
     val color = MaterialTheme.colorScheme.primary
-    val shifted = remember(points) { points.map { it.gcj } }
 
     BoxWithConstraints(
         modifier
@@ -172,14 +157,14 @@ fun FullscreenRouteMap(
     ) {
         val width = constraints.maxWidth.toFloat()
         val height = constraints.maxHeight.toFloat()
-        val fitted = remember(shifted, width, height) { fitCamera(shifted, width, height) }
+        val fitted = remember(points, width, height) { fitCamera(points, width, height) }
         var zoom by remember(fitted) { mutableStateOf(fitted.second) }
         var center by remember(fitted) { mutableStateOf(fitted.first) }
 
         // One finger drags, two fingers zoom — the gesture every map app has.
         val state = rememberTransformableState { zoomChange, panChange, _ ->
             if (zoomChange != 1f) {
-                zoom = (zoom + log2(zoomChange)).coerceIn(3f, 19f)
+                zoom = (zoom + log2(zoomChange)).coerceIn(3f, 18f)
             }
             if (panChange != Offset.Zero) {
                 val tileZoom = floor(zoom).toInt()
@@ -214,29 +199,16 @@ fun FullscreenRouteMap(
                 .fillMaxSize()
                 .transformable(state)
         ) {
-            loaded.forEach { (key, image) ->
-                val left = (key.first * TILE_SIZE - centerWorld.x) * scale + size.width / 2f
-                val top = (key.second * TILE_SIZE - centerWorld.y) * scale + size.height / 2f
-                drawImage(
-                    image = image,
-                    // Floor the corner and add a pixel so adjacent tiles overlap:
-                    // rounding each one on its own left a dark hairline between
-                    // them at fractional scales.
-                    dstOffset = IntOffset(floor(left).toInt(), floor(top).toInt()),
-                    dstSize = IntSize(
-                        (TILE_SIZE * scale).toInt() + 1,
-                        (TILE_SIZE * scale).toInt() + 1
-                    ),
-                    colorFilter = if (palette.isDark) darkTiles else null,
-                    filterQuality = FilterQuality.Medium
-                )
-            }
+            val originX = centerWorld.x - size.width / (2f * scale)
+            val originY = centerWorld.y - size.height / (2f * scale)
+            drawTiles(loaded.base, originX, originY, scale, palette.isDark)
+            drawTiles(loaded.labels, originX, originY, scale, palette.isDark)
             if (palette.isDark) drawRect(Color.Black.copy(alpha = 0.42f))
             drawRoute(
-                points = shifted,
+                points = points,
                 tileZoom = tileZoom,
-                originX = centerWorld.x - size.width / (2f * scale),
-                originY = centerWorld.y - size.height / (2f * scale),
+                originX = originX,
+                originY = originY,
                 scale = scale,
                 color = color,
                 startColor = startColor
@@ -244,7 +216,7 @@ fun FullscreenRouteMap(
         }
 
         Text(
-            "© 高德地图",
+            "© 天地图",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -479,42 +451,59 @@ private val tileClient: OkHttpClient by lazy {
 }
 
 /**
- * Downloads the plan's tiles. Failures are silent: the map simply stays blank
- * under the route, which is still readable.
+ * Downloads the plan's tiles — the base map and its place-name layer. Failures
+ * are silent: the map simply stays blank under the route, which is readable on
+ * its own.
  */
 @Composable
 private fun rememberTiles(
     zoom: Int,
     keys: List<Pair<Int, Int>>
-): Map<Pair<Int, Int>, ImageBitmap> {
-    var tiles by remember {
-        mutableStateOf<Map<Pair<Int, Int>, ImageBitmap>>(emptyMap())
-    }
+): TileSet {
+    var tiles by remember { mutableStateOf(TileSet(emptyMap(), emptyMap())) }
     LaunchedEffect(zoom, keys) {
         val loaded = withContext(Dispatchers.IO) {
             coroutineScope {
                 keys.map { key ->
-                    async { key to loadTile(zoom, key.first, key.second) }
+                    async {
+                        key to (
+                            loadTile(zoom, key.first, key.second, LAYER_MAP) to
+                                loadTile(zoom, key.first, key.second, LAYER_LABELS)
+                            )
+                    }
                 }.awaitAll()
             }
         }
-        tiles = loaded.mapNotNull { (key, image) -> image?.let { key to it } }.toMap()
+        tiles = TileSet(
+            base = loaded.mapNotNull { (key, pair) -> pair.first?.let { key to it } }.toMap(),
+            labels = loaded.mapNotNull { (key, pair) -> pair.second?.let { key to it } }.toMap()
+        )
     }
     return tiles
 }
 
-private fun loadTile(zoom: Int, x: Int, y: Int): ImageBitmap? {
-    val key = "$zoom/$x/$y"
+/** The base map and the place names come as two separate layers. */
+private class TileSet(
+    val base: Map<Pair<Int, Int>, ImageBitmap>,
+    val labels: Map<Pair<Int, Int>, ImageBitmap>
+)
+
+/**
+ * One 天地图 WMTS tile. `vec` is the road map, `cva` the labels drawn over it;
+ * both live in the `w` (web-mercator, 256 px) tile matrix set.
+ */
+private fun loadTile(zoom: Int, x: Int, y: Int, layer: String): ImageBitmap? {
+    val z = zoom.coerceIn(1, 18)
+    val key = "$layer/$z/$x/$y"
     tileCache.get(key)?.let { return it }
     return runCatching {
-        // AMap's raster tiles: OSM's own tile server is not reachable from the
-        // mainland, and every keyless alternative there is either blocked or
-        // far too coarse. Four subdomains, a plain road map, no key needed.
-        val server = "webrd0${1 + (x + y) % 4}"
+        // Eight subdomains; the key is the user's own, issued by 天地图.
+        val server = "t${(x + y) % 8}.tianditu.gov.cn"
         val request = Request.Builder()
             .url(
-                "https://$server.is.autonavi.com/appmaptile" +
-                    "?lang=zh_cn&size=1&scale=1&style=8&x=$x&y=$y&z=$zoom"
+                "https://$server/${layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
+                    "&LAYER=$layer&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles" +
+                    "&TILEMATRIX=$z&TILEROW=$y&TILECOL=$x&tk=$TIANDITU_KEY"
             )
             .header("User-Agent", "ydoo/0.2.6 (Android ${Build.VERSION.RELEASE})")
             .build()
@@ -527,41 +516,36 @@ private fun loadTile(zoom: Int, x: Int, y: Int): ImageBitmap? {
     }.getOrNull()
 }
 
-/**
- * WGS-84 → GCJ-02, the shift mainland Chinese map services apply on purpose.
- * Without it the route sits a few hundred metres off the streets underneath.
- */
-private val GeoPoint.gcj: GeoPoint
-    get() {
-        if (outOfChina(lat, lon)) return this
-        val dLat = gcjLat(lon - 105.0, lat - 35.0)
-        val dLon = gcjLon(lon - 105.0, lat - 35.0)
-        val radLat = lat / 180.0 * PI
-        val magic = 1 - GCJ_EE * sin(radLat) * sin(radLat)
-        val sqrtMagic = sqrt(magic)
-        val mgLat = dLat * 180.0 / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * PI)
-        val mgLon = dLon * 180.0 / (GCJ_A / sqrtMagic * cos(radLat) * PI)
-        return GeoPoint(lat + mgLat, lon + mgLon)
+/** 天地图 key: bound to this app's package name and signing certificate. */
+private const val TIANDITU_KEY = "b5a72bba6407e6111f101093e17df036"
+private const val LAYER_MAP = "vec"
+private const val LAYER_LABELS = "cva"
+
+/** Draws one layer of tiles, sized and placed for the current camera. */
+private fun DrawScope.drawTiles(
+    tiles: Map<Pair<Int, Int>, ImageBitmap>,
+    originX: Float,
+    originY: Float,
+    scale: Float,
+    dark: Boolean
+) {
+    tiles.forEach { (key, image) ->
+        // Floor the corner and add a pixel so adjacent tiles overlap: rounding
+        // each one on its own left a dark hairline between them at fractional
+        // scales.
+        drawImage(
+            image = image,
+            dstOffset = IntOffset(
+                floor((key.first * TILE_SIZE - originX) * scale).toInt(),
+                floor((key.second * TILE_SIZE - originY) * scale).toInt()
+            ),
+            dstSize = IntSize(
+                (TILE_SIZE * scale).toInt() + 1,
+                (TILE_SIZE * scale).toInt() + 1
+            ),
+            colorFilter = if (dark) darkTiles else null,
+            filterQuality = FilterQuality.Medium
+        )
     }
-
-private const val GCJ_A = 6378245.0
-private const val GCJ_EE = 0.00669342162296594323
-
-private fun outOfChina(lat: Double, lon: Double): Boolean =
-    lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271
-
-private fun gcjLat(x: Double, y: Double): Double {
-    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * sqrt(abs(x))
-    ret += (20.0 * sin(6.0 * x * PI) + 20.0 * sin(2.0 * x * PI)) * 2.0 / 3.0
-    ret += (20.0 * sin(y * PI) + 40.0 * sin(y / 3.0 * PI)) * 2.0 / 3.0
-    ret += (160.0 * sin(y / 12.0 * PI) + 320 * sin(y * PI / 30.0)) * 2.0 / 3.0
-    return ret
 }
 
-private fun gcjLon(x: Double, y: Double): Double {
-    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * sqrt(abs(x))
-    ret += (20.0 * sin(6.0 * x * PI) + 20.0 * sin(2.0 * x * PI)) * 2.0 / 3.0
-    ret += (20.0 * sin(x * PI) + 40.0 * sin(x / 3.0 * PI)) * 2.0 / 3.0
-    ret += (150.0 * sin(x / 12.0 * PI) + 300.0 * sin(x / 30.0 * PI)) * 2.0 / 3.0
-    return ret
-}

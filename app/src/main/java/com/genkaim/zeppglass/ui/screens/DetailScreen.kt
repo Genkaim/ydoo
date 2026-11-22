@@ -128,10 +128,7 @@ import com.genkaim.zeppglass.ui.components.PaiOctagon
 import com.genkaim.zeppglass.ui.components.PaiWeekBars
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.ProgressRing
-import com.genkaim.zeppglass.ui.components.RouteMap
-import com.genkaim.zeppglass.data.GeoPoint
-import com.genkaim.zeppglass.ui.RouteMapActivity
-import androidx.compose.ui.platform.LocalContext
+import com.genkaim.zeppglass.ui.components.RoutePath
 import com.genkaim.zeppglass.ui.components.RoutePlaceholder
 import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.ScaleBand
@@ -174,7 +171,6 @@ fun DetailScreen(
     val data = store.displayData
     val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
     val palette = LocalZgPalette.current
-    val context = LocalContext.current
     var headerHeight by remember { mutableStateOf(0.dp) }
     Box(
         Modifier
@@ -201,9 +197,7 @@ fun DetailScreen(
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
-                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store, onOpenMap = { points ->
-                    context.startActivity(RouteMapActivity.intent(context, points))
-                }, onOpenMore = {
+                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store, onOpenMore = {
                     onOpen(DetailTarget(DetailKind.WORKOUT_MORE, workoutId = target.workoutId))
                 })
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
@@ -2262,7 +2256,6 @@ private fun WorkoutDetail(
     data: HealthData?,
     workoutId: String?,
     store: HealthStore,
-    onOpenMap: (List<GeoPoint>) -> Unit,
     onOpenMore: () -> Unit
 ) {
     val workout: Workout? = data?.workouts?.firstOrNull { it.id == workoutId }
@@ -2307,15 +2300,15 @@ private fun WorkoutDetail(
     }
 
     // The track leads the page: a run is a place before it is a table of
-    // numbers. Tapping it opens the full map. Workouts without GPS simply have
-    // no map at all.
+    // numbers. It is drawn as a path — colour by speed, arrows for direction —
+    // with no base map, so nothing here needs a tile licence. Workouts without
+    // GPS simply have no track.
     detail?.points?.takeIf { it.size >= 2 }?.let { points ->
-        RouteMap(
+        RoutePath(
             points = points,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(280.dp),
-            onClick = { onOpenMap(points) }
+                .height(260.dp)
         )
     }
 

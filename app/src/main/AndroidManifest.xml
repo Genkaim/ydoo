@@ -67,11 +67,6 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />
 
         <activity
-            android:name=".ui.RouteMapActivity"
-            android:exported="false"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />
-
-        <activity
             android:name=".ui.AllDataActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />

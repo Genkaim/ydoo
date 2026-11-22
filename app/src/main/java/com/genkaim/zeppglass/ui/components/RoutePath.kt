@@ -48,6 +48,13 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
+ * How long the workout page takes to fade in — the track and the cards use the
+ * same value, so they arrive as one movement instead of two fades of different
+ * lengths. Short enough to still feel immediate.
+ */
+const val WORKOUT_FADE_MS = 280
+
+/**
  * The workout's GPS track, drawn on its own: no map tiles, no network, nothing
  * that needs a licence or a quota.
  *
@@ -96,7 +103,7 @@ fun RoutePath(
                 // track; fading it in keeps that arrival from looking like a pop.
                 val reveal = remember { Animatable(0f) }
                 LaunchedEffect(ready) {
-                    if (ready != null) reveal.animateTo(1f, tween(180))
+                    if (ready != null) reveal.animateTo(1f, tween(WORKOUT_FADE_MS))
                 }
                 if (ready != null) {
                     Canvas(

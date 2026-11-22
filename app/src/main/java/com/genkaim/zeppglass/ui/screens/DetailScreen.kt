@@ -157,6 +157,7 @@ import com.genkaim.zeppglass.ui.components.StressMedium
 import com.genkaim.zeppglass.ui.components.StressNormal
 import com.genkaim.zeppglass.ui.components.StressRelaxed
 import com.genkaim.zeppglass.ui.components.TrendLineChart
+import com.genkaim.zeppglass.ui.components.WORKOUT_FADE_MS
 import com.genkaim.zeppglass.ui.components.sleepStageLabel
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import java.time.Instant
@@ -192,7 +193,7 @@ fun DetailScreen(
     // the track read as arriving together rather than snapping in one by one.
     val reveal = remember { Animatable(if (target.kind == DetailKind.WORKOUT) 0f else 1f) }
     LaunchedEffect(target.kind) {
-        if (target.kind == DetailKind.WORKOUT) reveal.animateTo(1f, tween(180))
+        if (target.kind == DetailKind.WORKOUT) reveal.animateTo(1f, tween(WORKOUT_FADE_MS))
     }
 
     // The workout detail is loaded here, not inside the page content: the track

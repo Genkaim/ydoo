@@ -188,6 +188,20 @@ class HealthParserTest {
     }
 
     @Test
+    fun altitudeSentinelsStayEmpty() {
+        // -2000000 is the watch's "no barometer" marker; it must not become a
+        // -20000 m cliff or be carried forward as a flat fake reading.
+        val payload = JSONObject(
+            """{"data":{"altitude":"-2000000;-2000000;3500;3500;3400;3600;3500;3500"}}"""
+        )
+        val altitude = HealthParser.parseWorkoutDetail(payload).series.first { it.label == "海拔" }
+        assertEquals(null, altitude.values[0])
+        assertEquals(null, altitude.values[1])
+        assertEquals(35f, altitude.values[2])
+        assertEquals(36f, altitude.values[5])
+    }
+
+    @Test
     fun workoutWithoutGpsHasNoPointsButKeepsFields() {
         val detail = HealthParser.parseWorkoutDetail(
             JSONObject("""{"data":{"longitude_latitude":"","heart_rate":"","te":3}}""")

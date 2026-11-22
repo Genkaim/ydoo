@@ -3,6 +3,7 @@ package com.genkaim.zeppglass.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -2440,6 +2441,7 @@ private fun WorkoutDetail(
     val series = detail?.series.orEmpty()
     series.forEach { line ->
         val tint = workoutSeriesTint(line.label)
+        val real = line.values.filterNotNull()
         SectionTitle(line.label)
         FlatPanel {
             Row(
@@ -2452,21 +2454,21 @@ private fun WorkoutDetail(
                 SeriesStat(
                     Modifier.weight(1f),
                     "平均",
-                    line.values.average().roundToInt().toString(),
+                    real.average().roundToInt().toString(),
                     line.unit,
                     tint
                 )
                 SeriesStat(
                     Modifier.weight(1f),
                     "最高",
-                    line.values.max().roundToInt().toString(),
+                    real.max().roundToInt().toString(),
                     line.unit,
                     tint
                 )
                 SeriesStat(
                     Modifier.weight(1f),
                     "最低",
-                    line.values.min().roundToInt().toString(),
+                    real.min().roundToInt().toString(),
                     line.unit,
                     tint
                 )
@@ -2595,21 +2597,27 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
         ?: zones.first()
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
-                .height(132.dp),
-            contentAlignment = Alignment.Center
+                .height(108.dp)
         ) {
+            val strokeDp = 10.dp
+            // The arc spans 220°, so its lowest points sit only ~0.34·r below the
+            // centre: size the radius by that extent instead of the whole circle,
+            // or the ring leaves a slack band under it and the name floats away.
+            val radius = minOf(
+                maxWidth / 2f - strokeDp / 2f,
+                (maxHeight - strokeDp) / 1.34f
+            )
+            val centerY = radius + strokeDp / 2f
             Canvas(Modifier.fillMaxSize()) {
-                val stroke = 10.dp.toPx()
-                // The outer edge now touches the box; the arrow lives inside the
-                // ring, so no room is reserved beyond it.
-                val radius = minOf(size.width, size.height) / 2f - stroke / 2f
+                val stroke = strokeDp.toPx()
+                val radius = radius.toPx()
                 if (radius <= 0f) return@Canvas
                 val start = 160f
                 val sweep = 220f
-                val center = Offset(size.width / 2f, size.height / 2f)
+                val center = Offset(size.width / 2f, centerY.toPx())
                 val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
                 val topLeft = Offset(center.x - radius, center.y - radius)
                 fun angleOf(value: Double): Float =
@@ -2730,7 +2738,12 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                     }
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = (centerY - 22.dp).coerceAtLeast(0.dp)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(
                     Fmt.oneDecimal(score),
                     style = MaterialTheme.typography.headlineSmall,
@@ -2744,7 +2757,7 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                 )
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(2.dp))
         // 有氧 / 无氧 names the ring, not the reading, so it sits under it.
         Text(
             label,

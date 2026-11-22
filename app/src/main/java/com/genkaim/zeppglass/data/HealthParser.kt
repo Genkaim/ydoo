@@ -709,41 +709,27 @@ object HealthParser {
             unit: String?,
             scale: Float,
             delta: Boolean,
-            plausible: ((Float) -> Boolean)? = null
+            plausible: (Float) -> Boolean
         ) {
-            var values = expandSeries(data.optString(key), delta)?.map { it * scale } ?: return
-            if (plausible != null) {
-                values = fillImplausible(values, plausible) ?: return
+            val raw = expandSeries(data.optString(key), delta) ?: return
+            val values = raw.map { scaled ->
+                val value = scaled * scale
+                if (plausible(value)) value else null
             }
-            if (values.size < 3) return
-            if (values.max() == values.min()) return
+            val real = values.filterNotNull()
+            // One or two readings are not a curve, and a stream that is nothing
+            // but sentinels is no reading at all.
+            if (real.size < 3 || real.size < values.size / 20) return
             out.add(WorkoutSeries(label, unit, downsample(values, 160)))
         }
 
-        add("heart_rate", "心率", "bpm", 1f, delta = true)
-        add("speed", "速度", "km/h", 3.6f, delta = false)
-        add("gait", "步频", "spm", 1f, delta = false)
-        // The watch writes -2000000 (raw) for "no barometer reading" inside the
-        // altitude stream; scaled that is -20000 m and it drew a vertical cliff
-        // through the whole chart. Every impossible sample borrows the nearest
-        // real one so the curve keeps the session's length and shape.
-        add("altitude", "海拔", "m", 0.01f, delta = false, plausible = { it in -500f..9000f })
-        return out
-    }
-
-    /**
-     * Replaces samples that cannot be real with the closest real reading.
-     * Returns null when the stream has no real sample at all, so the caller can
-     * drop the curve instead of drawing a flat fake one.
-     */
-    private fun fillImplausible(values: List<Float>, plausible: (Float) -> Boolean): List<Float>? {
-        val firstReal = values.firstOrNull(plausible) ?: return null
-        val out = ArrayList<Float>(values.size)
-        var lastReal = firstReal
-        for (value in values) {
-            if (plausible(value)) lastReal = value
-            out.add(lastReal)
-        }
+        add("heart_rate", "心率", "bpm", 1f, delta = true) { it in 30f..230f }
+        add("speed", "速度", "km/h", 3.6f, delta = false) { it >= 0f && it <= 60f }
+        add("gait", "步频", "spm", 1f, delta = false) { it >= 0f && it <= 300f }
+        // The watch writes -2000000 (raw) for "no barometer reading": as metres
+        // that is -20000 and it drew a cliff through the chart. Those seconds
+        // stay empty, the same way the rest of the app treats a missing sample.
+        add("altitude", "海拔", "m", 0.01f, delta = false) { it in -500f..9000f }
         return out
     }
 
@@ -774,10 +760,16 @@ object HealthParser {
         return out.takeIf { it.isNotEmpty() }
     }
 
-    private fun downsample(values: List<Float>, max: Int): List<Float> {
+    private fun downsample(values: List<Float?>, max: Int): List<Float?> {
         if (values.size <= max) return values
         val step = values.size.toFloat() / max
-        return (0 until max).map { values[(it * step).toInt().coerceIn(0, values.lastIndex)] }
+        // One reading per bucket, preferring a real one: sampling blindly would
+        // punch holes in a curve that has data.
+        return (0 until max).map { index ->
+            val from = (index * step).toInt().coerceIn(0, values.lastIndex)
+            val to = ((index + 1) * step).toInt().coerceIn(from + 1, values.size)
+            values.subList(from, to).lastOrNull { it != null }
+        }
     }
 
     /**

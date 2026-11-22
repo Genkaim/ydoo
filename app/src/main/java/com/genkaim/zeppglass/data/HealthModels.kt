@@ -303,11 +303,15 @@ enum class BloodPressureBand { NORMAL, ELEVATED, HIGH }
  * A per-second series from the workout detail payload. The payload stores each
  * metric as "count,value;" runs (heart rate as second-to-second deltas), so the
  * parser expands it into one value per second from the workout start.
+ *
+ * `null` is a second the watch recorded nothing for — the altitude stream's
+ * -2000000 sentinel, a heart-rate 0. Missing stays missing instead of being
+ * carried forward: a flat line would claim a reading that does not exist.
  */
 data class WorkoutSeries(
     val label: String,
     val unit: String?,
-    val values: List<Float>
+    val values: List<Float?>
 )
 
 /**

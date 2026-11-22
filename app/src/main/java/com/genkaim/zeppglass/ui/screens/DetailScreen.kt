@@ -2403,27 +2403,34 @@ private fun WorkoutDetail(
         }
     }
 
-    // The entry sits under the last card, text and chevron kept together.
+    // The entry sits under the last card: a pill-shaped tap target with no
+    // fill, so the press ripple still follows the capsule.
     if (hasMore) {
-        Row(
+        Box(
             Modifier
                 .fillMaxWidth()
-                .clickable { onOpenMore() }
                 .padding(vertical = 2.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                "其他数据",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Icon(
-                Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
-            )
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onOpenMore() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "其他数据",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 
@@ -2616,9 +2623,15 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
 
                 // One rounded curve per band, edge to edge: the bands are split
                 // afterwards by background-coloured ticks, not by gaps.
-                // A band is drawn with flat ends; only the two tips of the whole
-                // ring are rounded, so the bands meet on a straight edge.
-                fun band(fromValue: Double, toValue: Double, tint: Color) {
+                // Base bands are drawn with flat ends — only the two tips of the
+                // whole ring get a round cap. The highlighted band is a pill of
+                // its own, rounded on both sides so it stands out from the base.
+                fun band(
+                    fromValue: Double,
+                    toValue: Double,
+                    tint: Color,
+                    roundBoth: Boolean = false
+                ) {
                     val from = angleOf(fromValue)
                     val to = angleOf(toValue)
                     if (to <= from) return
@@ -2629,8 +2642,12 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                         useCenter = false,
                         topLeft = topLeft,
                         size = arcSize,
-                        style = Stroke(stroke, cap = StrokeCap.Butt)
+                        style = Stroke(
+                            stroke,
+                            cap = if (roundBoth) StrokeCap.Round else StrokeCap.Butt
+                        )
                     )
+                    if (roundBoth) return
                     fun capAt(angle: Float) {
                         val a = Math.toRadians(angle.toDouble())
                         drawCircle(
@@ -2669,7 +2686,7 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                 }
 
                 if (score != null) {
-                    band(active.from, active.to, active.color)
+                    band(active.from, active.to, active.color, roundBoth = true)
                 }
 
                 if (score != null) {

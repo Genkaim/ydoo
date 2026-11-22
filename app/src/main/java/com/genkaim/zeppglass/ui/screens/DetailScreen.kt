@@ -2604,27 +2604,28 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(112.dp),
+                .height(132.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(Modifier.fillMaxSize()) {
-                val stroke = 9.dp.toPx()
-                val radius = minOf(size.width, size.height) / 2f - stroke
+                val stroke = 10.dp.toPx()
+                // The outer edge now touches the box; the arrow lives inside the
+                // ring, so no room is reserved beyond it.
+                val radius = minOf(size.width, size.height) / 2f - stroke / 2f
                 if (radius <= 0f) return@Canvas
                 val start = 160f
                 val sweep = 220f
-                val gap = 2.5f
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
                 val topLeft = Offset(center.x - radius, center.y - radius)
                 fun angleOf(value: Double): Float =
                     start + sweep * (value / 5.0).coerceIn(0.0, 1.0).toFloat()
 
-                // One rounded curve per band. Round caps are 50% of the stroke,
-                // and the small gap between bands is what separates the colours.
+                // One rounded curve per band, edge to edge: the bands are split
+                // afterwards by background-coloured ticks, not by gaps.
                 zones.forEach { zone ->
-                    val from = angleOf(zone.from) + gap / 2f
-                    val to = angleOf(zone.to) - gap / 2f
+                    val from = angleOf(zone.from)
+                    val to = angleOf(zone.to)
                     if (to > from) {
                         drawArc(
                             color = zone.color.copy(alpha = 0.20f),
@@ -2637,32 +2638,52 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                         )
                     }
                 }
+
                 if (score != null) {
                     drawArc(
                         color = active.color,
-                        startAngle = angleOf(active.from) + gap / 2f,
-                        sweepAngle = (angleOf(active.to) - angleOf(active.from)) - gap,
+                        startAngle = angleOf(active.from),
+                        sweepAngle = angleOf(active.to) - angleOf(active.from),
                         useCenter = false,
                         topLeft = topLeft,
                         size = arcSize,
                         style = Stroke(stroke, cap = StrokeCap.Round)
                     )
+                }
 
+                // A surface-coloured bar across the ring at each rating border,
+                // painted over the arcs so the two colours meet on a clean cut.
+                listOf(1.0, 2.0, 3.0, 4.0).forEach { border ->
+                    val theta = Math.toRadians(angleOf(border).toDouble())
+                    val cos = kotlin.math.cos(theta).toFloat()
+                    val sin = kotlin.math.sin(theta).toFloat()
+                    val inner = radius - stroke * 0.9f
+                    val outer = radius + stroke * 0.9f
+                    drawLine(
+                        color = surface,
+                        start = Offset(center.x + cos * inner, center.y + sin * inner),
+                        end = Offset(center.x + cos * outer, center.y + sin * outer),
+                        strokeWidth = stroke * 1.35f,
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                if (score != null) {
                     // The marker, same shape as the one under resting heart rate
-                    // and HRV: a rounded triangle with a surface halo, here
-                    // rotated so it points at the ring from outside.
+                    // and HRV: a rounded triangle with a surface halo, sitting
+                    // inside the ring and pointing out at it.
                     val theta = Math.toRadians(angleOf(score).toDouble())
                     val tip = Offset(
-                        center.x + (kotlin.math.cos(theta) * (radius + stroke / 2f)).toFloat(),
-                        center.y + (kotlin.math.sin(theta) * (radius + stroke / 2f)).toFloat()
+                        center.x + (kotlin.math.cos(theta) * (radius - stroke / 2f)).toFloat(),
+                        center.y + (kotlin.math.sin(theta) * (radius - stroke / 2f)).toFloat()
                     )
                     val markerWidth = 12.dp.toPx()
                     val markerHeight = 10.dp.toPx()
                     val edge = 1.5.dp.toPx()
                     val halo = 2.dp.toPx()
                     val marker = Path().apply {
-                        moveTo(-markerWidth / 2f, -markerHeight)
-                        lineTo(markerWidth / 2f, -markerHeight)
+                        moveTo(-markerWidth / 2f, markerHeight)
+                        lineTo(markerWidth / 2f, markerHeight)
                         lineTo(0f, 0f)
                         close()
                     }

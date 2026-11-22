@@ -297,11 +297,10 @@ private fun ChargeHero(charge: ChargeDay) {
         value < 30.0 -> warnTone
         else -> base
     }
-    // 体力 and 精力 keep their own colour whatever the reading: light blue for
-    // the body, deeper blue for the mind. Only the combined score still steps
-    // down to amber and red.
-    val physicalColor = LocalZgPalette.current.chargePhysical
-    val mentalColor = LocalZgPalette.current.chargeMental
+    // 体力 and 精力 step down with the same thresholds as the total: amber
+    // below 30, red below 5, otherwise their own blue.
+    val physicalColor = tier(charge.physical, LocalZgPalette.current.chargePhysical)
+    val mentalColor = tier(charge.mental, LocalZgPalette.current.chargeMental)
     val totalColor = tier(charge.total?.toDouble(), MaterialTheme.colorScheme.primary)
     Column(
         Modifier

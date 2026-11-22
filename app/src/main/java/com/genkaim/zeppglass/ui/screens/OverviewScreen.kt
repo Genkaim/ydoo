@@ -1172,14 +1172,14 @@ private fun scoreTint(score: Int?, base: Color, warn: Color, critical: Color): C
     else -> base
 }
 
-/** Charge turns red at 5 or below and amber below 50; from 50 up it is primary. */
+/** Charge turns red below 5 and amber below 30; from 30 up it is primary. */
 @Composable
 private fun chargeTint(score: Int?): Color {
     val palette = LocalZgPalette.current
     return when {
         score == null -> MaterialTheme.colorScheme.primary
-        score <= 5 -> palette.critical
-        score < 50 -> palette.warn
+        score < 5 -> palette.critical
+        score < 30 -> palette.warn
         else -> MaterialTheme.colorScheme.primary
     }
 }

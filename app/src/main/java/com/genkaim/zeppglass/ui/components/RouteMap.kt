@@ -251,14 +251,6 @@ fun FullscreenRouteMap(
                 .align(Alignment.BottomEnd)
                 .padding(10.dp)
         )
-        Text(
-            "拖动移动，双指缩放",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(10.dp)
-        )
     }
 }
 

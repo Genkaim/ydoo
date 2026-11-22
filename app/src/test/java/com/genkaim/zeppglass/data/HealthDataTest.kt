@@ -25,12 +25,31 @@ class HealthDataTest {
         ),
         chargeDays = listOf(ChargeDay(day, 72, 76.0, 66.0, listOf(ChargeSample(1_000L, 72, 76.0, 66.0)))),
         readiness = listOf(
-            ReadinessDay(day, 78, 81, 74, 70, 76, 118, 51, 90, 85, 60)
+            ReadinessDay(
+                date = day,
+                score = 78,
+                physicalScore = 81,
+                mentalScore = 74,
+                hrvScore = 70,
+                rhrScore = 76,
+                sleepHrv = 60,
+                sleepRhr = 51,
+                ahiScore = 90,
+                skinTempScore = 85,
+                insight = null
+            )
         ),
         pai = listOf(PaiDay(day, 12.4, 87.2, 30, 12, 4)),
         stress = listOf(StressDay(day, 34, 12, 71, 55.5, 30.2, 10.1, 4.2, listOf(1_000L to 30))),
         spo2 = listOf(Spo2Point(1_000L, 97, true)),
-        weights = listOf(WeightPoint(1_000L, 70.4, 22.3, 18.2)),
+        weights = listOf(
+            WeightPoint(
+                epochMs = 1_000L,
+                weightKg = 70.4,
+                bmi = 22.3,
+                bodyFatPct = 18.2
+            )
+        ),
         workouts = listOf(
             Workout(
                 id = "1",

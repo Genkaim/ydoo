@@ -18,6 +18,10 @@ import kotlin.math.roundToInt
  */
 object HealthParser {
 
+    /** Track coordinates arrive in 1e-8 degree units. */
+    private const val TRACK_DEGREE = 1e-8
+
+
     // ---------- helpers ----------
 
     private fun JSONObject.anyNumber(key: String): Double? {
@@ -742,54 +746,129 @@ object HealthParser {
     }
 
     /**
-     * `longitude_latitude` is "lon,lat;lon,lat;…": the first fix is absolute and
-     * every later pair is the difference to the previous one. Some firmware
-     * writes absolute fixes for all points, so both readings are built and the
-     * one that forms a sane, local track wins.
+     * `longitude_latitude` is "lat,lon;lat,lon;…" in units of 1e-8 degrees.
+     *
+     * The field name says longitude first, but the numbers say otherwise: the
+     * first pair of a Hangzhou run decodes to 30.26,120.13, and only the
+     * latitude-first reading lands in range (a latitude of 120 is impossible).
+     * So: latitude first, then longitude, both scaled by 1e-8.
+     *
+     * The first pair is an absolute fix and every later pair is the step from
+     * the previous point (~762 = 0.0000076° ≈ 0.85 m, which matches a running
+     * stride). A few firmwares write absolute fixes everywhere instead, so the
+     * step-by-step reading is only kept when it forms one local track.
      */
     private fun parseTrack(text: String): List<GeoPoint> {
         if (text.isBlank()) return emptyList()
         val pairs = text.split(';').mapNotNull { chunk ->
             val parts = chunk.trim().split(',')
             if (parts.size < 2) return@mapNotNull null
-            val lon = parts[0].trim().toDoubleOrNull() ?: return@mapNotNull null
-            val lat = parts[1].trim().toDoubleOrNull() ?: return@mapNotNull null
-            lon to lat
+            val lat = parts[0].trim().toDoubleOrNull() ?: return@mapNotNull null
+            val lon = parts[1].trim().toDoubleOrNull() ?: return@mapNotNull null
+            lat to lon
         }
-        if (pairs.isEmpty()) return emptyList()
+        if (pairs.size < 2) return emptyList()
 
         fun valid(lat: Double, lon: Double) =
             lat in -90.0..90.0 && lon in -180.0..180.0 && !(lat == 0.0 && lon == 0.0)
 
-        val absolute = pairs.mapNotNull { (lon, lat) ->
-            if (valid(lat, lon)) GeoPoint(lat, lon) else null
-        }
-
-        var lon = 0.0
         var lat = 0.0
-        val cumulative = mutableListOf<GeoPoint>()
-        pairs.forEachIndexed { index, (dLon, dLat) ->
+        var lon = 0.0
+        val cumulative = ArrayList<GeoPoint>(pairs.size)
+        pairs.forEachIndexed { index, (dLat, dLon) ->
             if (index == 0) {
-                lon = dLon
-                lat = dLat
+                lat = dLat * TRACK_DEGREE
+                lon = dLon * TRACK_DEGREE
             } else {
-                lon += dLon
-                lat += dLat
+                lat += dLat * TRACK_DEGREE
+                lon += dLon * TRACK_DEGREE
             }
             if (valid(lat, lon)) cumulative.add(GeoPoint(lat, lon))
         }
 
-        fun span(points: List<GeoPoint>): Double {
-            if (points.size < 2) return Double.MAX_VALUE
-            val latSpan = points.maxOf { it.lat } - points.minOf { it.lat }
-            val lonSpan = points.maxOf { it.lon } - points.minOf { it.lon }
-            return latSpan + lonSpan
-        }
+        // A whole degree of drift means these were absolute fixes summed as
+        // steps; no honest GPS track walks 100 km in one session.
+        if (cumulative.size >= 2 && trackSpan(cumulative) < 1.0) return cumulative
 
-        val useCumulative = cumulative.size > absolute.size ||
-            (cumulative.size == absolute.size && span(cumulative) < span(absolute))
-        val picked = if (useCumulative) cumulative else absolute
-        return if (picked.size < 2) emptyList() else picked
+        val absolute = pairs.mapNotNull { (a, b) ->
+            val pointLat = a * TRACK_DEGREE
+            val pointLon = b * TRACK_DEGREE
+            if (valid(pointLat, pointLon)) GeoPoint(pointLat, pointLon) else null
+        }
+        if (absolute.size >= 2 && trackSpan(absolute) < 1.0) return absolute
+        return if (cumulative.size >= 2) cumulative else emptyList()
+    }
+
+    private fun trackSpan(points: List<GeoPoint>): Double {
+        val latSpan = points.maxOf { it.lat } - points.minOf { it.lat }
+        val lonSpan = points.maxOf { it.lon } - points.minOf { it.lon }
+        return latSpan + lonSpan
+    }
+
+
+
+    // ---------- blood pressure ----------
+
+    /**
+     * The `health_data` / `blood_pressure` stream. The payload's field names are
+     * not documented and differ between a hand-typed entry in the app and a
+     * reading pushed by a cuff, so every plausible spelling is tried. Values
+     * outside a believable mmHg range are dropped instead of drawn.
+     */
+    fun parseBloodPressure(json: JSONObject): List<BloodPressure> {
+        val items = json.arr("items") ?: return emptyList()
+        val out = mutableListOf<BloodPressure>()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            // Some payloads nest the numbers one level down.
+            val nested = item.obj("value") ?: item.obj("bloodPressure") ?: item.obj("data") ?: item
+
+            fun read(keys: List<String>): Int? {
+                for (key in keys) {
+                    nested.anyNumber(key)?.let { return it.roundToInt() }
+                    if (nested !== item) item.anyNumber(key)?.let { return it.roundToInt() }
+                }
+                return null
+            }
+
+            // Timestamps must stay Double until the end: 1.79e12 overflows Int.
+            fun readLong(keys: List<String>): Long? {
+                for (key in keys) {
+                    nested.anyNumber(key)?.let { return it.toLong() }
+                    if (nested !== item) item.anyNumber(key)?.let { return it.toLong() }
+                }
+                return null
+            }
+
+            var systolic = read(listOf("systolic", "sbp", "systolicPressure", "systolic_pressure", "high"))
+            var diastolic = read(listOf("diastolic", "dbp", "diastolicPressure", "diastolic_pressure", "low"))
+            if (systolic == null || diastolic == null) {
+                // A hand-typed "118/76".
+                val text = nested.anyString("value") ?: item.anyString("value") ?: item.anyString("bp")
+                val parts = text?.split('/', ',', ' ', '|')
+                    ?.mapNotNull { it.trim().toIntOrNull() }
+                    .orEmpty()
+                if (parts.size >= 2) {
+                    systolic = parts[0]
+                    diastolic = parts[1]
+                }
+            }
+            val sys = systolic ?: continue
+            val dia = diastolic ?: continue
+            if (sys !in 60..260 || dia !in 30..160 || sys <= dia) continue
+
+            val time = readLong(listOf("timestamp", "time", "measureTime", "measure_time"))
+                ?: continue
+            out.add(
+                BloodPressure(
+                    // The streams mix seconds and milliseconds.
+                    epochMs = if (time < 1_000_000_000_000L) time * 1000 else time,
+                    systolic = sys,
+                    diastolic = dia
+                )
+            )
+        }
+        return out.distinctBy { it.epochMs }.sortedBy { it.epochMs }
     }
 
     // ---------- VO2 max ----------

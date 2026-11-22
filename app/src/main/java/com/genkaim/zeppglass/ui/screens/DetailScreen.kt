@@ -97,6 +97,8 @@ import com.genkaim.zeppglass.data.StressDay
 import com.genkaim.zeppglass.data.band
 import com.genkaim.zeppglass.data.mentalBand
 import com.genkaim.zeppglass.data.WeightPoint
+import com.genkaim.zeppglass.data.BloodPressure
+import com.genkaim.zeppglass.data.BloodPressureBand
 import com.genkaim.zeppglass.data.Workout
 import com.genkaim.zeppglass.data.WorkoutDetail
 import com.genkaim.zeppglass.ui.DetailKind
@@ -120,7 +122,7 @@ import com.genkaim.zeppglass.ui.components.PaiOctagon
 import com.genkaim.zeppglass.ui.components.PaiWeekBars
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.ProgressRing
-import com.genkaim.zeppglass.ui.components.RoutePath
+import com.genkaim.zeppglass.ui.components.RouteMap
 import com.genkaim.zeppglass.ui.components.RoutePlaceholder
 import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.ScaleBand
@@ -207,6 +209,7 @@ fun DetailScreen(
                 DetailKind.SKIN_TEMP -> SkinTempDetail(data, target.date)
                 DetailKind.MORNING_CHARGE -> MorningChargeDetail(data, target.date)
                 DetailKind.NIGHT_SPO2 -> NightSpo2Detail(data, target.date)
+                DetailKind.BLOOD_PRESSURE -> BloodPressureDetail(data, target.date)
             }
         }
 
@@ -287,6 +290,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.SKIN_TEMP -> "皮肤温度"
     DetailKind.MORNING_CHARGE -> "晨起 Charge"
     DetailKind.NIGHT_SPO2 -> "夜间血氧"
+    DetailKind.BLOOD_PRESSURE -> "血压"
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -311,6 +315,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.SKIN_TEMP -> target.date?.let(Fmt::date) ?: "手表评分，近 7 天趋势"
     DetailKind.MORNING_CHARGE -> target.date?.let(Fmt::date) ?: "起床时的能量，近 7 天趋势"
     DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
+    DetailKind.BLOOD_PRESSURE -> target.date?.let(Fmt::date) ?: "收缩压 / 舒张压，mmHg"
 }
 
 // ---------------- sleep ----------------
@@ -2278,6 +2283,22 @@ private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthSt
         return
     }
 
+    // The track leads the page: a run is a place before it is a table of
+    // numbers. Workouts without GPS simply have no map at all.
+    detail?.points?.takeIf { it.size >= 2 }?.let { points ->
+        RouteMap(
+            points = points,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+        )
+        Text(
+            "起点为橙色，终点为绿色。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         MetricTile("时长", Fmt.duration(workout.durationSec), null, Modifier.weight(1f))
         MetricTile("距离", Fmt.km(workout.distanceM), "km", Modifier.weight(1f))
@@ -2375,37 +2396,6 @@ private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthSt
                 )
             }
         }
-    }
-
-    // Only the track itself: no map tile, no raw field tables.
-    SectionTitle("轨迹", trailing = if (detail?.points.isNullOrEmpty()) null else "${detail!!.points.size} 个坐标")
-    val points = detail?.points.orEmpty()
-    when {
-        points.size >= 2 -> {
-            RoutePath(
-                points = points,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-            )
-            Text(
-                "按经纬度等比例绘制，没有底图；起点为橙色，终点为绿色。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        detailLoading -> RoutePlaceholder(
-            "正在读取这次运动的 GPS…",
-            Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-        )
-        else -> RoutePlaceholder(
-            "这次运动没有 GPS 坐标",
-            Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-        )
     }
 
     // Every remaining raw field the detail payload carried, with the keys that
@@ -3478,20 +3468,23 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
     }
     val palette = LocalZgPalette.current
     val ink = MaterialTheme.colorScheme.onSurface
-    // Three bands, the same ones the overview tile uses: within ±0.5℃ is
-    // normal, up to ±1℃ is worth a look, beyond that is clearly off baseline.
-    val band: Pair<String, Color>? = delta?.let {
-        val magnitude = abs(it)
-        when {
-            magnitude <= 0.5 -> "正常" to ink
-            magnitude <= 1.0 -> (if (it > 0) "偏高" else "偏低") to palette.warn
-            else -> (if (it > 0) "偏高" else "偏低") to palette.critical
+    // Rated on the watch's own 0–100 skin-temperature score, with the same
+    // thresholds as the HRV and resting-heart-rate pages (80 优秀 / 60 良好 /
+    // 40 一般). The +-℃ figure stays the headline because it is what changed.
+    val verdict: Pair<String, Color> = when {
+        value != null -> when {
+            value >= 80 -> "优秀" to ink
+            value >= 60 -> "良好" to ink
+            value >= 40 -> "一般" to palette.warn
+            else -> "偏低" to palette.critical
         }
-    }
-    val verdict = band ?: when {
-        value == null || value >= 75 -> "正常" to ink
-        value >= 50 -> "一般" to palette.warn
-        else -> "偏低" to palette.critical
+        // No score from the watch: fall back to the deviation bands.
+        delta != null -> when {
+            abs(delta) <= 0.5 -> "正常" to ink
+            abs(delta) <= 1.0 -> (if (delta > 0) "偏高" else "偏低") to palette.warn
+            else -> (if (delta > 0) "偏高" else "偏低") to palette.critical
+        }
+        else -> "正常" to ink
     }
     FlatPanel {
         Column(
@@ -3506,7 +3499,7 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
-            val abnormal = verdict.first != "正常"
+            val abnormal = verdict.first !in setOf("正常", "优秀", "良好")
             // The official app prints the night's deviation from the personal
             // baseline with one decimal ("-0.2℃"), and rounds to a bare 0.0 on a
             // night that sits right on it.
@@ -3577,6 +3570,299 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
                     .height(170.dp),
                 color = palette.warn,
                 decimals = 1
+            )
+        }
+    }
+}
+
+// ---------------- blood pressure ----------------
+
+/** One hour of readings: the span it covered and the two means. */
+private class BpHour(
+    val hour: Int,
+    val lowest: Int,
+    val highest: Int,
+    val systolicMean: Int,
+    val band: BloodPressureBand
+)
+
+@Composable
+private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
+    val palette = LocalZgPalette.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val zone = java.time.ZoneId.systemDefault()
+    val readings = data?.bloodPressure.orEmpty()
+    val chosenDay = date ?: LocalDate.now()
+    val dayReadings = data?.bloodPressureOn(chosenDay, zone).orEmpty()
+    // An empty today is the normal case: a cuff reading happens now and then,
+    // not every day, so the page falls back to the newest day that has one.
+    val newestDay = readings.maxByOrNull { it.epochMs }
+        ?.let { java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() }
+    val shownDay = if (dayReadings.isEmpty()) newestDay ?: chosenDay else chosenDay
+    val shownReadings = if (dayReadings.isEmpty()) {
+        data?.bloodPressureOn(shownDay, zone).orEmpty()
+    } else {
+        dayReadings
+    }
+    val latest = shownReadings.maxByOrNull { it.epochMs }
+
+    fun tone(band: BloodPressureBand): Color = when (band) {
+        BloodPressureBand.NORMAL -> palette.accent
+        BloodPressureBand.ELEVATED -> palette.warn
+        BloodPressureBand.HIGH -> palette.critical
+    }
+
+    fun word(band: BloodPressureBand): String = when (band) {
+        BloodPressureBand.NORMAL -> "正常"
+        BloodPressureBand.ELEVATED -> "正常高值"
+        BloodPressureBand.HIGH -> "偏高"
+    }
+
+    // Top: the newest reading of the shown day, systolic over diastolic.
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 18.dp, horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                latest?.let { "${Fmt.date(shownDay)} ${Fmt.time(it.epochMs)}" } ?: "云端还没有血压记录",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            val abnormal = latest != null && latest.band != BloodPressureBand.NORMAL
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    latest?.systolic?.toString() ?: "--",
+                    style = MaterialTheme.typography.displayMedium,
+                    color = if (abnormal) tone(latest!!.band) else ink
+                )
+                Text(
+                    " / ",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Text(
+                    latest?.diastolic?.toString() ?: "--",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = if (abnormal) tone(latest!!.band) else ink,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    " mmHg",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (abnormal) tone(latest!!.band) else ink,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 8.dp)
+                )
+            }
+            if (latest != null) {
+                Text(
+                    word(latest.band),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = tone(latest.band)
+                )
+            }
+        }
+    }
+
+    if (readings.isEmpty()) {
+        FlatPanel {
+            Column(Modifier.padding(16.dp)) {
+                Text("还没有血压数据", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "血压来自 Zepp 里的手动记录（健康 → 血压），手表的传感器不测血压。" +
+                        "在那边记一条之后，这里会出现当天的每小时范围和一周的曲线。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    // Middle: one day, one bar per hour, from its lowest diastolic to its
+    // highest systolic, coloured by that hour's band.
+    val hours = (0 until 24).mapNotNull { hour ->
+        val bucket = shownReadings.filter {
+            java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).hour == hour
+        }
+        if (bucket.isEmpty()) return@mapNotNull null
+        BpHour(
+            hour = hour,
+            lowest = bucket.minOf { it.diastolic },
+            highest = bucket.maxOf { it.systolic },
+            systolicMean = bucket.map { it.systolic }.average().roundToInt(),
+            // The hour is as serious as its worst reading.
+            band = bucket.map { it.band }.maxByOrNull { it.ordinal } ?: BloodPressureBand.NORMAL
+        )
+    }
+
+    SectionTitle(if (shownDay == LocalDate.now()) "今天各小时" else "${Fmt.date(shownDay)} 各小时")
+    FlatPanel {
+        Column(Modifier.padding(12.dp)) {
+            HourlyBloodPressureChart(
+                hours = hours,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(190.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                listOf(
+                    BloodPressureBand.NORMAL,
+                    BloodPressureBand.ELEVATED,
+                    BloodPressureBand.HIGH
+                ).forEach { band ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(tone(band))
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            word(band),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            if (hours.size <= 1) {
+                Text(
+                    "这一天只有一次记录，所以是一段很短的柱子。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    // Bottom: a week of both numbers, one line each.
+    val weekDays = (0..6).map { shownDay.minusDays(6L - it) }
+    fun dayMean(day: LocalDate, pick: (BloodPressure) -> Int): Float? =
+        data?.bloodPressureOn(day, zone)?.takeIf { it.isNotEmpty() }
+            ?.map(pick)?.average()?.toFloat()
+
+    val systolicWeek = weekDays.map { dayMean(it) { p -> p.systolic } }
+    val diastolicWeek = weekDays.map { dayMean(it) { p -> p.diastolic } }
+    val weekLabels = weekDays.map { Fmt.weekdayShort(it) }
+
+    if (systolicWeek.count { it != null } >= 1) {
+        SectionTitle("近 7 天 · 收缩压")
+        FlatPanel {
+            AxisLineChart(
+                values = systolicWeek,
+                labels = weekLabels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(150.dp),
+                color = palette.critical,
+                minValue = 80f,
+                maxValue = 180f
+            )
+        }
+    }
+    if (diastolicWeek.count { it != null } >= 1) {
+        SectionTitle("近 7 天 · 舒张压")
+        FlatPanel {
+            AxisLineChart(
+                values = diastolicWeek,
+                labels = weekLabels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(150.dp),
+                color = palette.warn,
+                minValue = 40f,
+                maxValue = 120f
+            )
+        }
+    }
+
+    Text(
+        "收缩压 ≥ 120 或舒张压 ≥ 80 记为正常高值，≥ 140 / 90 记为偏高（中国高血压指南）。" +
+            "一次读数受情绪、刚运动完和测量姿势影响，图上更值得看的是同一时段的趋势。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun HourlyBloodPressureChart(hours: List<BpHour>, modifier: Modifier = Modifier) {
+    val measurer = rememberTextMeasurer()
+    val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val palette = LocalZgPalette.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val lo = 40f
+    val hi = 180f
+
+    fun tone(band: BloodPressureBand): Color = when (band) {
+        BloodPressureBand.NORMAL -> palette.accent
+        BloodPressureBand.ELEVATED -> palette.warn
+        BloodPressureBand.HIGH -> palette.critical
+    }
+
+    Canvas(modifier) {
+        val axisWidth = 30.dp.toPx()
+        val axisHeight = 16.dp.toPx()
+        val topPad = 10.dp.toPx()
+        val bottomPad = 6.dp.toPx()
+        val chartWidth = (size.width - axisWidth).coerceAtLeast(1f)
+        val chartHeight = (size.height - axisHeight - topPad - bottomPad).coerceAtLeast(8f)
+        fun yOf(value: Float): Float = topPad + chartHeight - ((value - lo) / (hi - lo)) * chartHeight
+
+        listOf(60, 100, 140, 180).forEach { tick ->
+            val y = yOf(tick.toFloat())
+            drawLine(palette.grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
+            val layout = measurer.measure(tick.toString(), axisStyle)
+            drawText(
+                layout,
+                topLeft = Offset(0f, (y - layout.size.height / 2f).coerceAtLeast(0f))
+            )
+        }
+
+        val slot = chartWidth / 24f
+        val barWidth = (slot * 0.46f).coerceAtLeast(2f)
+        hours.forEach { hour ->
+            val centerX = axisWidth + slot * hour.hour + slot / 2f
+            val top = yOf(hour.highest.toFloat())
+            val bottom = yOf(hour.lowest.toFloat())
+            drawRoundRect(
+                color = tone(hour.band).copy(alpha = 0.45f),
+                topLeft = Offset(centerX - barWidth / 2f, top),
+                size = androidx.compose.ui.geometry.Size(
+                    barWidth,
+                    (bottom - top).coerceAtLeast(1f)
+                ),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+            )
+            drawCircle(
+                ink.copy(alpha = 0.6f),
+                radius = 1.8.dp.toPx(),
+                center = Offset(centerX, yOf(hour.systolicMean.toFloat()))
+            )
+        }
+
+        listOf(0, 6, 12, 18, 23).forEach { hour ->
+            val layout = measurer.measure(
+                if (hour == 23) "24" else hour.toString(),
+                axisStyle
+            )
+            val centerX = axisWidth + slot * hour + slot / 2f
+            drawText(
+                layout,
+                topLeft = Offset(
+                    (centerX - layout.size.width / 2f)
+                        .coerceIn(axisWidth, size.width - layout.size.width),
+                    size.height - axisHeight / 2f - layout.size.height / 2f
+                )
             )
         }
     }

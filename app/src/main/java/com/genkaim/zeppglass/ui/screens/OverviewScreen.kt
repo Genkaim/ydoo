@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.MonitorHeart
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -96,6 +97,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.BloodPressureBand
 import com.genkaim.zeppglass.data.DailySummary
 import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.HealthData
@@ -451,29 +453,36 @@ fun OverviewScreen(
                                     },
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.STRESS, date)) }
                                 )
-                                // Same three bands as the detail page: ±0.5℃ is
-                                // normal, up to ±1℃ amber, beyond that red.
+                                // Rated on the watch's 0–100 score, the same
+                                // 80/60/40 steps as the HRV and RHR pages; the
+                                // +-℃ deviation only sets the headline number.
                                 val skinDelta = readiness?.skinTempDeltaC
-                                val skinBand = skinDelta?.let {
-                                    val magnitude = abs(it)
-                                    when {
-                                        magnitude <= 0.5 -> "正常" to ink
-                                        magnitude <= 1.0 ->
-                                            (if (it > 0) "偏高" else "偏低") to warnTone
-                                        else ->
-                                            (if (it > 0) "偏高" else "偏低") to criticalTone
+                                val skinScore = readiness?.skinTempScore
+                                val skinVerdict: Pair<String, Color>? = when {
+                                    skinScore == null -> skinDelta?.let {
+                                        val magnitude = abs(it)
+                                        when {
+                                            magnitude <= 0.5 -> "正常" to ink
+                                            magnitude <= 1.0 ->
+                                                (if (it > 0) "偏高" else "偏低") to warnTone
+                                            else ->
+                                                (if (it > 0) "偏高" else "偏低") to criticalTone
+                                        }
                                     }
+                                    skinScore >= 80 -> "优秀" to ink
+                                    skinScore >= 60 -> "良好" to ink
+                                    skinScore >= 40 -> "一般" to warnTone
+                                    else -> "偏低" to criticalTone
                                 }
                                 MetricTile(
                                     label = "皮肤温度",
                                     value = if (skinDelta != null) Fmt.signedOneDecimal(skinDelta)
-                                    else readiness?.skinTempScore?.toString() ?: "--",
-                                    unit = if (skinDelta != null) "℃"
-                                    else readiness?.skinTempScore?.let { "分" },
+                                    else skinScore?.toString() ?: "--",
+                                    unit = if (skinDelta != null) "℃" else skinScore?.let { "分" },
                                     icon = Icons.Rounded.Thermostat,
-                                    tint = skinBand?.second ?: LocalZgPalette.current.warn,
+                                    tint = skinVerdict?.second ?: LocalZgPalette.current.warn,
                                     modifier = Modifier.weight(1f),
-                                    verdict = skinBand ?: scoreVerdict(readiness?.skinTempScore),
+                                    verdict = skinVerdict,
                                     onClick = { onOpenDetail(DetailTarget(DetailKind.SKIN_TEMP, date)) }
                                 )
                             }
@@ -486,15 +495,29 @@ fun OverviewScreen(
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // 血压 takes the slot 准备度 used to hold. The
+                                // reading itself is rare, so the tile opens even
+                                // while it is empty and explains where to record.
+                                val bp = data?.latestBloodPressure()
+                                val bpVerdict: Pair<String, Color>? = bp?.band?.let { band ->
+                                    when (band) {
+                                        BloodPressureBand.NORMAL -> "正常" to ink
+                                        BloodPressureBand.ELEVATED -> "正常高值" to warnTone
+                                        BloodPressureBand.HIGH -> "偏高" to criticalTone
+                                    }
+                                }
                                 MetricTile(
-                                    label = "准备度",
-                                    value = readiness?.officialScore?.toString() ?: "--",
-                                    unit = null,
-                                    icon = Icons.Rounded.EmojiEvents,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    label = "血压",
+                                    value = bp?.let { "${it.systolic}/${it.diastolic}" } ?: "--",
+                                    unit = if (bp != null) "mmHg" else null,
+                                    icon = Icons.Rounded.MonitorHeart,
+                                    tint = bpVerdict?.second ?: MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),
-                                    verdict = scoreVerdict(readiness?.officialScore),
-                                    onClick = { onOpenDetail(DetailTarget(DetailKind.READINESS, date)) }
+                                    verdict = bpVerdict,
+                                    alwaysClickable = true,
+                                    onClick = {
+                                        onOpenDetail(DetailTarget(DetailKind.BLOOD_PRESSURE, date))
+                                    }
                                 )
                                 MetricTile(
                                     label = "血氧",

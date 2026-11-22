@@ -15,7 +15,10 @@ enum class DetailKind {
     MORNING_CHARGE,
 
     /** Nightly average blood oxygen, with a 7-day line. */
-    NIGHT_SPO2
+    NIGHT_SPO2,
+
+    /** Blood-pressure readings: today's hourly range and a week of both arms. */
+    BLOOD_PRESSURE
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */

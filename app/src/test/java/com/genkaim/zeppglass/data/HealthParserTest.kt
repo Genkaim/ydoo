@@ -125,10 +125,12 @@ class HealthParserTest {
 
     @Test
     fun gpsTrackIsRebuiltFromRelativeFixes() {
+        // Trimmed from a real Hangzhou run: latitude first, 1e-8 degrees, the
+        // first pair absolute and every later pair a step from the one before.
         val payload = JSONObject(
             """
             {"data":{
-              "longitude_latitude":"121.4000,31.2000;0.0001,0.0001;0.0001,0.0;0.0001,0.0",
+              "longitude_latitude":"3026091166,12012749833;-133,0;-66,0;100,33;-66,-233",
               "heart_rate":"0,0;1,2",
               "distance":"0,0;1,1",
               "kilo_pace":"0",
@@ -137,14 +139,52 @@ class HealthParserTest {
             """.trimIndent()
         )
         val detail = HealthParser.parseWorkoutDetail(payload)
-        assertEquals(4, detail.points.size)
-        assertEquals(121.4, detail.points[0].lon, 1e-6)
-        assertEquals(31.2, detail.points[0].lat, 1e-6)
-        // Each later pair is a delta to the previous fix.
-        assertEquals(121.4002, detail.points[2].lon, 1e-6)
-        assertEquals(31.2001, detail.points[2].lat, 1e-6)
-        assertEquals(121.4003, detail.points[3].lon, 1e-6)
+        assertEquals(5, detail.points.size)
+        assertEquals(30.26091166, detail.points[0].lat, 1e-8)
+        assertEquals(120.12749833, detail.points[0].lon, 1e-8)
+        // The step is added to the previous fix, not read as a coordinate.
+        assertEquals(30.26091033, detail.points[1].lat, 1e-8)
+        assertEquals(120.12749833, detail.points[1].lon, 1e-8)
+        assertEquals(30.26091067, detail.points[3].lat, 1e-8)
+        assertEquals(120.12749866, detail.points[3].lon, 1e-8)
+        // The track stays a few metres wide instead of spanning the globe.
+        assertTrue(detail.points.maxOf { it.lat } - detail.points.minOf { it.lat } < 0.001)
         assertTrue(detail.fields.any { it.first == "heart_rate" })
+    }
+
+    @Test
+    fun bloodPressureReadsBothNamingStyles() {
+        val payload = JSONObject(
+            """
+            {"items":[
+              {"timestamp":1795000000000,"systolic":118,"diastolic":76},
+              {"time":1795003600,"sbp":142,"dbp":91},
+              {"timestamp":1795007200000,"value":"121/79"}
+            ]}
+            """.trimIndent()
+        )
+        val readings = HealthParser.parseBloodPressure(payload)
+        assertEquals(3, readings.size)
+        assertEquals(118, readings[0].systolic)
+        assertEquals(76, readings[0].diastolic)
+        // Seconds are widened to milliseconds.
+        assertEquals(1795003600000L, readings[1].epochMs)
+        assertEquals(BloodPressureBand.HIGH, readings[1].band)
+        assertEquals(121, readings[2].systolic)
+        assertEquals(BloodPressureBand.NORMAL, readings[0].band)
+    }
+
+    @Test
+    fun bloodPressureDropsImpossibleReadings() {
+        val payload = JSONObject(
+            """
+            {"items":[
+              {"timestamp":1795000000000,"systolic":0,"diastolic":0},
+              {"timestamp":1795000600000,"systolic":70,"diastolic":95}
+            ]}
+            """.trimIndent()
+        )
+        assertTrue(HealthParser.parseBloodPressure(payload).isEmpty())
     }
 
     @Test

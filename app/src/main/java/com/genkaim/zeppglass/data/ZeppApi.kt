@@ -249,6 +249,13 @@ class ZeppApi(
         "/v1/sport/run/detail.json",
         mapOf("trackid" to trackId, "source" to source)
     )
+
+    /**
+     * Blood pressure, the `health_data` / `blood_pressure` stream. A personal
+     * account usually has none; the card then shows `--`.
+     */
+    fun bloodPressure(userId: String, fromMs: Long, toMs: Long): JSONObject =
+        events(userId, "health_data", "blood_pressure", fromMs, toMs, 2000)
 }
 
 class ZeppException(val code: Int, message: String) : Exception(message)

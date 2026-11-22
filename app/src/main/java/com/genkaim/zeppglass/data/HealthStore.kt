@@ -238,6 +238,7 @@ class HealthStore private constructor(
         var dailyHealth: JSONObject? = null
         var respiration: JSONObject? = null
         var nightBreathing: JSONObject? = null
+        var bloodPressure: JSONObject? = null
 
         val today = LocalDate.now(zone)
         val start = today.minusDays(34)
@@ -362,10 +363,21 @@ class HealthStore private constructor(
                     )
                 }.onSuccess { workouts = it }.onFailure { warnings.add("运动：${it.friendly()}") }
             }
+            // Blood pressure has its own stream and is almost always empty on a
+            // personal account; a failure there must not turn into a warning.
+            val bloodPressureJob = async {
+                runCatching {
+                    api.bloodPressure(
+                        userId,
+                        today.minusDays(365).atStartOfDay(zone).toInstant().toEpochMilli(),
+                        today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+                    )
+                }.onSuccess { bloodPressure = it }
+            }
             listOf(
                 profileJob, readinessJob, paiJob, stressJob, spO2Job, chargeJob, loadJob, vo2Job,
                 weightJob, workoutJob, hrvJob, dailyHealthJob, respirationJob,
-                nightBreathingJob
+                nightBreathingJob, bloodPressureJob
             ).forEach { it.await() }
             bandJobs.forEach { it.await() }
         }
@@ -440,6 +452,8 @@ class HealthStore private constructor(
             nightBreathing = nightBreathing?.let { HealthParser.parseNightBreathing(it, zone) }
                 .orEmpty().ifEmpty { previous?.nightBreathing.orEmpty() },
             vo2Max = vo2?.let { HealthParser.parseVo2Max(it) } ?: previous?.vo2Max,
+            bloodPressure = bloodPressure?.let { HealthParser.parseBloodPressure(it) }
+                .orEmpty().ifEmpty { previous?.bloodPressure.orEmpty() },
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: previous?.body ?: BodyProfile(),
             warnings = warnings.distinct()
         ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, it.nights, zone)) }
@@ -496,6 +510,7 @@ class HealthStore private constructor(
         carrySection("dailyHealth", dailyHealth)
         carrySection("respiration", respiration)
         carrySection("nightBreathing", nightBreathing)
+        carrySection("bloodPressure", bloodPressure)
 
         withContext(Dispatchers.IO) {
             if (gen == generation) {
@@ -583,6 +598,8 @@ private fun readSnapshotFile(file: File, zone: ZoneId): HealthData? {
             nightBreathing = json.optJSONObject("nightBreathing")
                 ?.let { HealthParser.parseNightBreathing(it, zone) }.orEmpty(),
             vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
+            bloodPressure = json.optJSONObject("bloodPressure")
+                ?.let { HealthParser.parseBloodPressure(it) }.orEmpty(),
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: BodyProfile(),
             heartRate = parsed.flatMap { it.heartRate }.distinctBy { it.first }.sortedBy { it.first }
         ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, it.nights, zone)) }

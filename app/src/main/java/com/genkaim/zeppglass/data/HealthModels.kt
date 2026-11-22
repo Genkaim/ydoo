@@ -271,6 +271,31 @@ data class Workout(
 data class GeoPoint(val lat: Double, val lon: Double)
 
 /**
+ * One blood-pressure reading, in mmHg. The account's readings arrive from the
+ * `health_data` / `blood_pressure` stream; when there are none the card and its
+ * page show `--` rather than inventing a plausible 120/80.
+ */
+data class BloodPressure(
+    val epochMs: Long,
+    val systolic: Int,
+    val diastolic: Int
+) {
+    /**
+     * The three bands the official app colours by. Systolic decides unless the
+     * diastolic is already in a higher band (a 118/95 is not "正常").
+     */
+    val band: BloodPressureBand
+        get() = when {
+            systolic >= 140 || diastolic >= 90 -> BloodPressureBand.HIGH
+            systolic >= 120 || diastolic >= 80 -> BloodPressureBand.ELEVATED
+            else -> BloodPressureBand.NORMAL
+        }
+}
+
+enum class BloodPressureBand { NORMAL, ELEVATED, HIGH }
+
+
+/**
  * A per-second series from the workout detail payload. The payload stores each
  * metric as "count,value;" runs (heart rate as second-to-second deltas), so the
  * parser expands it into one value per second from the workout start.
@@ -347,6 +372,8 @@ data class HealthData(
     val nightBreathing: List<NightBreathing> = emptyList(),
     /** Watch's latest VO2 max, independent of the 34-day page window. */
     val vo2Max: Int? = null,
+    /** Blood-pressure readings (mmHg), newest last. Usually empty. */
+    val bloodPressure: List<BloodPressure> = emptyList(),
     val body: BodyProfile = BodyProfile(),
     val warnings: List<String> = emptyList()
 ) {
@@ -387,6 +414,16 @@ data class HealthData(
     fun respirationOn(date: LocalDate): Double? = respiration.lastOrNull { it.date == date }?.value
 
     fun breathingOn(date: LocalDate): NightBreathing? = nightBreathing.lastOrNull { it.date == date }
+
+    fun latestBloodPressure(): BloodPressure? = bloodPressure.maxByOrNull { it.epochMs }
+
+    /** Readings of one calendar day, oldest first. */
+    fun bloodPressureOn(
+        date: LocalDate,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): List<BloodPressure> = bloodPressure.filter {
+        java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() == date
+    }
 }
 
 /**

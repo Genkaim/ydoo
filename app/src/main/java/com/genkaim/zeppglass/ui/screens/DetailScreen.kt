@@ -2630,37 +2630,57 @@ private fun recoveryHeart(workout: Workout, samples: List<Pair<Long, Int>>): Rec
 @Composable
 private fun RecoveryHeartCards(recovery: RecoveryHeart) {
     val tint = MaterialTheme.colorScheme.tertiary
+    val first = recovery.values.firstOrNull()
+    val last = recovery.values.lastOrNull()
     FlatPanel {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(vertical = 14.dp, horizontal = 12.dp)
         ) {
-            recovery.minutes.forEachIndexed { index, minute ->
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Favorite,
-                    if (minute == 0) "结束" else "$minute 分钟",
-                    recovery.values[index]?.toString() ?: "--",
-                    tint,
-                    unit = "bpm"
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                recovery.minutes.forEachIndexed { index, minute ->
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.Favorite,
+                        String.format("%02d:00", minute),
+                        recovery.values[index]?.toString() ?: "--",
+                        tint,
+                        unit = "bpm"
+                    )
+                }
+            }
+            // The three-minute drop is the number people actually read off this
+            // screen: how far the heart came down after the session stopped.
+            if (first != null && last != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (first - last > 0) "↘ ${first - last} 次/分" else "↗ ${last - first} 次/分（没有下降）",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (first - last > 0) tint else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
                 )
             }
         }
     }
     FlatPanel {
         if (recovery.values.count { it != null } >= 2) {
-            TrendLineChart(
+            val valid = recovery.values.filterNotNull()
+            AxisLineChart(
                 values = recovery.values.map { it?.toFloat() },
-                labels = recovery.minutes.map { "$it 分" },
+                labels = recovery.minutes.map { String.format("%02d:00", it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
                     .height(150.dp),
                 color = tint,
-                suggestedStep = 10f
+                minValue = (valid.min() / 10f).toInt() * 10f - 10f,
+                maxValue = (valid.max() / 10f).toInt() * 10f + 10f
             )
         } else {
             Text(
@@ -2686,8 +2706,9 @@ private fun HeartZoneCard(workout: Workout) {
     val seconds = workout.hrZoneSeconds
     val limits = workout.hrZoneLimits
     if (seconds.size < 3 || limits.size != seconds.size || seconds.sum() <= 0) return
-    val names = listOf("轻度", "强化", "有氧", "无氧", "最大摄氧", "极限")
+    val names = listOf("放松", "热身", "有氧耐力", "心肺强化", "耐力强化", "无氧极限")
     val longest = seconds.max().coerceAtLeast(1)
+    val total = seconds.sum().coerceAtLeast(1)
     val tint = MaterialTheme.colorScheme.primary
     val track = LocalZgPalette.current.grid
     FlatPanel {
@@ -2697,8 +2718,11 @@ private fun HeartZoneCard(workout: Workout) {
         ) {
             Text("心率区间", style = MaterialTheme.typography.titleSmall)
             seconds.forEachIndexed { index, value ->
-                val low = if (index == 0) null else limits[index - 1] + 1
-                val band = if (low == null) "≤${limits[index]}" else "$low–${limits[index]}"
+                val band = when {
+                    index == 0 -> "＜${limits[index]}"
+                    index == seconds.lastIndex -> "${limits[index - 1]}–${limits[index]}"
+                    else -> "${limits[index - 1]}–${limits[index] - 1}"
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         names.getOrElse(index) { "Z${index + 1}" },
@@ -2728,6 +2752,13 @@ private fun HeartZoneCard(workout: Workout) {
                             )
                         }
                     }
+                    Text(
+                        "${value * 100 / total}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.width(36.dp)
+                    )
                     Text(
                         Fmt.duration(value),
                         style = MaterialTheme.typography.labelSmall,

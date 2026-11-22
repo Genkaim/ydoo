@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.GeoPoint
@@ -66,9 +67,11 @@ fun RoutePath(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = constraints.maxWidth.toFloat()
             val height = constraints.maxHeight.toFloat()
+            // Room for the finish flag, which stands above its point.
+            val padding = with(LocalDensity.current) { 20.dp.toPx() }
             if (points.size >= 2 && width > 0f && height > 0f && width != Int.MAX_VALUE.toFloat()) {
-                val shape = remember(points, width, height) {
-                    fitPath(points, width, height, padding = 24f)
+                val shape = remember(points, width, height, padding) {
+                    fitPath(points, width, height, padding)
                 }
                 Canvas(Modifier.fillMaxSize()) {
                     drawTrack(shape, ramp, startColor, endColor)
@@ -284,8 +287,42 @@ private fun DrawScope.drawTrack(
     val end = shape.points.last()
     drawCircle(Color.White, radius = 6.dp.toPx(), center = start)
     drawCircle(startColor, radius = 4.dp.toPx(), center = start)
-    drawCircle(Color.White, radius = 6.dp.toPx(), center = end)
-    drawCircle(endColor, radius = 4.dp.toPx(), center = end)
+    // The finish is a small flag planted on the last fix.
+    drawFlag(end, endColor)
+}
+
+/** A little flag at the finish: pole on the point, pennant to the right. */
+private fun DrawScope.drawFlag(at: Offset, color: Color) {
+    val height = 15.dp.toPx()
+    val width = 9.dp.toPx()
+    val top = Offset(at.x, at.y - height)
+    val pennant = Path().apply {
+        moveTo(top.x, top.y)
+        lineTo(top.x + width, top.y + width * 0.42f)
+        lineTo(top.x, top.y + width * 0.84f)
+        close()
+    }
+    // White first, then colour: the flag stays visible on any part of the page.
+    drawLine(
+        Color.White,
+        start = at,
+        end = top,
+        strokeWidth = 2.dp.toPx() + 2.5.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        color,
+        start = at,
+        end = top,
+        strokeWidth = 2.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+    drawPath(
+        pennant,
+        Color.White,
+        style = Stroke(3.dp.toPx(), join = StrokeJoin.Round, cap = StrokeCap.Round)
+    )
+    drawPath(pennant, color)
 }
 
 /**

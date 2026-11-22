@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -51,6 +53,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -126,7 +129,8 @@ fun RouteMap(
                     color = attribution.copy(alpha = 0.75f),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(6.dp)
+                        // Clear of the 32 dp corner, not tucked into it.
+                        .padding(end = 16.dp, bottom = 12.dp)
                 )
             }
         }
@@ -221,7 +225,8 @@ fun FullscreenRouteMap(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(10.dp)
+                .navigationBarsPadding()
+                .padding(end = 20.dp, bottom = 16.dp)
         )
     }
 }
@@ -262,33 +267,28 @@ private fun DrawScope.drawRoute(
     val projected = points.map(::project)
     if (projected.size < 2) return
 
-    // GPS fixes arrive once a second with a metre of jitter, so a plain
-    // lineTo per point draws a sawtooth. Each fix becomes the control point of
-    // a quadratic curve that ends halfway to the next one: the line runs
-    // smoothly through the real positions instead of shaking around them.
-    val path = Path()
-    path.moveTo(projected.first().x, projected.first().y)
-    if (projected.size == 2) {
-        path.lineTo(projected[1].x, projected[1].y)
-    } else {
-        for (i in 1 until projected.lastIndex) {
-            val current = projected[i]
-            val next = projected[i + 1]
-            path.quadraticBezierTo(
-                current.x,
-                current.y,
-                (current.x + next.x) / 2f,
-                (current.y + next.y) / 2f
-            )
+    // GPS fixes arrive once a second with a metre or two of jitter, and drawing
+    // them as-is is what made the line look rough. Three passes: drop points
+    // that are closer than a couple of pixels (they only add noise), then run
+    // Chaikin twice, which cuts every corner and leaves a curve that follows the
+    // real path without the shivering.
+    val minStep = 2.dp.toPx()
+    val thinned = ArrayList<Offset>(projected.size)
+    var lastKept = projected.first()
+    thinned.add(lastKept)
+    for (i in 1 until projected.size) {
+        val point = projected[i]
+        if (i == projected.lastIndex || (point - lastKept).getDistance() >= minStep) {
+            thinned.add(point)
+            lastKept = point
         }
-        val last = projected.last()
-        path.quadraticBezierTo(
-            projected[projected.lastIndex - 1].x,
-            projected[projected.lastIndex - 1].y,
-            last.x,
-            last.y
-        )
     }
+    var smooth: List<Offset> = thinned
+    repeat(2) { smooth = chaikin(smooth) }
+
+    val path = Path()
+    path.moveTo(smooth.first().x, smooth.first().y)
+    for (i in 1 until smooth.size) path.lineTo(smooth[i].x, smooth[i].y)
 
     // White halo first: a thin coloured line disappears over dark map features.
     drawPath(
@@ -310,6 +310,24 @@ private fun DrawScope.drawRoute(
 }
 
 /**
+ * One Chaikin pass: every segment is replaced by two points a quarter and three
+ * quarters along it, which rounds off the corners without moving the end points.
+ */
+private fun chaikin(source: List<Offset>): List<Offset> {
+    if (source.size < 3) return source
+    val out = ArrayList<Offset>(source.size * 2)
+    out.add(source.first())
+    for (i in 0 until source.size - 1) {
+        val a = source[i]
+        val b = source[i + 1]
+        out.add(Offset(a.x * 0.75f + b.x * 0.25f, a.y * 0.75f + b.y * 0.25f))
+        out.add(Offset(a.x * 0.25f + b.x * 0.75f, a.y * 0.25f + b.y * 0.75f))
+    }
+    out.add(source.last())
+    return out
+}
+
+/**
  * One zoom level, the tiles it needs, and where the canvas sits in the world's
  * flattened pixel plane. Everything is pre-computed so drawing is a plain
  * subtraction per point. [scale] is the fraction between [zoom] and the next
@@ -324,7 +342,8 @@ private class MapPlan(
     val originY: Float
 ) {
     companion object {
-        private const val MAX_TILES = 24
+        /** At most a 4×3 block for one card: every tile is a call. */
+        private const val MAX_TILES = 12
 
         fun fit(points: List<GeoPoint>, width: Float, height: Float): MapPlan {
             val (center, fitted) = fitCamera(points, width, height)
@@ -436,47 +455,74 @@ private val darkTiles: ColorFilter by lazy {
 }
 
 /**
- * Tiles already downloaded this session. A screen-level cache is enough: the
- * same run is usually reopened once, and a handful of tiles is a few hundred
- * kilobytes.
+ * Tiles already decoded. Kept for the whole process: reopening a run, or panning
+ * back to where you were, must not cost another 天地图 call.
  */
-private val tileCache = object : android.util.LruCache<String, ImageBitmap>(128) {}
+private val tileCache = object : android.util.LruCache<String, ImageBitmap>(192) {}
 
-private val tileClient: OkHttpClient by lazy {
-    OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .callTimeout(12, TimeUnit.SECONDS)
-        .build()
+/**
+ * One HTTP client for tiles, with a disk cache. 天地图 answers with
+ * `cache-control: max-age=432000`, so a tile seen once is served locally for
+ * five days — the cheapest optimisation there is for the daily quota.
+ */
+@Volatile
+private var tileClient: OkHttpClient? = null
+private val tileClientLock = Any()
+
+private fun tileClient(context: android.content.Context): OkHttpClient {
+    tileClient?.let { return it }
+    synchronized(tileClientLock) {
+        tileClient?.let { return it }
+        val cache = okhttp3.Cache(
+            java.io.File(context.cacheDir, "map-tiles"),
+            32L * 1024 * 1024
+        )
+        val built = OkHttpClient.Builder()
+            .cache(cache)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(12, TimeUnit.SECONDS)
+            .build()
+        tileClient = built
+        return built
+    }
 }
 
 /**
- * Downloads the plan's tiles — the base map and its place-name layer. Failures
- * are silent: the map simply stays blank under the route, which is readable on
- * its own.
+ * Downloads the plan's tiles — the base map and its place-name layer.
+ *
+ * Two things keep the call count down: a short debounce, so a drag does not
+ * fire a request per frame, and a merge with what is already on screen, so
+ * panning back over seen ground costs nothing.
  */
 @Composable
 private fun rememberTiles(
     zoom: Int,
     keys: List<Pair<Int, Int>>
 ): TileSet {
+    val context = LocalContext.current
     var tiles by remember { mutableStateOf(TileSet(emptyMap(), emptyMap())) }
     LaunchedEffect(zoom, keys) {
+        // The user is still moving: wait for the camera to settle.
+        delay(220)
+        val known = tiles
+        val missing = keys.filter { it !in known.base || it !in known.labels }
+        if (missing.isEmpty()) return@LaunchedEffect
         val loaded = withContext(Dispatchers.IO) {
             coroutineScope {
-                keys.map { key ->
+                missing.map { key ->
                     async {
                         key to (
-                            loadTile(zoom, key.first, key.second, LAYER_MAP) to
-                                loadTile(zoom, key.first, key.second, LAYER_LABELS)
+                            loadTile(context, zoom, key.first, key.second, LAYER_MAP) to
+                                loadTile(context, zoom, key.first, key.second, LAYER_LABELS)
                             )
                     }
                 }.awaitAll()
             }
         }
         tiles = TileSet(
-            base = loaded.mapNotNull { (key, pair) -> pair.first?.let { key to it } }.toMap(),
-            labels = loaded.mapNotNull { (key, pair) -> pair.second?.let { key to it } }.toMap()
+            base = known.base + loaded.mapNotNull { (key, pair) -> pair.first?.let { key to it } },
+            labels = known.labels + loaded.mapNotNull { (key, pair) -> pair.second?.let { key to it } }
         )
     }
     return tiles
@@ -491,29 +537,48 @@ private class TileSet(
 /**
  * One 天地图 WMTS tile. `vec` is the road map, `cva` the labels drawn over it;
  * both live in the `w` (web-mercator, 256 px) tile matrix set.
+ *
+ * The label layer only starts at zoom 14: below that the names are an illegible
+ * smear and every extra tile is another call against the daily quota.
  */
-private fun loadTile(zoom: Int, x: Int, y: Int, layer: String): ImageBitmap? {
+private fun loadTile(
+    context: android.content.Context,
+    zoom: Int,
+    x: Int,
+    y: Int,
+    layer: String
+): ImageBitmap? {
     val z = zoom.coerceIn(1, 18)
+    if (layer == LAYER_LABELS && z < 14) return null
     val key = "$layer/$z/$x/$y"
     tileCache.get(key)?.let { return it }
-    return runCatching {
-        // Eight subdomains; the key is the user's own, issued by 天地图.
-        val server = "t${(x + y) % 8}.tianditu.gov.cn"
-        val request = Request.Builder()
-            .url(
-                "https://$server/${layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
-                    "&LAYER=$layer&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles" +
-                    "&TILEMATRIX=$z&TILEROW=$y&TILECOL=$x&tk=$TIANDITU_KEY"
-            )
-            .header("User-Agent", "ydoo/0.2.6 (Android ${Build.VERSION.RELEASE})")
-            .build()
-        tileClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val bytes = response.body?.bytes() ?: return null
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            bitmap.asImageBitmap().also { tileCache.put(key, it) }
+    // Two attempts: the service occasionally drops one of a burst, and a hole
+    // in the map is worse than a second request that hits the disk cache next time.
+    repeat(2) { attempt ->
+        val bitmap = runCatching {
+            // Eight subdomains; the key is the user's own, issued by 天地图.
+            val server = "t${(x + y) % 8}.tianditu.gov.cn"
+            val request = Request.Builder()
+                .url(
+                    "https://$server/${layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" +
+                        "&LAYER=$layer&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles" +
+                        "&TILEMATRIX=$z&TILEROW=$y&TILECOL=$x&tk=$TIANDITU_KEY"
+                )
+                .header("User-Agent", "ydoo/0.2.6 (Android ${Build.VERSION.RELEASE})")
+                .build()
+            tileClient(context).newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val bytes = response.body?.bytes() ?: return@use null
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }
+        }.getOrNull()
+        if (bitmap != null) {
+            tileCache.put(key, bitmap)
+            return bitmap
         }
-    }.getOrNull()
+        if (attempt == 0) Thread.sleep(120)
+    }
+    return null
 }
 
 /** 天地图 key: bound to this app's package name and signing certificate. */

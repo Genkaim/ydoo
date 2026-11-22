@@ -1652,7 +1652,7 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                         .padding(vertical = 18.dp, horizontal = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "身体得分",
@@ -1673,12 +1673,22 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
-                        if (scoreVerdict != null) {
-                            Text(
-                                scoreVerdict.first,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = scoreVerdict.second
-                            )
+                        // Both columns reserve the same line for their verdict,
+                        // even when one has nothing to say: the two numbers then
+                        // sit at the same height instead of one drifting down.
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (scoreVerdict != null) {
+                                Text(
+                                    scoreVerdict.first,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scoreVerdict.second
+                                )
+                            }
                         }
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1701,17 +1711,24 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
-                        if (bodyAge != null && actualAge != null) {
-                            Text(
-                                if (bodyAge < 18) "低于 18 岁"
-                                else when {
-                                    bodyAge < actualAge -> "比实际小 ${actualAge - bodyAge} 岁"
-                                    bodyAge > actualAge -> "比实际大 ${bodyAge - actualAge} 岁"
-                                    else -> "与实际年龄相同"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (bodyAge != null && actualAge != null) {
+                                Text(
+                                    if (bodyAge < 18) "低于 18 岁"
+                                    else when {
+                                        bodyAge < actualAge -> "比实际小 ${actualAge - bodyAge} 岁"
+                                        bodyAge > actualAge -> "比实际大 ${bodyAge - actualAge} 岁"
+                                        else -> "与实际年龄相同"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

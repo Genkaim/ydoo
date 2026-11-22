@@ -88,6 +88,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -193,7 +194,13 @@ fun DetailScreen(
     // the track read as arriving together rather than snapping in one by one.
     val reveal = remember { Animatable(if (target.kind == DetailKind.WORKOUT) 0f else 1f) }
     LaunchedEffect(target.kind) {
-        if (target.kind == DetailKind.WORKOUT) reveal.animateTo(1f, tween(WORKOUT_FADE_MS))
+        if (target.kind == DetailKind.WORKOUT) {
+            // Start on the first frame that is actually drawn. On a cold open the
+            // composition runs well before the window shows, so a fade begun
+            // there is already over by the time the page becomes visible.
+            withFrameNanos { }
+            reveal.animateTo(1f, tween(WORKOUT_FADE_MS))
+        }
     }
 
     // The workout detail is loaded here, not inside the page content: the track

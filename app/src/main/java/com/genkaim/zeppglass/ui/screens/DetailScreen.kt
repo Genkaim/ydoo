@@ -2595,12 +2595,6 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
         ?: zones.first()
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(4.dp))
         Box(
             Modifier
                 .fillMaxWidth()
@@ -2750,6 +2744,13 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                 )
             }
         }
+        Spacer(Modifier.height(6.dp))
+        // 有氧 / 无氧 names the ring, not the reading, so it sits under it.
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

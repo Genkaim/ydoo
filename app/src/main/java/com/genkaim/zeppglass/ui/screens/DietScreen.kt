@@ -447,6 +447,16 @@ fun DietDetail(
         }
         cursor = cursor.plusDays(1)
     }
+    // Today has not settled yet — an under-target day can still be eaten up — but
+    // an overage is final the moment it happens, so it comes off the week now.
+    run {
+        val logged = DietStore.mealsOn(currentLogicalDay)
+        val budget = DietStore.calorieTarget(data, currentLogicalDay, goal)
+        if (logged.isNotEmpty() && budget != null) {
+            val over = logged.sumOf { it.calories } - budget
+            if (over > 0) weekDeficit -= over
+        }
+    }
     val activeCalories = data?.day(today)?.calories
 
     // Only 减脂 has anything to "save": with 维持 the target is maintenance and
@@ -703,7 +713,8 @@ fun DietDetail(
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "本周节省从周一起算：每天（可用 − 已摄入）相加；一天要等次日 05:00 之后才结算，所以当天不会随时变动；没记录的天不当作缺口。",
+                "本周节省从周一起算：每天（可用 − 已摄入）相加；没吃超的日子要等次日 05:00 之后才结算，所以当天不会随时变动；" +
+                    "当天已经吃超的部分会立即从本周节省里扣掉。没记录的天不当作缺口。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

@@ -179,12 +179,12 @@ private fun fitPath(
     // Two Chaikin passes round every corner. They run on the projected points,
     // and each new point carries an interpolated speed, so the colours follow
     // the same curve the line does.
-    val thinned = thin(projected, speed, minStep = 1.4f)
+    val thinned = thin(projected, speed, minStep = 2f)
     var smoothPoints: List<Offset> = thinned.first
     var smoothSpeed: List<Float> = thinned.second
-    // Three passes: the second already removes most of the shiver, the third
-    // turns what is left into a clean flowing line.
-    repeat(3) {
+    // Four passes: every corner is cut again, so the line flows instead of
+    // stepping from fix to fix.
+    repeat(4) {
         if (smoothPoints.size >= 3) {
             val nextPoints = ArrayList<Offset>(smoothPoints.size * 2)
             val nextSpeed = ArrayList<Float>(smoothPoints.size * 2)
@@ -260,7 +260,7 @@ private fun DrawScope.drawTrack(
     // A line per pair of fixes, each in its own speed colour. Round caps make
     // the joints seamless. No white halo: the track is meant to sit on the page
     // as a thin coloured line, not as an outlined ribbon.
-    val stroke = 3.2.dp.toPx()
+    val stroke = 4.6.dp.toPx()
     // Eight colour bins instead of one path per segment: thousands of single
     // strokes would stutter while the page scrolls. Each bin keeps its own last
     // segment index — without it, a bin that is used again later would draw a
@@ -340,14 +340,17 @@ private fun DrawScope.drawFinishBadge(at: Offset, color: Color) {
  * reads as part of the track rather than a marker sitting on top of it.
  */
 private fun DrawScope.drawArrows(points: List<Offset>) {
-    if (points.size < 8) return
+    if (points.size < 12) return
     val fractions = listOf(0.18f, 0.42f, 0.66f, 0.88f)
-    val size = 4.2.dp.toPx()
-    val strokeWidth = 1.5.dp.toPx()
+    val size = 6.5.dp.toPx()
+    val strokeWidth = 1.9.dp.toPx()
     for (fraction in fractions) {
-        val index = (points.size * fraction).toInt().coerceIn(1, points.lastIndex - 1)
-        val from = points[index - 1]
-        val to = points[index + 1]
+        val index = (points.size * fraction).toInt().coerceIn(6, points.lastIndex - 6)
+        // Tangent over a short window, not the single neighbouring pair: on a
+        // smoothed curve two adjacent points are almost the same spot, and the
+        // arrow would wobble instead of following the line's direction.
+        val from = points[index - 6]
+        val to = points[index + 6]
         val dx = to.x - from.x
         val dy = to.y - from.y
         val length = kotlin.math.sqrt(dx * dx + dy * dy)

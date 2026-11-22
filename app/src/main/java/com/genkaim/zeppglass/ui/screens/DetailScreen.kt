@@ -2281,13 +2281,18 @@ private fun TrackWithScrollBlur(points: List<GeoPoint>, scroll: ScrollState) {
             .fillMaxWidth()
             .height(260.dp)
             .graphicsLayer {
-                // "Backwards" as the page moves: shrink a touch, fade out, and
-                // let the blur take over where the platform supports it.
-                scaleX = 1f - 0.04f * progress
-                scaleY = 1f - 0.04f * progress
-                alpha = 1f - 0.72f * progress
+                // Reads the scroll inside the layer, so dragging moves the map
+                // without recomposing the page.
+                val p = progress
+                val shrink = 1f - 0.12f * p
+                scaleX = shrink
+                scaleY = shrink
+                // It trails the finger instead of scrolling away at the same
+                // speed: down a little, smaller, and then it fades back.
+                translationY = 30.dp.toPx() * p
+                alpha = 1f - 0.62f * p
             }
-            .blur((14f * progress).dp)
+            .blur((8f * progress).dp)
     )
 }
 
@@ -2346,6 +2351,9 @@ private fun WorkoutDetail(
     // GPS simply have no track.
     detail?.points?.takeIf { it.size >= 2 }?.let { points ->
         TrackWithScrollBlur(points = points, scroll = scroll)
+        // A little air under the track: it is a picture, not a card, and the
+        // numbers below should not crowd it.
+        Spacer(Modifier.height(10.dp))
     }
 
     // The three numbers people look for first, laid out like the heart-rate

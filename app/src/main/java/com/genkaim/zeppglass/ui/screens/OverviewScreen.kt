@@ -241,9 +241,13 @@ fun OverviewScreen(
         if (start.toInstant().toEpochMilli() > nowMs) start = start.minusDays(1)
         start.toInstant().toEpochMilli()
     }
+    // Do not write the day's summary before the night itself has arrived: at
+    // 06:00 the watch may still be uploading, and a summary written then would
+    // describe yesterday's sleep and stay on the card all day.
+    val sleepReadyForSummary = raw == null || raw.nights.isEmpty() || raw.nightOn(today) != null
     val summaryDataReady = raw != null &&
         !state.loading && !state.refreshing &&
-        raw.fetchedAt >= logicalDayStartMs
+        raw.fetchedAt >= logicalDayStartMs && sleepReadyForSummary
     LaunchedEffect(summaryDataReady, raw?.fetchedAt, settings.aiApiKey, isToday) {
         if (summaryDataReady && isToday && settings.aiApiKey.isNotBlank()) {
             DailySummary.ensureToday(settings, raw)

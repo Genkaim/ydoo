@@ -1726,7 +1726,7 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                                         else -> "与实际年龄相同"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = ink
                                 )
                             }
                         }

@@ -264,7 +264,16 @@ data class Workout(
     /** Aerobic training effect, 0–5 on the watch's own scale. */
     val aerobicTe: Double? = null,
     /** Anaerobic training effect, same 0–5 scale. */
-    val anaerobicTe: Double? = null
+    val anaerobicTe: Double? = null,
+    /**
+     * Seconds spent in each of the watch's six heart-rate zones, in zone order
+     * (轻度 → 极限). The summary carries it as `heart_range`
+     * ("seconds,upperBpm;" repeated), so a zone's upper edge is the number that
+     * came with its seconds. Empty when the watch reported no zones.
+     */
+    val hrZoneSeconds: List<Int> = emptyList(),
+    /** Upper heart-rate edge of each zone, same order as [hrZoneSeconds]. */
+    val hrZoneLimits: List<Int> = emptyList()
 ) {
     val name: String get() = SportTypes.label(typeCode)
     val paceSecPerKm: Double?

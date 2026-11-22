@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -2549,11 +2550,82 @@ private fun WorkoutDetail(
                 color = tint
             )
         }
+        // Where the session sat on the watch's HR scale. The summary carries the
+        // zone seconds even when the per-second curve is missing, so this card
+        // can stand on its own.
+        if (line.label == "心率") HeartZoneCard(workout)
     }
 
     // Every remaining raw field the detail payload carried, with the keys that
     // have a known meaning translated. Unknown keys are still shown under their
     // own name, so a new watch metric appears without a code change.
+}
+
+/**
+ * 心率区间: how long the session stayed in each of the watch's six zones.
+ *
+ * The summary sends only seconds and each zone's upper bpm — no names — so the
+ * bpm band is rebuilt from the neighbouring limit, and the bars are scaled to
+ * the longest zone rather than to the total: the point is which zone dominated,
+ * and a share of total would make every bar look short.
+ */
+@Composable
+private fun HeartZoneCard(workout: Workout) {
+    val seconds = workout.hrZoneSeconds
+    val limits = workout.hrZoneLimits
+    if (seconds.size < 3 || limits.size != seconds.size || seconds.sum() <= 0) return
+    val names = listOf("轻度", "强化", "有氧", "无氧", "最大摄氧", "极限")
+    val longest = seconds.max().coerceAtLeast(1)
+    val tint = MaterialTheme.colorScheme.primary
+    val track = LocalZgPalette.current.grid
+    FlatPanel {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("心率区间", style = MaterialTheme.typography.titleSmall)
+            seconds.forEachIndexed { index, value ->
+                val low = if (index == 0) null else limits[index - 1] + 1
+                val band = if (low == null) "≤${limits[index]}" else "$low–${limits[index]}"
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        names.getOrElse(index) { "Z${index + 1}" },
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.width(56.dp)
+                    )
+                    Text(
+                        band,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(72.dp)
+                    )
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(track)
+                    ) {
+                        if (value > 0) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(value.toFloat() / longest)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(tint)
+                            )
+                        }
+                    }
+                    Text(
+                        Fmt.duration(value),
+                        style = MaterialTheme.typography.labelSmall,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.width(48.dp)
+                    )
+                }
+            }
+        }
+    }
 }
 
 /** One tile of the workout grid: what it is called, the reading, its unit. */

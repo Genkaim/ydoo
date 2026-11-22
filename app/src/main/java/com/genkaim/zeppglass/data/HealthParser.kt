@@ -634,6 +634,11 @@ object HealthParser {
             val end = item.anyNumber("end_time")?.toLong() ?: continue
             val duration = (item.anyNumber("run_time") ?: item.anyNumber("total_time") ?: 0.0).toInt()
             val distance = item.anyNumber("dis") ?: 0.0
+            // "162,100;0,120;…": seconds in the zone, then that zone's upper
+            // heart rate. E.g. a run with a 124 bpm max has 260 s in 101–120 and
+            // 66 s in 121–140 — checked against a real session, so the second
+            // number is the ceiling, not the floor.
+            val hrRange = parseHeartRange(item.anyString("heart_range"))
             out.add(
                 Workout(
                     id = item.anyString("trackid") ?: "$end-$i",
@@ -659,11 +664,35 @@ object HealthParser {
                     // aerobic first, then the anaerobic side of the same scale.
                     aerobicTe = item.anyNumber("te")?.div(10.0)?.takeIf { it in 0.0..5.0 },
                     anaerobicTe = item.anyNumber("anaerobic_te")?.div(10.0)
-                        ?.takeIf { it in 0.0..5.0 }
+                        ?.takeIf { it in 0.0..5.0 },
+                    hrZoneSeconds = hrRange.first,
+                    hrZoneLimits = hrRange.second
                 )
             )
         }
         return out.sortedByDescending { it.endEpochSec }
+    }
+
+    /**
+     * The workout summary's `heart_range` field: "seconds,upperBpm;" repeated
+     * once per zone. Only pairs that parse as two non-negative numbers are kept;
+     * a payload with fewer than three usable zones is treated as none, because
+     * one or two bars is not a distribution anyone can read.
+     */
+    private fun parseHeartRange(raw: String?): Pair<List<Int>, List<Int>> {
+        if (raw.isNullOrBlank()) return emptyList<Int>() to emptyList()
+        val seconds = mutableListOf<Int>()
+        val limits = mutableListOf<Int>()
+        for (chunk in raw.split(';')) {
+            val parts = chunk.split(',')
+            if (parts.size != 2) continue
+            val time = parts[0].trim().toIntOrNull() ?: continue
+            val limit = parts[1].trim().toIntOrNull() ?: continue
+            if (time < 0 || limit <= 0) continue
+            seconds.add(time)
+            limits.add(limit)
+        }
+        return if (seconds.size >= 3) seconds to limits else emptyList<Int>() to emptyList()
     }
 
     // ---------- workout detail (GPS + every raw field) ----------

@@ -266,7 +266,12 @@ fun StatBlock(
 }
 
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: String? = null) {
+fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    trailing: String? = null,
+    trailingContent: (@Composable () -> Unit)? = null
+) {
     Row(
         modifier
             .fillMaxWidth()
@@ -279,7 +284,9 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: String? 
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
         )
-        if (trailing != null) {
+        if (trailingContent != null) {
+            trailingContent()
+        } else if (trailing != null) {
             Text(
                 trailing,
                 style = MaterialTheme.typography.labelSmall,

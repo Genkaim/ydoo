@@ -284,45 +284,48 @@ private fun DrawScope.drawTrack(
     drawArrows(shape.points)
 
     val start = shape.points.first()
-    val end = shape.points.last()
     drawCircle(Color.White, radius = 6.dp.toPx(), center = start)
     drawCircle(startColor, radius = 4.dp.toPx(), center = start)
-    // The finish is a small flag planted on the last fix.
-    drawFlag(end, endColor)
+    // The finish is a checkered flag inside a disc, planted on the last fix.
+    drawFinishBadge(shape.points.last(), endColor)
 }
 
-/** A little flag at the finish: pole on the point, pennant to the right. */
-private fun DrawScope.drawFlag(at: Offset, color: Color) {
-    val height = 15.dp.toPx()
-    val width = 9.dp.toPx()
-    val top = Offset(at.x, at.y - height)
-    val pennant = Path().apply {
-        moveTo(top.x, top.y)
-        lineTo(top.x + width, top.y + width * 0.42f)
-        lineTo(top.x, top.y + width * 0.84f)
-        close()
+/**
+ * The end point: a filled disc with a little checkered finish flag in it. At
+ * this size the flag is a pole and a 3×2 checkerboard; the empty squares are the
+ * disc colour, which is what makes it read as a flag rather than a solid block.
+ */
+private fun DrawScope.drawFinishBadge(at: Offset, color: Color) {
+    val radius = 10.dp.toPx()
+    drawCircle(Color.White, radius = radius + 1.5.dp.toPx(), center = at)
+    drawCircle(color, radius = radius, center = at)
+
+    val poleHeight = 11.dp.toPx()
+    val poleX = at.x - 3.dp.toPx()
+    val top = at.y - poleHeight / 2f
+    drawLine(
+        Color.White,
+        start = Offset(poleX, top),
+        end = Offset(poleX, top + poleHeight),
+        strokeWidth = 1.6.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+
+    val square = 2.8.dp.toPx()
+    val flagLeft = poleX + 1.2.dp.toPx()
+    for (row in 0 until 2) {
+        for (col in 0 until 3) {
+            if ((row + col) % 2 != 0) continue
+            drawRect(
+                color = Color.White,
+                topLeft = Offset(
+                    flagLeft + col * square,
+                    top + row * square
+                ),
+                size = androidx.compose.ui.geometry.Size(square, square)
+            )
+        }
     }
-    // White first, then colour: the flag stays visible on any part of the page.
-    drawLine(
-        Color.White,
-        start = at,
-        end = top,
-        strokeWidth = 2.dp.toPx() + 2.5.dp.toPx(),
-        cap = StrokeCap.Round
-    )
-    drawLine(
-        color,
-        start = at,
-        end = top,
-        strokeWidth = 2.dp.toPx(),
-        cap = StrokeCap.Round
-    )
-    drawPath(
-        pennant,
-        Color.White,
-        style = Stroke(3.dp.toPx(), join = StrokeJoin.Round, cap = StrokeCap.Round)
-    )
-    drawPath(pennant, color)
 }
 
 /**

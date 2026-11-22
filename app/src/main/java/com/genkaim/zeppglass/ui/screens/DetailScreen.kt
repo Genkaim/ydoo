@@ -177,6 +177,21 @@ fun DetailScreen(
     val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
     val palette = LocalZgPalette.current
     var headerHeight by remember { mutableStateOf(0.dp) }
+
+    // The workout detail is loaded here, not inside the page content: the track
+    // is pinned above the scrolling column, and a payload that arrives after the
+    // first frame must not push the page around.
+    val workout = if (target.kind == DetailKind.WORKOUT) {
+        data?.workouts?.firstOrNull { it.id == target.workoutId }
+            ?: data?.workouts?.firstOrNull()
+    } else {
+        null
+    }
+    var workoutDetail by remember(workout?.id) { mutableStateOf<WorkoutDetail?>(null) }
+    LaunchedEffect(workout?.id) {
+        workoutDetail = workout?.let { store.loadWorkoutDetail(it) }
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -204,10 +219,15 @@ fun DetailScreen(
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
                 DetailKind.WORKOUT -> WorkoutDetail(
-                    data,
-                    target.workoutId,
-                    store,
-                    scrollState,
+                    workout = workout,
+                    detail = workoutDetail,
+                    // Before the payload lands, go by the summary: a session with
+                    // distance has a track, so its slot is held from frame one.
+                    showTrack = if (workoutDetail == null) {
+                        (workout?.distanceM ?: 0.0) > 0.0
+                    } else {
+                        (workoutDetail?.points?.size ?: 0) >= 2
+                    },
                     onOpenMore = {
                         onOpen(DetailTarget(DetailKind.WORKOUT_MORE, workoutId = target.workoutId))
                     }
@@ -232,6 +252,19 @@ fun DetailScreen(
                 DetailKind.BLOOD_PRESSURE -> BloodPressureDetail(data, target.date)
                 DetailKind.WORKOUT_MORE -> WorkoutMoreDetail(data, target.workoutId)
             }
+        }
+
+        // The track sits outside the scrolling column: the cards slide up under
+        // it while it shrinks and fades, so it never travels with the document.
+        val trackPoints = workoutDetail?.points.orEmpty()
+        if (target.kind == DetailKind.WORKOUT && trackPoints.size >= 2) {
+            PinnedTrack(
+                points = trackPoints,
+                scroll = scrollState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(start = 18.dp, end = 18.dp, top = headerHeight + 4.dp)
+            )
         }
 
         // Pinned header: opaque behind the title, the page colour fades out
@@ -2264,31 +2297,26 @@ private fun Spo2Detail(data: HealthData?, date: LocalDate?) {
 // ---------------- workout ----------------
 
 /**
- * The track, plus the swipe-up effect: as the page scrolls, the map part blurs
- * and fades into the header instead of sliding away as a hard shape. The blur
- * radius and alpha are derived from the scroll offset, and only this small
- * composable reads them, so the rest of the page does not recompose while a
- * finger moves.
+ * The track, pinned above the scrolling page: it does not travel with the
+ * document, it stays where it is while the cards slide up underneath, shrinking
+ * and fading back as if it were receding. Reading the scroll inside the layer
+ * keeps the page from recomposing while a finger moves.
  */
 @Composable
-private fun TrackWithScrollBlur(points: List<GeoPoint>, scroll: ScrollState) {
+private fun PinnedTrack(points: List<GeoPoint>, scroll: ScrollState, modifier: Modifier = Modifier) {
     val progress by remember {
         derivedStateOf { (scroll.value / 420f).coerceIn(0f, 1f) }
     }
     RoutePath(
         points = points,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(260.dp)
             .graphicsLayer {
-                // Reads the scroll inside the layer, so dragging moves the map
-                // without recomposing the page.
                 val p = progress
                 val shrink = 1f - 0.12f * p
                 scaleX = shrink
                 scaleY = shrink
-                // It trails the finger instead of scrolling away at the same
-                // speed: down a little, smaller, and then it fades back.
                 translationY = 30.dp.toPx() * p
                 alpha = 1f - 0.62f * p
             }
@@ -2298,14 +2326,11 @@ private fun TrackWithScrollBlur(points: List<GeoPoint>, scroll: ScrollState) {
 
 @Composable
 private fun WorkoutDetail(
-    data: HealthData?,
-    workoutId: String?,
-    store: HealthStore,
-    scroll: ScrollState,
+    workout: Workout?,
+    detail: WorkoutDetail?,
+    showTrack: Boolean,
     onOpenMore: () -> Unit
 ) {
-    val workout: Workout? = data?.workouts?.firstOrNull { it.id == workoutId }
-        ?: data?.workouts?.firstOrNull()
     if (workout == null) {
         Missing("还没有运动记录")
         return
@@ -2313,48 +2338,9 @@ private fun WorkoutDetail(
     val date = java.time.Instant.ofEpochSecond(workout.endEpochSec)
         .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
 
-    // The list payload has no track, so the detail is fetched once per workout.
-    var detail by remember(workout.id) { mutableStateOf<WorkoutDetail?>(null) }
-    var detailLoading by remember(workout.id) { mutableStateOf(true) }
-    LaunchedEffect(workout.id) {
-        detailLoading = true
-        detail = store.loadWorkoutDetail(workout)
-        detailLoading = false
-    }
-
-    // Nothing is drawn until the per-second payload is in hand: showing the
-    // tiles first and dropping the charts in a second later was the flicker.
-    if (detail == null && detailLoading) {
-        FlatPanel {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 40.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "正在读取这次运动的逐点数据…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        return
-    }
-
-    // The track leads the page: a run is a place before it is a table of
-    // numbers. It is drawn as a path — colour by speed, arrows for direction —
-    // with no base map, so nothing here needs a tile licence. Workouts without
-    // GPS simply have no track.
-    detail?.points?.takeIf { it.size >= 2 }?.let { points ->
-        TrackWithScrollBlur(points = points, scroll = scroll)
-        // A little air under the track: it is a picture, not a card, and the
-        // numbers below should not crowd it.
-        Spacer(Modifier.height(10.dp))
-    }
+    // The track itself is drawn by the page above this scrolling column; its
+    // slot is reserved here so nothing shifts when the payload lands.
+    if (showTrack) Spacer(Modifier.height(270.dp))
 
     // The three numbers people look for first, laid out like the heart-rate
     // strip on the activity page. A strength session has no distance, so that
@@ -2521,22 +2507,6 @@ private fun WorkoutDetail(
                     .height(150.dp),
                 color = tint
             )
-        }
-    }
-    if (series.isEmpty() && detailLoading) {
-        FlatPanel {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "正在读取这次运动的逐点数据…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
     }
 

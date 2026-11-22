@@ -928,8 +928,12 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                     .height(170.dp)
             )
             Spacer(Modifier.height(18.dp))
+            // Same side inset as the chart above, so the legend's ends line up
+            // with the plot instead of hanging off the card edge.
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 listOf(
@@ -1028,6 +1032,26 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                     }
                 }
             }
+        }
+    }
+
+    // A week of daily averages under the day itself: one number says how today
+    // went, the line says whether that is normal for this week.
+    val week = data?.stress.orEmpty()
+        .sortedBy { it.date }
+        .takeLast(7)
+    if (week.count { it.average != null } >= 2) {
+        SectionTitle("近 7 天平均压力")
+        FlatPanel {
+            TrendLineChart(
+                values = week.map { it.average?.toFloat() },
+                labels = week.map { Fmt.weekdayShort(it.date) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(170.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

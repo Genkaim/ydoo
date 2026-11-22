@@ -1,6 +1,8 @@
 package com.genkaim.zeppglass.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -24,6 +27,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -88,8 +92,18 @@ fun RoutePath(
                     }
                 }
                 val ready = shape
+                // The worker needs a moment before the first frame can draw the
+                // track; fading it in keeps that arrival from looking like a pop.
+                val reveal = remember { Animatable(0f) }
+                LaunchedEffect(ready) {
+                    if (ready != null) reveal.animateTo(1f, tween(280))
+                }
                 if (ready != null) {
-                    Canvas(Modifier.fillMaxSize()) {
+                    Canvas(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = reveal.value }
+                    ) {
                         drawTrack(ready, ramp, startColor, endColor)
                     }
                 }
@@ -97,7 +111,8 @@ fun RoutePath(
                 Row(
                     Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 12.dp, bottom = 10.dp),
+                        .padding(start = 12.dp, bottom = 10.dp)
+                        .graphicsLayer { alpha = reveal.value },
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

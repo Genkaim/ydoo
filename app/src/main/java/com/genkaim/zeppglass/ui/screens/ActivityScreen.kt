@@ -141,13 +141,6 @@ fun ActivityScreen(
     var headerHeight by remember { mutableStateOf(0.dp) }
     val scope = rememberCoroutineScope()
 
-    // Warm the per-second payload for the sessions this list shows. Tapping one
-    // then opens with its curves and track already there; the requests run one
-    // after another on the store's IO dispatcher, never on the frame.
-    LaunchedEffect(data?.fetchedAt) {
-        data?.workouts?.take(3)?.forEach { store.loadWorkoutDetail(it) }
-    }
-
     // Load the per-second detail before opening: the page then arrives complete
     // — track, curves and all — instead of drawing half of itself and popping
     // the rest in a moment later. The preload above usually makes this instant.

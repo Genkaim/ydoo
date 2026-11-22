@@ -2580,77 +2580,70 @@ private fun WorkoutDetail(
 }
 
 /**
- * 心率区间: how long the session stayed in each of the watch's six zones.
+ * 心率区间, laid out like the Zepp app: one row per zone, highest first, with the
+ * bpm band under its name and the share + duration on the right. The bars are a
+ * share of the whole session, so a zone that took 79% of the time reads as such.
  *
- * The summary sends only seconds and each zone's upper bpm — no names — so the
- * bpm band is rebuilt from the neighbouring limit, and the bars are scaled to
- * the longest zone rather than to the total: the point is which zone dominated,
- * and a share of total would make every bar look short.
+ * The summary sends six buckets whose second number is the bucket's *ceiling*;
+ * the first one is everything under 100 bpm, which Zepp does not show as a zone,
+ * so only the five named bands are drawn. Each bucket's seconds sit one slot
+ * later than its name starts, which is why `seconds[index + 1]` is read.
  */
 @Composable
 private fun HeartZoneCard(workout: Workout) {
     val seconds = workout.hrZoneSeconds
-    val limits = workout.hrZoneLimits
-    if (seconds.size < 3 || limits.size != seconds.size || seconds.sum() <= 0) return
-    val names = listOf("放松", "热身", "有氧耐力", "心肺强化", "耐力强化", "无氧极限")
-    val longest = seconds.max().coerceAtLeast(1)
+    if (seconds.size < 5 || seconds.sum() <= 0) return
+    val palette = LocalZgPalette.current
+    val zones = listOf(
+        Triple("热身放松", 100, 119),
+        Triple("脂肪燃烧", 120, 139),
+        Triple("心肺强化", 140, 159),
+        Triple("耐力强化", 160, 179),
+        Triple("无氧极限", 180, 200)
+    )
+    val colors = listOf(palette.sleepRem, palette.accent, palette.sleepLight, palette.warn, palette.critical)
     val total = seconds.sum().coerceAtLeast(1)
-    val tint = MaterialTheme.colorScheme.primary
-    val track = LocalZgPalette.current.grid
     FlatPanel {
         Column(
             Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text("心率区间", style = MaterialTheme.typography.titleSmall)
-            seconds.forEachIndexed { index, value ->
-                val band = when {
-                    index == 0 -> "＜${limits[index]}"
-                    index == seconds.lastIndex -> "${limits[index - 1]}–${limits[index]}"
-                    else -> "${limits[index - 1]}–${limits[index] - 1}"
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        names.getOrElse(index) { "Z${index + 1}" },
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.width(56.dp)
-                    )
-                    Text(
-                        band,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(72.dp)
-                    )
+            // Descending, the way the app lists them: hardest zone on top.
+            zones.indices.reversed().forEach { index ->
+                val (name, low, high) = zones[index]
+                val value = seconds.getOrElse(index + 1) { 0 }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Column(Modifier.weight(1f)) {
+                            Text(name, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "$low-$high 次/分",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text("${value * 100 / total}%", style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.width(14.dp))
+                        Text(Fmt.duration(value), style = MaterialTheme.typography.labelMedium)
+                    }
                     Box(
                         Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(track)
+                            .background(palette.grid)
                     ) {
                         if (value > 0) {
                             Box(
                                 Modifier
-                                    .fillMaxWidth(value.toFloat() / longest)
+                                    .fillMaxWidth(value.toFloat() / total)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(tint)
+                                    .background(colors[index])
                             )
                         }
                     }
-                    Text(
-                        "${value * 100 / total}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.width(36.dp)
-                    )
-                    Text(
-                        Fmt.duration(value),
-                        style = MaterialTheme.typography.labelSmall,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.width(48.dp)
-                    )
                 }
             }
         }

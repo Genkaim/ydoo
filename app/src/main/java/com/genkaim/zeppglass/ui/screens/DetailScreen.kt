@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -221,7 +223,7 @@ fun DetailScreen(
                 DetailKind.MORNING_CHARGE -> MorningChargeDetail(data, target.date)
                 DetailKind.NIGHT_SPO2 -> NightSpo2Detail(data, target.date)
                 DetailKind.BLOOD_PRESSURE -> BloodPressureDetail(data, target.date)
-                DetailKind.WORKOUT_MORE -> WorkoutMoreDetail(data, target.workoutId, store)
+                DetailKind.WORKOUT_MORE -> WorkoutMoreDetail(data, target.workoutId)
             }
         }
 
@@ -329,7 +331,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.MORNING_CHARGE -> target.date?.let(Fmt::date) ?: "起床时的能量，近 7 天趋势"
     DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
     DetailKind.BLOOD_PRESSURE -> target.date?.let(Fmt::date) ?: "收缩压 / 舒张压，mmHg"
-    DetailKind.WORKOUT_MORE -> "本次运动未展示的数值与手表原始字段"
+    DetailKind.WORKOUT_MORE -> ""
 }
 
 // ---------------- sleep ----------------
@@ -2380,7 +2382,7 @@ private fun WorkoutDetail(
             }
         }
     }
-    val hasMore = extras.size > paired || !detail?.fields.isNullOrEmpty()
+    val hasMore = extras.size > paired
 
     // 训练效果: the watch's two 0–5 scales. The ring is cut into the rating
     // zones, each with its own faint colour, and a needle marks where this
@@ -2389,7 +2391,7 @@ private fun WorkoutDetail(
         FlatPanel {
             Column(Modifier.padding(16.dp)) {
                 Text("训练效果", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(22.dp))
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2401,27 +2403,34 @@ private fun WorkoutDetail(
         }
     }
 
-    // The entry sits under the last card, text and chevron kept together.
+    // The entry sits under the last card as a small pill that wraps the words.
     if (hasMore) {
-        Row(
+        Box(
             Modifier
                 .fillMaxWidth()
-                .clickable { onOpenMore() }
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                "其他数据",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Icon(
-                Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
-            )
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { onOpenMore() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "其他数据",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 
@@ -2522,67 +2531,33 @@ private fun workoutStats(workout: Workout, showsDistance: Boolean): List<Workout
     return out
 }
 
-/** The workout's last unpaired tile plus every raw field the watch sent. */
+/** The workout's leftover tiles: the one that did not fit a pair in the grid. */
 @Composable
-private fun WorkoutMoreDetail(data: HealthData?, workoutId: String?, store: HealthStore) {
+private fun WorkoutMoreDetail(data: HealthData?, workoutId: String?) {
     val workout = data?.workouts?.firstOrNull { it.id == workoutId }
         ?: data?.workouts?.firstOrNull()
     if (workout == null) {
         Missing("还没有运动记录")
         return
     }
-    var detail by remember(workout.id) { mutableStateOf<WorkoutDetail?>(null) }
-    LaunchedEffect(workout.id) { detail = store.loadWorkoutDetail(workout) }
 
     val distanceKm = workout.distanceM?.takeIf { it > 0.0 }
     val stats = workoutStats(workout, showsDistance = distanceKm != null)
     val leftovers = stats.drop(stats.size - stats.size % 2)
-    if (leftovers.isNotEmpty()) {
-        SectionTitle("补充数据")
-        leftovers.chunked(2).forEach { pair ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                pair.forEach { stat ->
-                    MetricTile(stat.label, stat.value, stat.unit, Modifier.weight(1f))
-                }
-            }
-        }
-    }
-
-    val fields = detail?.fields.orEmpty()
-    if (fields.isNotEmpty()) {
-        SectionTitle("手表原始字段")
-        FlatPanel {
-            Column(Modifier.padding(vertical = 6.dp)) {
-                fields.forEach { (key, value) ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            workoutFieldLabel(key),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            value,
-                            style = MaterialTheme.typography.labelMedium,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.weight(1.2f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-    if (fields.isEmpty() && leftovers.isEmpty()) {
+    if (leftovers.isEmpty()) {
         Text(
             "这次运动没有额外的数据。",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        return
+    }
+    leftovers.chunked(2).forEach { pair ->
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            pair.forEach { stat ->
+                MetricTile(stat.label, stat.value, stat.unit, Modifier.weight(1f))
+            }
+        }
     }
 }
 
@@ -2613,6 +2588,7 @@ private fun teZones(): List<TeZone> {
 @Composable
 private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modifier) {
     val palette = LocalZgPalette.current
+    val surface = MaterialTheme.colorScheme.surface
     val zones = teZones()
     val score = value?.coerceIn(0.0, 5.0)
     val active = zones.lastOrNull { score != null && score >= it.from && (score < it.to || it.to >= 5.0) }
@@ -2635,64 +2611,84 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                 val stroke = 9.dp.toPx()
                 val radius = minOf(size.width, size.height) / 2f - stroke
                 if (radius <= 0f) return@Canvas
-                val segments = 20
                 val start = 160f
                 val sweep = 220f
-                val gap = (sweep / segments) * 0.28f
+                val gap = 2.5f
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
                 val topLeft = Offset(center.x - radius, center.y - radius)
+                fun angleOf(value: Double): Float =
+                    start + sweep * (value / 5.0).coerceIn(0.0, 1.0).toFloat()
 
-                for (i in 0 until segments) {
-                    // The band this slice belongs to decides its colour; bands
-                    // in use are redrawn below at full strength.
-                    val from = i / segments.toDouble() * 5.0
-                    val zone = zones.lastOrNull { from >= it.from } ?: zones.first()
-                    drawArc(
-                        color = zone.color.copy(alpha = 0.22f),
-                        startAngle = start + sweep * i / segments + gap / 2f,
-                        sweepAngle = sweep / segments - gap,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(stroke, cap = StrokeCap.Butt)
-                    )
+                // One rounded curve per band. Round caps are 50% of the stroke,
+                // and the small gap between bands is what separates the colours.
+                zones.forEach { zone ->
+                    val from = angleOf(zone.from) + gap / 2f
+                    val to = angleOf(zone.to) - gap / 2f
+                    if (to > from) {
+                        drawArc(
+                            color = zone.color.copy(alpha = 0.20f),
+                            startAngle = from,
+                            sweepAngle = to - from,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(stroke, cap = StrokeCap.Round)
+                        )
+                    }
                 }
-                // The band the needle points into, at its normal colour.
-                for (i in 0 until segments) {
-                    val from = i / segments.toDouble() * 5.0
-                    val to = (i + 1) / segments.toDouble() * 5.0
-                    val inActive = to > active.from && from < active.to
-                    if (!inActive || score == null) continue
-                    drawArc(
-                        color = active.color,
-                        startAngle = start + sweep * i / segments + gap / 2f,
-                        sweepAngle = sweep / segments - gap,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(stroke, cap = StrokeCap.Butt)
-                    )
-                }
-
-                // Needle: a short radial tick just outside the ring.
                 if (score != null) {
-                    val angle = Math.toRadians((start + sweep * (score / 5.0)).toDouble())
-                    val cos = kotlin.math.cos(angle).toFloat()
-                    val sin = kotlin.math.sin(angle).toFloat()
-                    drawLine(
+                    drawArc(
                         color = active.color,
-                        start = Offset(
-                            center.x + cos * (radius + stroke * 0.4f),
-                            center.y + sin * (radius + stroke * 0.4f)
-                        ),
-                        end = Offset(
-                            center.x + cos * (radius + stroke * 1.5f),
-                            center.y + sin * (radius + stroke * 1.5f)
-                        ),
-                        strokeWidth = 2.5.dp.toPx(),
-                        cap = StrokeCap.Round
+                        startAngle = angleOf(active.from) + gap / 2f,
+                        sweepAngle = (angleOf(active.to) - angleOf(active.from)) - gap,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(stroke, cap = StrokeCap.Round)
                     )
+
+                    // The marker, same shape as the one under resting heart rate
+                    // and HRV: a rounded triangle with a surface halo, here
+                    // rotated so it points at the ring from outside.
+                    val theta = Math.toRadians(angleOf(score).toDouble())
+                    val tip = Offset(
+                        center.x + (kotlin.math.cos(theta) * (radius + stroke / 2f)).toFloat(),
+                        center.y + (kotlin.math.sin(theta) * (radius + stroke / 2f)).toFloat()
+                    )
+                    val markerWidth = 12.dp.toPx()
+                    val markerHeight = 10.dp.toPx()
+                    val edge = 1.5.dp.toPx()
+                    val halo = 2.dp.toPx()
+                    val marker = Path().apply {
+                        moveTo(-markerWidth / 2f, -markerHeight)
+                        lineTo(markerWidth / 2f, -markerHeight)
+                        lineTo(0f, 0f)
+                        close()
+                    }
+                    rotate(degrees = Math.toDegrees(theta).toFloat() + 90f, pivot = tip) {
+                        translate(tip.x, tip.y) {
+                            drawPath(
+                                marker,
+                                color = surface,
+                                style = Stroke(
+                                    width = edge * 2f + halo * 2f,
+                                    join = StrokeJoin.Round,
+                                    cap = StrokeCap.Round
+                                )
+                            )
+                            drawPath(marker, color = active.color)
+                            drawPath(
+                                marker,
+                                color = active.color,
+                                style = Stroke(
+                                    width = edge * 2f,
+                                    join = StrokeJoin.Round,
+                                    cap = StrokeCap.Round
+                                )
+                            )
+                        }
+                    }
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2722,29 +2718,6 @@ private fun workoutSeriesTint(label: String): Color = when {
     label.contains("功率") -> MaterialTheme.colorScheme.secondary
     label.contains("温度") -> LocalZgPalette.current.warn
     else -> MaterialTheme.colorScheme.onSurfaceVariant
-}
-
-/** Chinese label for the payload keys whose meaning is known. */
-private fun workoutFieldLabel(key: String): String = when (key) {
-    "distance" -> "距离"
-    "duration", "duration_time", "sport_time" -> "时长"
-    "calories", "calorie", "total_calories" -> "消耗"
-    "avg_heart_rate", "average_heart_rate" -> "平均心率"
-    "max_heart_rate" -> "最高心率"
-    "min_heart_rate" -> "最低心率"
-    "steps", "total_steps" -> "步数"
-    "cadence", "avg_cadence" -> "步频"
-    "max_cadence" -> "最高步频"
-    "pace", "avg_pace" -> "配速"
-    "altitude", "ascent", "total_ascent" -> "累计爬升"
-    "descent", "total_descent" -> "累计下降"
-    "load", "training_load", "training_effect" -> "训练负荷"
-    "vo2_max", "vo2max" -> "最大摄氧量"
-    "city" -> "城市"
-    "location", "address" -> "地点"
-    "device", "device_name" -> "设备"
-    "sport", "sport_type", "type" -> "运动类型"
-    else -> key
 }
 
 /** Seconds become a clock, metres become kilometres; everything else stays raw. */

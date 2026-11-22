@@ -179,12 +179,14 @@ private fun fitPath(
     // Two Chaikin passes round every corner. They run on the projected points,
     // and each new point carries an interpolated speed, so the colours follow
     // the same curve the line does.
-    val thinned = thin(projected, speed, minStep = 2f)
-    // A low pass first: Chaikin only rounds corners, it still follows every
-    // wobble that survived thinning. Averaging each point with its neighbours
-    // removes that wobble, and only then does the corner cutting run.
-    var smoothPoints: List<Offset> = lowPass(thinned.first)
-    var smoothSpeed: List<Float> = lowPassFloat(thinned.second, fallback = 0.5f)
+    val thinned = thin(projected, speed, minStep = 2.5f)
+    // A wide pass first: a wobble from bad GPS is usually a few fixes long, not
+    // one, so it has to be averaged over five points before the narrow passes
+    // can flatten what is left. Then two tight passes away from the edges.
+    var smoothPoints: List<Offset> = wideLowPass(thinned.first)
+    var smoothSpeed: List<Float> = wideLowPassFloat(thinned.second, fallback = 0.5f)
+    smoothPoints = lowPass(smoothPoints)
+    smoothSpeed = lowPassFloat(smoothSpeed, fallback = 0.5f)
     smoothPoints = lowPass(smoothPoints)
     smoothSpeed = lowPassFloat(smoothSpeed, fallback = 0.5f)
     // Three passes: every corner is cut again, so the line flows instead of
@@ -244,6 +246,52 @@ private fun lowPassFloat(values: List<Float>, fallback: Float): List<Float> {
     for (i in 1 until values.lastIndex) {
         out.add(values[i - 1] * 0.25f + values[i] * 0.5f + values[i + 1] * 0.25f)
     }
+    out.add(values.last())
+    return if (out.isEmpty()) List(values.size) { fallback } else out
+}
+
+/**
+ * A five-tap pass, [1 2 3 2 1] / 9: the same averaging as [lowPass] but over two
+ * fixes on each side. That is what flattens a wobble the GPS produced over a
+ * couple of seconds — the tight pass alone still lets it through as a soft bend.
+ * The first two and last two points stay put, so neither end drifts.
+ */
+private fun wideLowPass(points: List<Offset>): List<Offset> {
+    if (points.size < 5) return points
+    val out = ArrayList<Offset>(points.size)
+    out.add(points[0])
+    out.add(points[1])
+    for (i in 2 until points.size - 2) {
+        val a = points[i - 2]
+        val b = points[i - 1]
+        val c = points[i]
+        val d = points[i + 1]
+        val e = points[i + 2]
+        out.add(
+            Offset(
+                (a.x + b.x * 2f + c.x * 3f + d.x * 2f + e.x) / 9f,
+                (a.y + b.y * 2f + c.y * 3f + d.y * 2f + e.y) / 9f
+            )
+        )
+    }
+    out.add(points[points.size - 2])
+    out.add(points.last())
+    return out
+}
+
+/** The same five-tap pass for the speed values. */
+private fun wideLowPassFloat(values: List<Float>, fallback: Float): List<Float> {
+    if (values.size < 5) return values
+    val out = ArrayList<Float>(values.size)
+    out.add(values[0])
+    out.add(values[1])
+    for (i in 2 until values.size - 2) {
+        out.add(
+            (values[i - 2] + values[i - 1] * 2f + values[i] * 3f +
+                values[i + 1] * 2f + values[i + 2]) / 9f
+        )
+    }
+    out.add(values[values.size - 2])
     out.add(values.last())
     return if (out.isEmpty()) List(values.size) { fallback } else out
 }

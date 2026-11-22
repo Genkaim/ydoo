@@ -917,14 +917,17 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                 style = MaterialTheme.typography.titleSmall,
                 color = stressVerdict.second
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
+            // Extra side margin on top of the card's own: the time labels on the
+            // ends of the axis were sitting right against the panel edge.
             StressBandChart(
                 curve = day.curve,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
                     .height(170.dp)
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(18.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -951,38 +954,43 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
     }
 
     SectionTitle("每日压力")
+    // Two cards, not one: the three numbers answer "how hard was the day",
+    // the donut answers "how was it spread out". Putting them in one panel made
+    // the reading look like a caption of the chart.
+    FlatPanel {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.ArrowUpward,
+                "最高",
+                day.maximum?.toString() ?: "--",
+                StressHigh
+            )
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.ArrowDownward,
+                "最低",
+                day.minimum?.toString() ?: "--",
+                StressRelaxed
+            )
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.TrendingFlat,
+                "平均",
+                day.average?.toString() ?: "--",
+                StressNormal
+            )
+        }
+    }
+
     FlatPanel {
         Column(Modifier.padding(16.dp)) {
-            // 最高 / 最低 / 平均, laid out like the heart-rate strip on the
-            // activity page: stats first, chart under them.
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.ArrowUpward,
-                    "最高",
-                    day.maximum?.toString() ?: "--",
-                    StressHigh
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.ArrowDownward,
-                    "最低",
-                    day.minimum?.toString() ?: "--",
-                    StressRelaxed
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.TrendingFlat,
-                    "平均",
-                    day.average?.toString() ?: "--",
-                    StressNormal
-                )
-            }
-            Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StressDonut(
                     relaxedPct = day.relaxedPct,

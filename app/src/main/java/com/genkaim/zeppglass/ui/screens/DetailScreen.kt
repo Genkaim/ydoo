@@ -2603,21 +2603,26 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                 .height(108.dp)
         ) {
             val strokeDp = 10.dp
-            // The arc spans 220°, so its lowest points sit only ~0.34·r below the
-            // centre: size the radius by that extent instead of the whole circle,
-            // or the ring leaves a slack band under it and the name floats away.
+            // The dial is inset from the sides and the top; the bottom needs no
+            // padding because a 220° arc already stops ~0.34·r above the box
+            // bottom, which is exactly the space the name sits in.
+            val sidePad = 10.dp
+            val topPad = 6.dp
+            val usableWidth = (maxWidth - sidePad * 2).coerceAtLeast(24.dp)
+            val usableHeight = (maxHeight - topPad).coerceAtLeast(24.dp)
             val radius = minOf(
-                maxWidth / 2f - strokeDp / 2f,
-                (maxHeight - strokeDp) / 1.34f
+                usableWidth / 2f - strokeDp / 2f,
+                (usableHeight - strokeDp) / 1.34f
             )
-            val centerY = radius + strokeDp / 2f
+            val centerX = maxWidth / 2f
+            val centerY = topPad + radius + strokeDp / 2f
             Canvas(Modifier.fillMaxSize()) {
                 val stroke = strokeDp.toPx()
                 val radius = radius.toPx()
                 if (radius <= 0f) return@Canvas
                 val start = 160f
                 val sweep = 220f
-                val center = Offset(size.width / 2f, centerY.toPx())
+                val center = Offset(centerX.toPx(), centerY.toPx())
                 val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
                 val topLeft = Offset(center.x - radius, center.y - radius)
                 fun angleOf(value: Double): Float =

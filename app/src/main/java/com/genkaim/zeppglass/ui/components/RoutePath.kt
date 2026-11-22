@@ -53,7 +53,6 @@ fun RoutePath(
     modifier: Modifier = Modifier
 ) {
     val palette = LocalZgPalette.current
-    val surface = MaterialTheme.colorScheme.surfaceVariant
     val ink = MaterialTheme.colorScheme.onSurfaceVariant
     val startColor = MaterialTheme.colorScheme.tertiary
     val endColor = MaterialTheme.colorScheme.primary
@@ -61,15 +60,15 @@ fun RoutePath(
 
     Box(
         modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(surface)
+            // No panel behind the track: the path sits directly on the page.
+            .clip(RoundedCornerShape(12.dp))
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = constraints.maxWidth.toFloat()
             val height = constraints.maxHeight.toFloat()
             if (points.size >= 2 && width > 0f && height > 0f && width != Int.MAX_VALUE.toFloat()) {
                 val shape = remember(points, width, height) {
-                    fitPath(points, width, height, padding = 22f)
+                    fitPath(points, width, height, padding = 24f)
                 }
                 Canvas(Modifier.fillMaxSize()) {
                     drawTrack(shape, ramp, startColor, endColor)
@@ -162,18 +161,71 @@ private fun fitPath(
         val b = track[minOf(i + 1, track.lastIndex)]
         rawSpeed.add(distanceMeters(a, b).toFloat())
     }
-    val smoothed = rawSpeed.indices.map { i ->
+    val averaged = rawSpeed.indices.map { i ->
         val from = maxOf(0, i - 2)
         val to = minOf(rawSpeed.lastIndex, i + 2)
         rawSpeed.subList(from, to + 1).average().toFloat()
     }
-    val sorted = smoothed.sorted()
+    val sorted = averaged.sorted()
     val low = sorted[(sorted.size * 0.10).toInt().coerceIn(0, sorted.lastIndex)]
     val high = sorted[(sorted.size * 0.90).toInt().coerceIn(0, sorted.lastIndex)]
-    val speed = smoothed.map { value ->
+    val speed = averaged.map { value ->
         if (high - low < 1e-3f) 0.5f else ((value - low) / (high - low)).coerceIn(0f, 1f)
     }
-    return TrackShape(projected, speed)
+
+    // Two Chaikin passes round every corner. They run on the projected points,
+    // and each new point carries an interpolated speed, so the colours follow
+    // the same curve the line does.
+    val thinned = thin(projected, speed, minStep = 1.4f)
+    var smoothPoints: List<Offset> = thinned.first
+    var smoothSpeed: List<Float> = thinned.second
+    repeat(2) {
+        if (smoothPoints.size >= 3) {
+            val nextPoints = ArrayList<Offset>(smoothPoints.size * 2)
+            val nextSpeed = ArrayList<Float>(smoothPoints.size * 2)
+            nextPoints.add(smoothPoints.first())
+            nextSpeed.add(smoothSpeed.first())
+            for (i in 0 until smoothPoints.size - 1) {
+                val a = smoothPoints[i]
+                val b = smoothPoints[i + 1]
+                nextPoints.add(Offset(a.x * 0.75f + b.x * 0.25f, a.y * 0.75f + b.y * 0.25f))
+                nextSpeed.add(smoothSpeed[i] * 0.75f + smoothSpeed[i + 1] * 0.25f)
+                nextPoints.add(Offset(a.x * 0.25f + b.x * 0.75f, a.y * 0.25f + b.y * 0.75f))
+                nextSpeed.add(smoothSpeed[i] * 0.25f + smoothSpeed[i + 1] * 0.75f)
+            }
+            nextPoints.add(smoothPoints.last())
+            nextSpeed.add(smoothSpeed.last())
+            smoothPoints = nextPoints
+            smoothSpeed = nextSpeed
+        }
+    }
+    return TrackShape(smoothPoints, smoothSpeed)
+}
+
+/**
+ * Drops fixes closer than [minStep] pixels: they only add jitter, not shape.
+ * The speed values are carried along, so both lists stay in step.
+ */
+private fun thin(
+    points: List<Offset>,
+    speed: List<Float>,
+    minStep: Float
+): Pair<List<Offset>, List<Float>> {
+    if (points.size < 3) return points to speed
+    val outPoints = ArrayList<Offset>(points.size)
+    val outSpeed = ArrayList<Float>(points.size)
+    outPoints.add(points.first())
+    outSpeed.add(speed.first())
+    var last = points.first()
+    for (i in 1 until points.size) {
+        val point = points[i]
+        if (i == points.lastIndex || (point - last).getDistance() >= minStep) {
+            outPoints.add(point)
+            outSpeed.add(speed[i])
+            last = point
+        }
+    }
+    return outPoints to outSpeed
 }
 
 /** Great-circle distance in metres, near enough over a few hundred metres. */
@@ -198,37 +250,38 @@ private fun DrawScope.drawTrack(
     startColor: Color,
     endColor: Color
 ) {
-    val points = shape.points
-    if (points.size < 2) return
+    if (shape.points.size < 2) return
 
-    // One white halo under everything, so the colours stay readable on the
-    // panel in both themes.
+    // A white halo under everything, so the colours stay readable in both
+    // themes; it follows the same smoothed line as the colours.
     val outline = Path()
-    outline.moveTo(points.first().x, points.first().y)
-    for (i in 1 until points.size) outline.lineTo(points[i].x, points[i].y)
+    outline.moveTo(shape.points.first().x, shape.points.first().y)
+    for (i in 1 until shape.points.size) {
+        outline.lineTo(shape.points[i].x, shape.points[i].y)
+    }
     drawPath(
         outline,
         Color.White.copy(alpha = 0.85f),
         style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
     )
 
-    // A line per pair of fixes, each in its own speed colour. Round caps make
-    // the joints seamless.
+    // A line per pair of smoothed points, each in its own speed colour. Round
+    // caps make the joints seamless.
     val stroke = 3.dp.toPx()
-    for (i in 0 until points.size - 1) {
+    for (i in 0 until shape.points.size - 1) {
         drawLine(
             color = rampColor(ramp, (shape.speed[i] + shape.speed[i + 1]) / 2f),
-            start = points[i],
-            end = points[i + 1],
+            start = shape.points[i],
+            end = shape.points[i + 1],
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
     }
 
-    drawArrows(points)
+    drawArrows(shape.points)
 
-    val start = points.first()
-    val end = points.last()
+    val start = shape.points.first()
+    val end = shape.points.last()
     drawCircle(Color.White, radius = 6.dp.toPx(), center = start)
     drawCircle(startColor, radius = 4.dp.toPx(), center = start)
     drawCircle(Color.White, radius = 6.dp.toPx(), center = end)

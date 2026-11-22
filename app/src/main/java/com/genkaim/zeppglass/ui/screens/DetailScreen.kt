@@ -37,12 +37,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Accessibility
@@ -74,6 +77,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -87,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.ChargeDay
 import com.genkaim.zeppglass.data.DietStore
+import com.genkaim.zeppglass.data.GeoPoint
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.bodyCompositionScore
@@ -179,10 +184,11 @@ fun DetailScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
+        val scrollState = rememberScrollState()
         Column(
             Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -197,9 +203,15 @@ fun DetailScreen(
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
-                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store, onOpenMore = {
-                    onOpen(DetailTarget(DetailKind.WORKOUT_MORE, workoutId = target.workoutId))
-                })
+                DetailKind.WORKOUT -> WorkoutDetail(
+                    data,
+                    target.workoutId,
+                    store,
+                    scrollState,
+                    onOpenMore = {
+                        onOpen(DetailTarget(DetailKind.WORKOUT_MORE, workoutId = target.workoutId))
+                    }
+                )
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
                 DetailKind.VO2 -> Vo2Detail(data)
                 DetailKind.RHR -> RhrDetail(data, target.date)
@@ -2251,11 +2263,40 @@ private fun Spo2Detail(data: HealthData?, date: LocalDate?) {
 
 // ---------------- workout ----------------
 
+/**
+ * The track, plus the swipe-up effect: as the page scrolls, the map part blurs
+ * and fades into the header instead of sliding away as a hard shape. The blur
+ * radius and alpha are derived from the scroll offset, and only this small
+ * composable reads them, so the rest of the page does not recompose while a
+ * finger moves.
+ */
+@Composable
+private fun TrackWithScrollBlur(points: List<GeoPoint>, scroll: ScrollState) {
+    val progress by remember {
+        derivedStateOf { (scroll.value / 420f).coerceIn(0f, 1f) }
+    }
+    RoutePath(
+        points = points,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .graphicsLayer {
+                // "Backwards" as the page moves: shrink a touch, fade out, and
+                // let the blur take over where the platform supports it.
+                scaleX = 1f - 0.04f * progress
+                scaleY = 1f - 0.04f * progress
+                alpha = 1f - 0.72f * progress
+            }
+            .blur((14f * progress).dp)
+    )
+}
+
 @Composable
 private fun WorkoutDetail(
     data: HealthData?,
     workoutId: String?,
     store: HealthStore,
+    scroll: ScrollState,
     onOpenMore: () -> Unit
 ) {
     val workout: Workout? = data?.workouts?.firstOrNull { it.id == workoutId }
@@ -2304,12 +2345,7 @@ private fun WorkoutDetail(
     // with no base map, so nothing here needs a tile licence. Workouts without
     // GPS simply have no track.
     detail?.points?.takeIf { it.size >= 2 }?.let { points ->
-        RoutePath(
-            points = points,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp)
-        )
+        TrackWithScrollBlur(points = points, scroll = scroll)
     }
 
     // The three numbers people look for first, laid out like the heart-rate

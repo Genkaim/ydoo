@@ -2616,20 +2616,38 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
 
                 // One rounded curve per band, edge to edge: the bands are split
                 // afterwards by background-coloured ticks, not by gaps.
-                zones.forEach { zone ->
-                    val from = angleOf(zone.from)
-                    val to = angleOf(zone.to)
-                    if (to > from) {
-                        drawArc(
-                            color = zone.color.copy(alpha = 0.20f),
-                            startAngle = from,
-                            sweepAngle = to - from,
-                            useCenter = false,
-                            topLeft = topLeft,
-                            size = arcSize,
-                            style = Stroke(stroke, cap = StrokeCap.Round)
+                // A band is drawn with flat ends; only the two tips of the whole
+                // ring are rounded, so the bands meet on a straight edge.
+                fun band(fromValue: Double, toValue: Double, tint: Color) {
+                    val from = angleOf(fromValue)
+                    val to = angleOf(toValue)
+                    if (to <= from) return
+                    drawArc(
+                        color = tint,
+                        startAngle = from,
+                        sweepAngle = to - from,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(stroke, cap = StrokeCap.Butt)
+                    )
+                    fun capAt(angle: Float) {
+                        val a = Math.toRadians(angle.toDouble())
+                        drawCircle(
+                            color = tint,
+                            radius = stroke / 2f,
+                            center = Offset(
+                                center.x + (kotlin.math.cos(a) * radius).toFloat(),
+                                center.y + (kotlin.math.sin(a) * radius).toFloat()
+                            )
                         )
                     }
+                    if (fromValue <= 0.0) capAt(from)
+                    if (toValue >= 5.0) capAt(to)
+                }
+
+                zones.forEach { zone ->
+                    band(zone.from, zone.to, zone.color.copy(alpha = 0.20f))
                 }
 
                 // Thin surface-coloured cuts between the bands, drawn under the
@@ -2651,15 +2669,7 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                 }
 
                 if (score != null) {
-                    drawArc(
-                        color = active.color,
-                        startAngle = angleOf(active.from),
-                        sweepAngle = angleOf(active.to) - angleOf(active.from),
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(stroke, cap = StrokeCap.Round)
-                    )
+                    band(active.from, active.to, active.color)
                 }
 
                 if (score != null) {

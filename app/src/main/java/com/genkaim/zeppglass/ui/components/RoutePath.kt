@@ -180,11 +180,16 @@ private fun fitPath(
     // and each new point carries an interpolated speed, so the colours follow
     // the same curve the line does.
     val thinned = thin(projected, speed, minStep = 2f)
-    var smoothPoints: List<Offset> = thinned.first
-    var smoothSpeed: List<Float> = thinned.second
-    // Four passes: every corner is cut again, so the line flows instead of
+    // A low pass first: Chaikin only rounds corners, it still follows every
+    // wobble that survived thinning. Averaging each point with its neighbours
+    // removes that wobble, and only then does the corner cutting run.
+    var smoothPoints: List<Offset> = lowPass(thinned.first)
+    var smoothSpeed: List<Float> = lowPassFloat(thinned.second, fallback = 0.5f)
+    smoothPoints = lowPass(smoothPoints)
+    smoothSpeed = lowPassFloat(smoothSpeed, fallback = 0.5f)
+    // Three passes: every corner is cut again, so the line flows instead of
     // stepping from fix to fix.
-    repeat(4) {
+    repeat(3) {
         if (smoothPoints.size >= 3) {
             val nextPoints = ArrayList<Offset>(smoothPoints.size * 2)
             val nextSpeed = ArrayList<Float>(smoothPoints.size * 2)
@@ -205,6 +210,42 @@ private fun fitPath(
         }
     }
     return TrackShape(smoothPoints, smoothSpeed)
+}
+
+/**
+ * One [¼ ½ ¼] pass over the points: each interior point moves to the average of
+ * itself and its neighbours, which is what removes the last of the GPS wobble.
+ * The two ends stay where they are — the start and the finish must not drift.
+ */
+private fun lowPass(points: List<Offset>): List<Offset> {
+    if (points.size < 3) return points
+    val out = ArrayList<Offset>(points.size)
+    out.add(points.first())
+    for (i in 1 until points.lastIndex) {
+        val a = points[i - 1]
+        val b = points[i]
+        val c = points[i + 1]
+        out.add(
+            Offset(
+                a.x * 0.25f + b.x * 0.5f + c.x * 0.25f,
+                a.y * 0.25f + b.y * 0.5f + c.y * 0.25f
+            )
+        )
+    }
+    out.add(points.last())
+    return out
+}
+
+/** The same pass for the speed values that ride along with the points. */
+private fun lowPassFloat(values: List<Float>, fallback: Float): List<Float> {
+    if (values.size < 3) return values
+    val out = ArrayList<Float>(values.size)
+    out.add(values.first())
+    for (i in 1 until values.lastIndex) {
+        out.add(values[i - 1] * 0.25f + values[i] * 0.5f + values[i + 1] * 0.25f)
+    }
+    out.add(values.last())
+    return if (out.isEmpty()) List(values.size) { fallback } else out
 }
 
 /**

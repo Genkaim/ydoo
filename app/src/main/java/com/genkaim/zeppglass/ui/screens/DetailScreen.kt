@@ -62,6 +62,7 @@ import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material.icons.rounded.TrendingFlat
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ArrowDownward
@@ -883,9 +884,8 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
         return
     }
 
-    // Zepp leads with the latest 5-minute sample, not the daily average; this is
-    // also the number the home card shows. It sits in the same white card as the
-    // rest of the page's readings.
+    // One card for the reading and its curve: they describe the same moment, and
+    // two separate panels made the page look like unrelated pieces of data.
     FlatPanel {
         Column(
             Modifier
@@ -917,18 +917,14 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                 style = MaterialTheme.typography.titleSmall,
                 color = stressVerdict.second
             )
-        }
-    }
-
-    FlatPanel {
-        Column(Modifier.padding(16.dp)) {
+            Spacer(Modifier.height(14.dp))
             StressBandChart(
                 curve = day.curve,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(170.dp)
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -957,6 +953,36 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
     SectionTitle("每日压力")
     FlatPanel {
         Column(Modifier.padding(16.dp)) {
+            // 最高 / 最低 / 平均, laid out like the heart-rate strip on the
+            // activity page: stats first, chart under them.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowUpward,
+                    "最高",
+                    day.maximum?.toString() ?: "--",
+                    StressHigh
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowDownward,
+                    "最低",
+                    day.minimum?.toString() ?: "--",
+                    StressRelaxed
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.TrendingFlat,
+                    "平均",
+                    day.average?.toString() ?: "--",
+                    StressNormal
+                )
+            }
+            Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StressDonut(
                     relaxedPct = day.relaxedPct,
@@ -991,28 +1017,6 @@ private fun StressDetail(data: HealthData?, date: LocalDate?) {
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            Rule(Modifier.padding(vertical = 4.dp))
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth()) {
-                listOf(
-                    "最高压力值" to day.maximum,
-                    "最低压力值" to day.minimum,
-                    "平均压力值" to day.average
-                ).forEach { (label, value) ->
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            value?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }

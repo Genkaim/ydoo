@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -183,13 +184,14 @@ fun SettingsScreen(
 
             // Title on the left, three icon-only keys on the right: the labels
             // were only repeating the icons, so they are gone from the row.
-            // 42 dp buttons + 7 dp padding each side make the same 56 dp row
-            // height as the cards padded by 16 dp around a 24 dp icon.
+            // Same band height as the 自定义底栏 card below: its two lines of
+            // text plus 16 dp padding is what sets the rhythm here.
             FlatPanel {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 12.dp, top = 7.dp, bottom = 7.dp),
+                        .heightIn(min = 72.dp)
+                        .padding(start = 16.dp, end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(

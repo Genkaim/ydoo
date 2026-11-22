@@ -2635,19 +2635,32 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                     val from = angleOf(fromValue)
                     val to = angleOf(toValue)
                     if (to <= from) return
-                    drawArc(
-                        color = tint,
-                        startAngle = from,
-                        sweepAngle = to - from,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(
-                            stroke,
-                            cap = if (roundBoth) StrokeCap.Round else StrokeCap.Butt
+                    val capStart = !roundBoth && fromValue <= 0.0
+                    val capEnd = !roundBoth && toValue >= 5.0
+                    // A cap is a half circle of stroke/2; shortening the arc by
+                    // that much keeps the two from overlapping — an overlap of
+                    // two translucent fills reads as a darker mirrored crescent.
+                    val capDegrees = if (capStart || capEnd) {
+                        Math.toDegrees((stroke / 2f / radius).toDouble()).toFloat()
+                    } else {
+                        0f
+                    }
+                    val arcFrom = from + if (capStart) capDegrees else 0f
+                    val arcTo = to - if (capEnd) capDegrees else 0f
+                    if (arcTo > arcFrom) {
+                        drawArc(
+                            color = tint,
+                            startAngle = arcFrom,
+                            sweepAngle = arcTo - arcFrom,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(
+                                stroke,
+                                cap = if (roundBoth) StrokeCap.Round else StrokeCap.Butt
+                            )
                         )
-                    )
-                    if (roundBoth) return
+                    }
                     fun capAt(angle: Float) {
                         val a = Math.toRadians(angle.toDouble())
                         drawCircle(
@@ -2659,8 +2672,8 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
                             )
                         )
                     }
-                    if (fromValue <= 0.0) capAt(from)
-                    if (toValue >= 5.0) capAt(to)
+                    if (capStart) capAt(from)
+                    if (capEnd) capAt(to)
                 }
 
                 zones.forEach { zone ->

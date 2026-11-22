@@ -495,9 +495,7 @@ fun OverviewScreen(
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                // 血压 takes the slot 准备度 used to hold. The
-                                // reading itself is rare, so the tile opens even
-                                // while it is empty and explains where to record.
+                                // 血压 takes the slot 准备度 used to hold.
                                 val bp = data?.latestBloodPressure()
                                 val bpVerdict: Pair<String, Color>? = bp?.band?.let { band ->
                                     when (band) {
@@ -514,7 +512,6 @@ fun OverviewScreen(
                                     tint = bpVerdict?.second ?: MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),
                                     verdict = bpVerdict,
-                                    alwaysClickable = true,
                                     onClick = {
                                         onOpenDetail(DetailTarget(DetailKind.BLOOD_PRESSURE, date))
                                     }

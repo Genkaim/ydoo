@@ -302,8 +302,6 @@ fun MetricTile(
     verdict: Pair<String, Color>? = null,
     /** Custom glyph in place of [icon], for marks the icon set does not have. */
     leading: (@Composable () -> Unit)? = null,
-    /** Pages that explain an empty reading stay reachable even at `--`. */
-    alwaysClickable: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
     // A tile showing "--" has nothing behind it, so it must not open a page:
@@ -312,7 +310,7 @@ fun MetricTile(
     FlatPanel(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        onClick = onClick.takeIf { hasValue || alwaysClickable }
+        onClick = onClick.takeIf { hasValue }
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

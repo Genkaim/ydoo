@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.MonitorWeight
 import androidx.compose.material.icons.rounded.Percent
 import androidx.compose.material.icons.rounded.Restaurant
@@ -123,6 +127,9 @@ import com.genkaim.zeppglass.ui.components.PaiWeekBars
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.ProgressRing
 import com.genkaim.zeppglass.ui.components.RouteMap
+import com.genkaim.zeppglass.ui.components.FullscreenRouteMap
+import com.genkaim.zeppglass.data.GeoPoint
+import androidx.activity.compose.BackHandler
 import com.genkaim.zeppglass.ui.components.RoutePlaceholder
 import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.ScaleBand
@@ -166,6 +173,10 @@ fun DetailScreen(
     val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
     val palette = LocalZgPalette.current
     var headerHeight by remember { mutableStateOf(0.dp) }
+    // The route card opens a full map over the page, the way a detail page
+    // opens over the tabs; the points stay put while it animates out.
+    var mapOpen by remember { mutableStateOf(false) }
+    var mapPoints by remember { mutableStateOf(emptyList<GeoPoint>()) }
     Box(
         Modifier
             .fillMaxSize()
@@ -191,7 +202,10 @@ fun DetailScreen(
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
-                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store)
+                DetailKind.WORKOUT -> WorkoutDetail(data, target.workoutId, store) { points ->
+                    mapPoints = points
+                    mapOpen = true
+                }
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
                 DetailKind.VO2 -> Vo2Detail(data)
                 DetailKind.RHR -> RhrDetail(data, target.date)
@@ -265,6 +279,17 @@ fun DetailScreen(
                 }
             }
         }
+
+        // Full map, over everything including the pinned header. It fades and
+        // grows in from the card, so opening it reads as a page, not a popup.
+        AnimatedVisibility(
+            visible = mapOpen,
+            enter = fadeIn(tween(200)) + scaleIn(initialScale = 0.94f, animationSpec = tween(260)),
+            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.97f, animationSpec = tween(200))
+        ) {
+            FullscreenRouteMap(points = mapPoints, onClose = { mapOpen = false })
+        }
+        BackHandler(enabled = mapOpen) { mapOpen = false }
     }
 }
 
@@ -2240,8 +2265,51 @@ private fun Spo2Detail(data: HealthData?, date: LocalDate?) {
 
 // ---------------- workout ----------------
 
+/** One number of the workout's headline strip: icon, label, value, unit. */
 @Composable
-private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthStore) {
+private fun HeroStat(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    unit: String?
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, style = MaterialTheme.typography.headlineSmall)
+            if (unit != null) {
+                Text(
+                    " $unit",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkoutDetail(
+    data: HealthData?,
+    workoutId: String?,
+    store: HealthStore,
+    onOpenMap: (List<GeoPoint>) -> Unit
+) {
     val workout: Workout? = data?.workouts?.firstOrNull { it.id == workoutId }
         ?: data?.workouts?.firstOrNull()
     if (workout == null) {
@@ -2284,34 +2352,43 @@ private fun WorkoutDetail(data: HealthData?, workoutId: String?, store: HealthSt
     }
 
     // The track leads the page: a run is a place before it is a table of
-    // numbers. Workouts without GPS simply have no map at all.
+    // numbers. Tapping it opens the full map. Workouts without GPS simply have
+    // no map at all.
     detail?.points?.takeIf { it.size >= 2 }?.let { points ->
         RouteMap(
             points = points,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
-        )
-        Text(
-            "起点为橙色，终点为绿色。",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+                .height(280.dp),
+            onClick = { onOpenMap(points) }
         )
     }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("时长", Fmt.duration(workout.durationSec), null, Modifier.weight(1f))
-        MetricTile("距离", Fmt.km(workout.distanceM), "km", Modifier.weight(1f))
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("配速", workout.paceSecPerKm?.let { Fmt.pace(it) } ?: "--", "/km", Modifier.weight(1f))
-        MetricTile("消耗", Fmt.int(workout.calories), "kcal", Modifier.weight(1f))
+    // The three numbers people look for first, in one strip under the map.
+    FlatPanel {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp, horizontal = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HeroStat(Icons.Rounded.Timer, "时长", Fmt.duration(workout.durationSec), null)
+            HeroStat(
+                Icons.Rounded.LocalFireDepartment,
+                "消耗",
+                Fmt.int(workout.calories),
+                "kcal"
+            )
+            HeroStat(Icons.Rounded.Straighten, "距离", Fmt.km(workout.distanceM), "km")
+        }
     }
 
     // Everything else the watch attached to the session. Only the values that
     // are actually there get a tile: a missing field is left out rather than
     // printed as a dash, because this grid is about what the watch measured.
     val extras = buildList {
+        workout.paceSecPerKm?.let { add(Triple("配速", Fmt.pace(it), "/km")) }
         workout.avgHr?.let { add(Triple("平均心率", it.roundToInt().toString(), "bpm")) }
         workout.maxHr?.let { add(Triple("最高心率", it.roundToInt().toString(), "bpm")) }
         workout.load?.let { add(Triple("训练负荷", it.roundToInt().toString(), null)) }

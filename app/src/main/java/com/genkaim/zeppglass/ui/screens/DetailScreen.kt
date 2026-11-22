@@ -2319,7 +2319,6 @@ private fun WorkoutDetail(
     // The three numbers people look for first, laid out like the heart-rate
     // strip on the activity page. A strength session has no distance, so that
     // slot shows its average heart rate instead.
-    val palette = LocalZgPalette.current
     val distanceKm = workout.distanceM?.takeIf { it > 0.0 }
     val showsDistance = distanceKm != null
     FlatPanel {
@@ -2382,31 +2381,10 @@ private fun WorkoutDetail(
         }
     }
     val hasMore = extras.size > paired || !detail?.fields.isNullOrEmpty()
-    if (hasMore) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { onOpenMore() }
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "其他数据",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-    }
 
-    // 训练效果: the watch's two 0–5 scales, drawn the way the Zepp app does —
-    // a segmented arc that fills from the bottom-left, value in the middle.
+    // 训练效果: the watch's two 0–5 scales. The ring is cut into the rating
+    // zones, each with its own faint colour, and a needle marks where this
+    // session landed — that zone then takes its full colour.
     if (workout.aerobicTe != null || workout.anaerobicTe != null) {
         FlatPanel {
             Column(Modifier.padding(16.dp)) {
@@ -2416,20 +2394,34 @@ private fun WorkoutDetail(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    EffectGauge(
-                        "有氧",
-                        workout.aerobicTe,
-                        palette.sleepLight,
-                        Modifier.weight(1f)
-                    )
-                    EffectGauge(
-                        "无氧",
-                        workout.anaerobicTe,
-                        palette.warn,
-                        Modifier.weight(1f)
-                    )
+                    EffectGauge("有氧", workout.aerobicTe, Modifier.weight(1f))
+                    EffectGauge("无氧", workout.anaerobicTe, Modifier.weight(1f))
                 }
             }
+        }
+    }
+
+    // The entry sits under the last card, text and chevron kept together.
+    if (hasMore) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { onOpenMore() }
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "其他数据",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 
@@ -2594,10 +2586,38 @@ private fun WorkoutMoreDetail(data: HealthData?, workoutId: String?, store: Heal
     }
 }
 
-/** 训练效果 gauge: a segmented 0–5 arc that fills from the lower left. */
+/** One rating zone of the 0–5 training-effect scale. */
+private data class TeZone(val from: Double, val to: Double, val label: String, val color: Color)
+
+/** The five bands the watch's own app colours the training-effect ring with. */
 @Composable
-private fun EffectGauge(label: String, value: Double?, color: Color, modifier: Modifier = Modifier) {
+private fun teZones(): List<TeZone> {
     val palette = LocalZgPalette.current
+    val grey = MaterialTheme.colorScheme.onSurfaceVariant
+    return listOf(
+        TeZone(0.0, 1.0, "无效果", grey),
+        TeZone(1.0, 2.0, "轻松", palette.sleepLight),
+        TeZone(2.0, 3.0, "维持体能", palette.accent),
+        TeZone(3.0, 4.0, "改善体能", palette.warn),
+        TeZone(4.0, 5.0, "大幅提升", palette.critical)
+    )
+}
+
+/**
+ * 训练效果 gauge.
+ *
+ * The ring is cut into the rating bands, each drawn in its own faint colour, and
+ * a needle points at the session's score: the band the needle sits in takes its
+ * full colour, so the reading is "you are here" rather than a filled bar.
+ */
+@Composable
+private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modifier) {
+    val palette = LocalZgPalette.current
+    val zones = teZones()
+    val score = value?.coerceIn(0.0, 5.0)
+    val active = zones.lastOrNull { score != null && score >= it.from && (score < it.to || it.to >= 5.0) }
+        ?: zones.first()
+
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             label,
@@ -2608,56 +2628,88 @@ private fun EffectGauge(label: String, value: Double?, color: Color, modifier: M
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(118.dp),
+                .height(112.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val stroke = 9.dp.toPx()
                 val radius = minOf(size.width, size.height) / 2f - stroke
                 if (radius <= 0f) return@Canvas
-                val segments = 12
+                val segments = 20
                 val start = 160f
                 val sweep = 220f
-                val gap = (sweep / segments) * 0.24f
-                val filled = value?.let { ((it / 5.0) * segments).toInt().coerceIn(0, segments) } ?: 0
+                val gap = (sweep / segments) * 0.28f
                 val center = Offset(size.width / 2f, size.height / 2f)
+                val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+                val topLeft = Offset(center.x - radius, center.y - radius)
+
                 for (i in 0 until segments) {
+                    // The band this slice belongs to decides its colour; bands
+                    // in use are redrawn below at full strength.
+                    val from = i / segments.toDouble() * 5.0
+                    val zone = zones.lastOrNull { from >= it.from } ?: zones.first()
                     drawArc(
-                        color = if (i < filled) color else palette.grid,
+                        color = zone.color.copy(alpha = 0.22f),
                         startAngle = start + sweep * i / segments + gap / 2f,
                         sweepAngle = sweep / segments - gap,
                         useCenter = false,
-                        topLeft = Offset(center.x - radius, center.y - radius),
-                        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
-                        style = Stroke(stroke, cap = StrokeCap.Round)
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(stroke, cap = StrokeCap.Butt)
+                    )
+                }
+                // The band the needle points into, at its normal colour.
+                for (i in 0 until segments) {
+                    val from = i / segments.toDouble() * 5.0
+                    val to = (i + 1) / segments.toDouble() * 5.0
+                    val inActive = to > active.from && from < active.to
+                    if (!inActive || score == null) continue
+                    drawArc(
+                        color = active.color,
+                        startAngle = start + sweep * i / segments + gap / 2f,
+                        sweepAngle = sweep / segments - gap,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(stroke, cap = StrokeCap.Butt)
+                    )
+                }
+
+                // Needle: a short radial tick just outside the ring.
+                if (score != null) {
+                    val angle = Math.toRadians((start + sweep * (score / 5.0)).toDouble())
+                    val cos = kotlin.math.cos(angle).toFloat()
+                    val sin = kotlin.math.sin(angle).toFloat()
+                    drawLine(
+                        color = active.color,
+                        start = Offset(
+                            center.x + cos * (radius + stroke * 0.4f),
+                            center.y + sin * (radius + stroke * 0.4f)
+                        ),
+                        end = Offset(
+                            center.x + cos * (radius + stroke * 1.5f),
+                            center.y + sin * (radius + stroke * 1.5f)
+                        ),
+                        strokeWidth = 2.5.dp.toPx(),
+                        cap = StrokeCap.Round
                     )
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    Fmt.oneDecimal(value),
-                    style = MaterialTheme.typography.displaySmall,
+                    Fmt.oneDecimal(score),
+                    style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    trainingEffectWord(value),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (value == null) MaterialTheme.colorScheme.onSurfaceVariant else color
+                    if (score == null) "--" else active.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (score == null) MaterialTheme.colorScheme.onSurfaceVariant
+                    else active.color
                 )
             }
         }
     }
-}
-
-/** The watch's own wording for a 0–5 training-effect score. */
-private fun trainingEffectWord(value: Double?): String = when {
-    value == null -> "--"
-    value < 1.0 -> "无效果"
-    value < 2.0 -> "轻松"
-    value < 3.0 -> "维持体能"
-    value < 4.0 -> "改善体能"
-    value < 5.0 -> "大幅提升"
-    else -> "过度"
 }
 
 /** Colour per curve; anything the watch adds later falls back to the muted ink. */

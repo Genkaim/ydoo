@@ -288,19 +288,29 @@ fun OverviewScreen(
             // lifts; the dial itself reports the request.
             indicator = {
                 val fraction = pullState.distanceFraction.coerceIn(0f, 1f)
-                when {
-                    state.refreshing -> PullDial(
-                        progress = null,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = headerHeight + 8.dp)
-                    )
-                    fraction > 0.02f -> PullDial(
-                        progress = fraction,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = headerHeight + 8.dp)
-                    )
+                // A finished refresh used to replay the pull animation backwards:
+                // the arc unwound and the dial shrank away as the pull distance
+                // decayed. Instead the spinner stays until the dial is gone and
+                // the only exit is a plain fade.
+                var spinning by remember { mutableStateOf(false) }
+                LaunchedEffect(state.refreshing) {
+                    if (state.refreshing) {
+                        spinning = true
+                    } else {
+                        kotlinx.coroutines.delay(220)
+                        spinning = false
+                    }
+                }
+                AnimatedVisibility(
+                    visible = state.refreshing || fraction > 0.02f,
+                    enter = fadeIn(tween(140)) +
+                        scaleIn(initialScale = 0.82f, animationSpec = tween(140)),
+                    exit = fadeOut(tween(160)),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = headerHeight + 8.dp)
+                ) {
+                    PullDial(progress = if (spinning) null else fraction)
                 }
             }
         ) {

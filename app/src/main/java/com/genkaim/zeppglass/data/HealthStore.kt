@@ -133,34 +133,10 @@ class HealthStore private constructor(
                         doRefreshSafely()
                     }
                 }
-                // Waking up often finds the night not yet uploaded: the watch
-                // syncs to the cloud a little later than the app opens. Retry
-                // once on its own instead of making the reader pull again.
-                if (owner == generation && needsMorningRetry()) {
-                    morningRetryDay = LocalDate.now(zone)
-                    scope.launch {
-                        delay(20_000)
-                        if (settings.isLoggedIn && state.data?.nightOn(LocalDate.now(zone)) == null) {
-                            refresh()
-                        }
-                    }
-                }
             } finally {
                 if (owner == generation) inFlight.set(false)
             }
         }
-    }
-
-    /** One silent second pass per morning, when last night's sleep is missing. */
-    private var morningRetryDay: LocalDate? = null
-
-    private fun needsMorningRetry(): Boolean {
-        val now = java.time.LocalDateTime.now(zone)
-        if (now.hour !in 5..11) return false
-        val today = now.toLocalDate()
-        if (morningRetryDay == today) return false
-        val data = state.data ?: return false
-        return data.nightOn(today) == null
     }
 
     /**

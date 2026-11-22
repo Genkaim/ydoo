@@ -226,10 +226,6 @@ fun DetailScreen(
                 DetailKind.WORKOUT -> WorkoutDetail(
                     workout = workout,
                     detail = workoutDetail,
-                    // All-day band samples: the only source for what the heart
-                    // did after the session stopped (the workout payload ends
-                    // with the last recorded second), one value per minute.
-                    heartRate = data?.heartRate.orEmpty(),
                     // Before the payload lands, go by the summary: a session with
                     // distance has a track, so its slot is held from frame one.
                     showTrack = if (workoutDetail == null) {
@@ -2374,7 +2370,6 @@ private fun PinnedTrack(points: List<GeoPoint>, scroll: ScrollState, modifier: M
 private fun WorkoutDetail(
     workout: Workout?,
     detail: WorkoutDetail?,
-    heartRate: List<Pair<Long, Int>>,
     showTrack: Boolean,
     onOpenMore: () -> Unit
 ) {
@@ -2384,12 +2379,6 @@ private fun WorkoutDetail(
     }
     val date = java.time.Instant.ofEpochSecond(workout.endEpochSec)
         .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-
-    // The 心率 section has two faces: the session's own curve, and what the heart
-    // did in the three minutes after it stopped. Kept per workout, so opening a
-    // different session starts on the curve again.
-    var showRecovery by remember(workout.id) { mutableStateOf(false) }
-    val recovery = remember(workout.id, heartRate) { recoveryHeart(workout, heartRate) }
 
     // The track itself is drawn by the page above this scrolling column; its
     // slot is reserved here so nothing shifts when the payload lands.
@@ -2519,178 +2508,58 @@ private fun WorkoutDetail(
         val isHeart = line.label == "心率"
         val tint = workoutSeriesTint(line.label)
         val real = line.values.filterNotNull()
-        if (isHeart) {
-            SectionTitle(line.label) {
-                HeartRateSwitch(recovery = showRecovery) { showRecovery = !showRecovery }
-            }
-        } else {
-            SectionTitle(line.label)
-        }
-        if (isHeart && showRecovery) {
-            RecoveryHeartCards(recovery)
-        } else {
-            FlatPanel {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 14.dp, horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SeriesStat(
-                        Modifier.weight(1f),
-                        "平均",
-                        real.average().roundToInt().toString(),
-                        line.unit,
-                        tint
-                    )
-                    SeriesStat(
-                        Modifier.weight(1f),
-                        "最高",
-                        real.max().roundToInt().toString(),
-                        line.unit,
-                        tint
-                    )
-                    SeriesStat(
-                        Modifier.weight(1f),
-                        "最低",
-                        real.min().roundToInt().toString(),
-                        line.unit,
-                        tint
-                    )
-                }
-            }
-            FlatPanel {
-                AxisLineChart(
-                    values = line.values,
-                    labels = workoutTimeLabels(line.values.size, workout.durationSec),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 12.dp)
-                        .height(150.dp),
-                    color = tint
+        SectionTitle(line.label)
+        FlatPanel {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SeriesStat(
+                    Modifier.weight(1f),
+                    "平均",
+                    real.average().roundToInt().toString(),
+                    line.unit,
+                    tint
+                )
+                SeriesStat(
+                    Modifier.weight(1f),
+                    "最高",
+                    real.max().roundToInt().toString(),
+                    line.unit,
+                    tint
+                )
+                SeriesStat(
+                    Modifier.weight(1f),
+                    "最低",
+                    real.min().roundToInt().toString(),
+                    line.unit,
+                    tint
                 )
             }
-            // Where the session sat on the watch's HR scale. The summary carries
-            // the zone seconds even when the per-second curve is missing, so this
-            // card can stand on its own.
-            if (isHeart) HeartZoneCard(workout)
         }
+        FlatPanel {
+            AxisLineChart(
+                values = line.values,
+                labels = workoutTimeLabels(line.values.size, workout.durationSec),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(150.dp),
+                color = tint
+            )
+        }
+        // Where the session sat on the watch's HR scale. The summary carries the
+        // zone seconds even when the per-second curve is missing, so this card
+        // can stand on its own.
+        if (isHeart) HeartZoneCard(workout)
     }
 
     // Every remaining raw field the detail payload carried, with the keys that
     // have a known meaning translated. Unknown keys are still shown under their
     // own name, so a new watch metric appears without a code change.
-}
-
-/**
- * 心率 / 恢复心率 switch: one small capsule that names the view it opens.
- * It sits on the section title's right so the two readings share one place
- * instead of taking a second card on the page.
- */
-@Composable
-private fun HeartRateSwitch(recovery: Boolean, onToggle: () -> Unit) {
-    Text(
-        if (recovery) "心率" else "恢复心率",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
-            .padding(start = 8.dp, top = 2.dp, bottom = 2.dp)
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { onToggle() }
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-    )
-}
-
-/**
- * The heart right after a session stopped: its value at the finish, then one,
- * two and three minutes later.
- *
- * The workout payload ends with its last recorded second, so this can only come
- * from the all-day band stream — one byte per minute, where 254 means "not
- * measured". Each minute therefore looks for the nearest sample within 40 s and
- * stays null when the watch did not record one: a recovery rate built from a
- * stale or carried-forward reading would look like a measurement that never
- * happened.
- */
-private class RecoveryHeart(val values: List<Int?>, val minutes: List<Int>)
-
-private fun recoveryHeart(workout: Workout, samples: List<Pair<Long, Int>>): RecoveryHeart {
-    val marks = listOf(0, 1, 2, 3)
-    val values = marks.map { minute ->
-        val target = workout.endEpochSec + minute * 60L
-        samples.minByOrNull { kotlin.math.abs(it.first - target) }
-            ?.takeIf { kotlin.math.abs(it.first - target) <= 40 }
-            ?.second
-    }
-    return RecoveryHeart(values, marks)
-}
-
-@Composable
-private fun RecoveryHeartCards(recovery: RecoveryHeart) {
-    val tint = MaterialTheme.colorScheme.tertiary
-    val first = recovery.values.firstOrNull()
-    val last = recovery.values.lastOrNull()
-    FlatPanel {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 12.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                recovery.minutes.forEachIndexed { index, minute ->
-                    StatBlock(
-                        Modifier.weight(1f),
-                        Icons.Rounded.Favorite,
-                        String.format("%02d:00", minute),
-                        recovery.values[index]?.toString() ?: "--",
-                        tint,
-                        unit = "bpm"
-                    )
-                }
-            }
-            // The three-minute drop is the number people actually read off this
-            // screen: how far the heart came down after the session stopped.
-            if (first != null && last != null) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (first - last > 0) "↘ ${first - last} 次/分" else "↗ ${last - first} 次/分（没有下降）",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (first - last > 0) tint else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
-    FlatPanel {
-        if (recovery.values.count { it != null } >= 2) {
-            val valid = recovery.values.filterNotNull()
-            AxisLineChart(
-                values = recovery.values.map { it?.toFloat() },
-                labels = recovery.minutes.map { String.format("%02d:00", it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 12.dp)
-                    .height(150.dp),
-                color = tint,
-                minValue = (valid.min() / 10f).toInt() * 10f - 10f,
-                maxValue = (valid.max() / 10f).toInt() * 10f + 10f
-            )
-        } else {
-            Text(
-                "手表没有留下运动结束后的心率采样，恢复心率算不出来。",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp)
-            )
-        }
-    }
 }
 
 /**

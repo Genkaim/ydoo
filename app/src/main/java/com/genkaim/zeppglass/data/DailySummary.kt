@@ -94,11 +94,19 @@ object DailySummary {
 
         val key = dayKey()
         val client = AiClient(settings)
+        // The model gets the wall clock, so "接下来" means the rest of this day
+        // rather than a generic plan.
+        val now = LocalDateTime.now()
+        val stamp = now.format(
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm EEEE", java.util.Locale.CHINA)
+        )
         val messages = listOf(
             ChatMessage("system", SYSTEM_PROMPT),
             ChatMessage(
                 "user",
-                AiContext.digest(data, 7, settings.dietGoalOrCut) + "\n\n请基于上面的数据写今天的摘要。"
+                "摘要生成时间：$stamp（时区 ${java.time.ZoneId.systemDefault()}）。\n\n" +
+                    AiContext.digest(data, 7, settings.dietGoalOrCut) +
+                    "\n\n请基于上面的数据，按这个时间点写今天的摘要和接下来的安排。"
             )
         )
 
@@ -145,6 +153,11 @@ object DailySummary {
             "压力或 Charge 的明显下滑。正常范围内的指标不要逐个报数，也不要罗列整周的每日数据；" +
             "全在正常范围时就用一句话概括「各项都在正常范围」。" +
             "睡眠时长一律写成「X 小时 Y 分」，不要只报分钟。" +
+            "你会拿到摘要的生成时间：按这个时刻给「接下来」的安排——早上说今天怎么练、怎么分配精力，" +
+            "中午说下午和晚上，晚上说恢复与明天，不要给出与当前时刻不符的建议。" +
+            "如果现在是早上（12 点前），当天的步数、消耗、活动时长才刚开始，" +
+            "不要评价「今天活动量不够/完成得好」，只谈昨晚恢复和今天计划；" +
+            "下午或晚上才可以对当天活动量作评价。" +
             "只输出纯文本：不要 Markdown、不要标题、不要列表、不要表情、不要编造没有给出的数字。" +
             "没有数据的项目直接跳过。总长度不超过 120 个字。"
 }

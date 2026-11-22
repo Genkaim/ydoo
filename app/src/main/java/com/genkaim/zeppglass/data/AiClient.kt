@@ -485,6 +485,8 @@ object AiContext {
                         r.hrvScore?.let { add("HRV 分 $it") }
                         r.sleepHrv?.let { add("睡眠 HRV $it ms") }
                         r.sleepRhr?.let { add("睡眠静息心率 $it bpm") }
+                        r.hrvBaseline?.let { add("HRV 基线 $it ms") }
+                        r.rhrBaseline?.let { add("静息心率基线 $it bpm") }
                         r.mentalScore?.let { add("精神分 $it") }
                         r.physicalScore?.let { add("体力分 $it") }
                         r.skinTempDeltaC?.let { add("皮肤温度 ${"%+.1f".format(it)}℃") }
@@ -507,6 +509,8 @@ object AiContext {
                     "- ${r.date}: " + buildList {
                         r.sleepHrv?.let { add("睡眠 HRV $it ms") }
                         r.sleepRhr?.let { add("睡眠静息心率 $it bpm") }
+                        r.hrvBaseline?.let { add("HRV 基线 $it ms") }
+                        r.rhrBaseline?.let { add("静息心率基线 $it bpm") }
                         r.skinTempScore?.let { add("皮肤温度分 $it") }
                         r.skinTempDeltaC?.let { add("皮肤温度 ${"%+.1f".format(it)}℃") }
                     }.joinToString("，")
@@ -673,7 +677,7 @@ object AiContext {
                     "- $label 身体成分（${dayOf(point)}）：" +
                         (parts.joinToString("，").ifEmpty { "没有身体成分" } +
                             (score?.let { "，身体得分 $it" } ?: "") +
-                            (age?.let { "，身体年龄 $it 岁" } ?: ""))
+                            (age?.let { if (it < 18) "，身体年龄 <18 岁" else "，身体年龄 $it 岁" } ?: ""))
                 )
             }
 

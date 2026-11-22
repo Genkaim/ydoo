@@ -57,7 +57,9 @@ fun bodyCompositionScore(
 fun deurenbergAge(bmi: Double?, fat: Double?, male: Boolean): Int? {
     if (bmi == null || fat == null) return null
     val age = (fat - 1.2 * bmi + 5.4 + if (male) 10.8 else 0.0) / 0.23
-    return age.roundToInt().coerceIn(18, 80)
+    // No lower floor: a lean, young body can compute below 18, and the UI shows
+    // that as "<18" instead of pretending it is 18.
+    return age.roundToInt().coerceIn(0, 80)
 }
 
 /** Mifflin-St Jeor basal rate from the Zepp profile; null when incomplete. */

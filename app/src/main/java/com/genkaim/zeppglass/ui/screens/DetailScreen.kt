@@ -1589,7 +1589,7 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                bodyAge?.toString() ?: "--",
+                                bodyAge?.let { if (it < 18) "<18" else it.toString() } ?: "--",
                                 style = MaterialTheme.typography.displaySmall,
                                 color = ink
                             )
@@ -1602,7 +1602,8 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                         }
                         if (bodyAge != null && actualAge != null) {
                             Text(
-                                when {
+                                if (bodyAge < 18) "低于 18 岁"
+                                else when {
                                     bodyAge < actualAge -> "比实际小 ${actualAge - bodyAge} 岁"
                                     bodyAge > actualAge -> "比实际大 ${bodyAge - actualAge} 岁"
                                     else -> "与实际年龄相同"

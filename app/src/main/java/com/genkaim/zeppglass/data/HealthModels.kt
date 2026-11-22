@@ -61,7 +61,12 @@ data class SleepNight(
     val napStages: List<SleepStageSlice> = emptyList()
 ) {
     val totalMinutes: Int
-        get() = ((endEpochSec - startEpochSec) / 60).toInt().coerceAtLeast(0)
+        get() {
+            // The watch's window runs from falling asleep to waking up, so it
+            // contains the minutes spent awake. Sleep duration is what is left.
+            val window = ((endEpochSec - startEpochSec) / 60).toInt().coerceAtLeast(0)
+            return (window - (awakeMinutes ?: 0)).coerceAtLeast(0)
+        }
 }
 
 data class ChargeSample(

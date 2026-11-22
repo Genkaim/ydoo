@@ -119,6 +119,8 @@ object AiTools {
                         r.rhrScore?.let { put("rhr_score", it) }
                         r.sleepHrv?.let { put("sleep_hrv", it) }
                         r.sleepRhr?.let { put("sleep_rhr", it) }
+                        r.hrvBaseline?.let { put("hrv_baseline", it) }
+                        r.rhrBaseline?.let { put("rhr_baseline", it) }
                         r.physicalScore?.let { put("physical", it) }
                         r.mentalScore?.let { put("mental", it) }
                         r.ahiScore?.let { put("breathing", it) }

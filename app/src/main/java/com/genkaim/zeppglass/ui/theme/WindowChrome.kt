@@ -41,6 +41,19 @@ fun ComponentActivity.applyZeppChrome(dark: Boolean) {
             SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
         }
     )
+    // Android 10+ paints its own translucent scrim behind the three-button bar
+    // and the gesture pill; that scrim is what made the bar look like a strip
+    // of another colour. Turning it off is what "immersive" means here — the
+    // page colour runs all the way to the edge on every screen.
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        window.isNavigationBarContrastEnforced = false
+        window.isStatusBarContrastEnforced = false
+    }
+    @Suppress("DEPRECATION")
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        window.navigationBarColor = Color.TRANSPARENT
+        window.statusBarColor = Color.TRANSPARENT
+    }
     window.setBackgroundDrawable(ColorDrawable(background))
     window.decorView.setBackgroundColor(background)
 }

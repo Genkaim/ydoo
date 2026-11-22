@@ -187,12 +187,8 @@ fun ZeppGlassTheme(
         MaterialTheme(
             colorScheme = scheme,
             typography = DefaultTypography.codexStyle(),
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                content()
-                ThemeChangeFade(darkTheme)
-            }
-        }
+            content = content
+        )
     }
 }
 
@@ -200,14 +196,15 @@ fun ZeppGlassTheme(
  * A theme switch redraws every surface in one frame, which reads as a hard cut.
  * This lays the *previous* page colour over the new one for a moment and fades
  * it away, so the switch looks like a dip through the background instead of a
- * flash. It never takes touches.
+ * flash. Only the page that offers the switch uses it; elsewhere the app is
+ * simply already in the new theme when it is drawn.
  *
  * The cover is created at full strength *during* the recomposition that flips
- * the theme — `remember(dark)` — not afterwards in an effect, which is what
- * used to let one frame of the new colours through first.
+ * the theme — `remember(dark)` — not afterwards in an effect, which would let
+ * one frame of the new colours through first.
  */
 @Composable
-private fun ThemeChangeFade(dark: Boolean) {
+fun ThemeChangeFade(dark: Boolean) {
     val coverColor = if (dark) Color(0xFFF2F3F5) else Color(0xFF07080A)
     var firstFrame by remember { mutableStateOf(true) }
     val cover = remember(dark) { Animatable(if (firstFrame) 0f else 1f) }

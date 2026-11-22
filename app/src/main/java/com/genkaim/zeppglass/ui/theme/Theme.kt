@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -196,29 +197,31 @@ fun ZeppGlassTheme(
 }
 
 /**
- * A theme switch redraws every surface in one frame, which reads as a hard
- * cut. This lays the *previous* page colour over the new one for a moment and
- * fades it away, so the switch looks like a dip through the background instead
- * of a flash. It never takes touches.
+ * A theme switch redraws every surface in one frame, which reads as a hard cut.
+ * This lays the *previous* page colour over the new one for a moment and fades
+ * it away, so the switch looks like a dip through the background instead of a
+ * flash. It never takes touches.
+ *
+ * The cover is created at full strength *during* the recomposition that flips
+ * the theme — `remember(dark)` — not afterwards in an effect, which is what
+ * used to let one frame of the new colours through first.
  */
 @Composable
 private fun ThemeChangeFade(dark: Boolean) {
-    var lastDark by remember { mutableStateOf(dark) }
-    var fadeColor by remember { mutableStateOf(Color.Transparent) }
-    val alpha = remember { Animatable(0f) }
+    val coverColor = if (dark) Color(0xFFF2F3F5) else Color(0xFF07080A)
+    var firstFrame by remember { mutableStateOf(true) }
+    val cover = remember(dark) { Animatable(if (firstFrame) 0f else 1f) }
     LaunchedEffect(dark) {
-        if (lastDark != dark) {
-            fadeColor = if (lastDark) Color(0xFF07080A) else Color(0xFFF2F3F5)
-            lastDark = dark
-            alpha.snapTo(1f)
-            alpha.animateTo(0f, animationSpec = tween(320))
+        if (firstFrame) {
+            firstFrame = false
+        } else {
+            cover.animateTo(0f, animationSpec = tween(320))
         }
     }
-    if (alpha.value > 0f) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(fadeColor.copy(alpha = alpha.value * 0.9f))
-        )
-    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = cover.value * 0.92f }
+            .background(coverColor)
+    )
 }

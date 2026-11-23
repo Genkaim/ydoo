@@ -3868,6 +3868,7 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
     }
     val palette = LocalZgPalette.current
     val ink = MaterialTheme.colorScheme.onSurface
+    val lastSample = pointsOn(day).maxByOrNull { it.epochMs }
     val verdict = when {
         value >= 95 -> "正常" to ink
         value >= 90 -> "偏低" to palette.warn
@@ -3881,7 +3882,7 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                Fmt.date(day),
+                lastSample?.let { "${Fmt.date(day)} ${Fmt.time(it.epochMs)}" } ?: Fmt.date(day),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -4223,10 +4224,29 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
         return
     }
 
-    // Middle: the day's readings on a 24-hour axis. Each reading is its own
-    // short bar from diastolic to systolic, so the gaps between measurements
-    // stay visible instead of being filled by an hour-wide column.
-    SectionTitle(if (shownDay == LocalDate.now()) "今天各小时" else "${Fmt.date(shownDay)} 各小时")
+    // The day's numbers first: highest, lowest and mean of both pressures.
+    FlatPanel {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            BloodPressureStatRow(
+                name = "收缩压",
+                values = shownReadings.map { it.systolic },
+                color = palette.warn
+            )
+            MetricDivider()
+            BloodPressureStatRow(
+                name = "舒张压",
+                values = shownReadings.map { it.diastolic },
+                color = palette.accent
+            )
+        }
+    }
+
+    // Below it: the day's readings on a 24-hour axis. One column per hour, cut
+    // into vertical segments, so the gaps between measurements stay visible.
+    SectionTitle("日统计")
     FlatPanel {
         Column(Modifier.padding(12.dp)) {
             HourlyBloodPressureChart(
@@ -4236,9 +4256,12 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     .height(190.dp)
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(
+                Modifier.padding(horizontal = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 listOf(
-                    "收缩压" to palette.critical,
+                    "收缩压" to palette.warn,
                     "舒张压" to palette.accent
                 ).forEach { (label, color) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4290,7 +4313,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(120.dp),
-                    color = palette.critical,
+                    color = palette.warn,
                     minValue = 80f,
                     maxValue = 180f
                 )
@@ -4304,9 +4327,12 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     minValue = 40f,
                     maxValue = 120f
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    Modifier.padding(horizontal = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
                     listOf(
-                        "收缩压" to palette.critical,
+                        "收缩压" to palette.warn,
                         "舒张压" to palette.accent
                     ).forEach { (label, color) ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4337,6 +4363,38 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     )
 }
 
+/** One pressure of the day: highest, lowest and mean in three columns. */
+@Composable
+private fun BloodPressureStatRow(name: String, values: List<Int>, color: Color) {
+    if (values.isEmpty()) return
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.width(70.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(name, style = MaterialTheme.typography.labelMedium)
+        }
+        listOf(
+            "最高" to values.max(),
+            "最低" to values.min(),
+            "平均" to values.average().roundToInt()
+        ).forEach { (label, value) ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(value.toString(), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 /**
  * One column per hour on a 24-hour axis, the same width as the oxygen chart's
  * bars, with the two pressures in two colours inside it: systolic on top,
@@ -4353,7 +4411,7 @@ private fun HourlyBloodPressureChart(
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
-    val systolicColor = palette.critical
+    val systolicColor = palette.warn
     val diastolicColor = palette.accent
     val lo = 40f
     val hi = 180f
@@ -4412,7 +4470,7 @@ private fun HourlyBloodPressureChart(
                 val top = yOf(highest.toFloat())
                 val bottom = yOf(lowest.toFloat())
                 drawRoundRect(
-                    color = color,
+                    color = color.copy(alpha = 0.80f),
                     topLeft = Offset(centerX - barWidth / 2f, top),
                     size = androidx.compose.ui.geometry.Size(
                         barWidth,

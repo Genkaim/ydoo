@@ -347,6 +347,91 @@ class AiClient(private val settings: AppSettings) {
         throw last ?: AiException(0, "模型只输出了思考过程，没有给出结果")
     }
 
+    /**
+     * Streaming version of [vision]: every SSE chunk is emitted as
+     * (answer, thinking) as it arrives, so the diet card can show what the model
+     * is doing while it looks at the photo instead of a bare spinner.
+     *
+     * The thinking text is the model's private reasoning (`reasoning_content`)
+     * and is normally thrown away; here it is the point.
+     */
+    fun visionStream(
+        image: ByteArray,
+        prompt: String,
+        maxTokens: Int = 8192
+    ): Flow<Pair<String, String>> = flow {
+        val dataUrl = "data:image/jpeg;base64," +
+            Base64.getEncoder().encodeToString(image)
+        val visionModel = settings.aiVisionModel.ifBlank {
+            settings.aiModel.ifBlank { DEFAULT_MODEL }
+        }
+        val payload = JSONObject().apply {
+            put("model", visionModel)
+            put("stream", true)
+            put("max_tokens", maxTokens)
+            put("temperature", 0.2)
+            put("messages", JSONArray().apply {
+                put(
+                    JSONObject()
+                        .put("role", "user")
+                        .put(
+                            "content",
+                            JSONArray().apply {
+                                put(JSONObject().put("type", "text").put("text", prompt))
+                                put(
+                                    JSONObject().put("type", "image_url")
+                                        .put("image_url", JSONObject().put("url", dataUrl))
+                                )
+                            }
+                        )
+                )
+            })
+        }
+        val request = applyHeaders(
+            Request.Builder()
+                .url(endpoint())
+                .header("Accept", "text/event-stream")
+                .post(payload.toString().toRequestBody(jsonType))
+        ).build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body
+            if (!response.isSuccessful) {
+                throw AiException(response.code, visionHint(response.code, body?.string().orEmpty()))
+            }
+            if (body == null) throw AiException(0, "服务没有返回内容")
+
+            val contentType = response.header("Content-Type").orEmpty()
+            if (contentType.contains("application/json", ignoreCase = true)) {
+                // A gateway that ignores `stream`: one complete message.
+                val text = body.string()
+                val message = runCatching {
+                    JSONObject(text).getJSONArray("choices").getJSONObject(0)
+                        .getJSONObject("message")
+                }.getOrNull() ?: throw AiException(0, "无法解析返回内容")
+                val content = message.text("content").trim()
+                val thinking = message.text("reasoning_content").trim()
+                if (content.isEmpty() && thinking.isEmpty()) {
+                    throw AiException(0, "模型没有返回文字")
+                }
+                emit(content to thinking)
+                return@use
+            }
+
+            val source = body.source()
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: break
+                if (line.isBlank() || line.startsWith(":")) continue
+                if (!line.startsWith("data:")) continue
+                val data = line.removePrefix("data:").trim()
+                if (data == "[DONE]") break
+                val (chunk, thinking) = runCatching { JSONObject(data).sseDelta() }
+                    .getOrDefault("" to "")
+                if (chunk.isNotEmpty() || thinking.isNotEmpty()) emit(chunk to thinking)
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+
     private fun visionHint(code: Int, body: String): String {
         val lower = body.lowercase()
         val unsupportedImage = lower.contains("image") &&

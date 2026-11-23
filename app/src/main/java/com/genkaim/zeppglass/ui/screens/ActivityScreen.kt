@@ -711,8 +711,8 @@ private fun WeekStat(label: String, value: String, unit: String?, modifier: Modi
 
 /**
  * The day's activity advice as one compact row right under the top card: the
- * points collected out of the suggested total, the heart-rate band to spend
- * time in, and how hard Zepp wants today's session to be.
+ * points collected out of the suggested total, and the heart-rate band to spend
+ * time in.
  */
 @Composable
 private fun ActivityAdviceStrip(advice: ExertionDay) {
@@ -728,7 +728,6 @@ private fun ActivityAdviceStrip(advice: ExertionDay) {
     } else {
         null
     }
-    val intensity = advice.planIntensity?.let { planIntensityWord(it) }
     FlatPanel(Modifier.fillMaxWidth()) {
         Row(
             Modifier
@@ -750,18 +749,15 @@ private fun ActivityAdviceStrip(advice: ExertionDay) {
                 if (hr == null) null else "bpm",
                 if (hr == null) muted else LocalZgPalette.current.sleepRem
             )
-            AdviceCell(
-                Modifier.weight(1f),
-                "建议强度",
-                intensity ?: "--",
-                null,
-                if (intensity == null) muted else MaterialTheme.colorScheme.tertiary
-            )
         }
     }
 }
 
-/** One of the three advice columns: a small label over the value and its unit. */
+/**
+ * One of the advice columns: a small label over the value and its unit. The
+ * value uses the same size as the steps tile above, so the two rows read as one
+ * block.
+ */
 @Composable
 private fun AdviceCell(
     modifier: Modifier,
@@ -781,7 +777,7 @@ private fun AdviceCell(
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 value,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = color,
                 maxLines = 1
             )
@@ -790,17 +786,12 @@ private fun AdviceCell(
                     " $unit",
                     style = MaterialTheme.typography.labelSmall,
                     color = color,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    modifier = Modifier.padding(bottom = 3.dp)
                 )
             }
         }
     }
 }
 
-private fun planIntensityWord(intensity: Int): String = when (intensity) {
-    1 -> "轻度"
-    2 -> "中等"
-    3 -> "高强度"
-    else -> "强度 $intensity"
-}
+
 

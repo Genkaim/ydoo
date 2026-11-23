@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -92,6 +93,7 @@ import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.sheets.DietGoalSheet
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -169,6 +171,11 @@ fun DietDetail(
     var draft by remember { mutableStateOf<MealDraft?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var describeOpen by remember { mutableStateOf(false) }
+    // The model's own thinking while it looks at a photo, streamed as it comes
+    // in; and what the reader types back to correct or add to the estimate.
+    var thinking by remember { mutableStateOf("") }
+    var reply by remember { mutableStateOf("") }
+    var analysisNote by remember { mutableStateOf("") }
     // Tapping a capture button without an endpoint used to push an inline card
     // into the page, which shoved everything below it down. A dialog asks the
     // question without moving the page.
@@ -183,16 +190,34 @@ fun DietDetail(
     }
     val goal = settings.dietGoalOrCut
 
-    fun analyze(file: File, auto: Boolean = false) {
+    fun analyze(file: File, auto: Boolean = false, note: String? = null) {
         android.util.Log.i("YdooDiet", "analyze auto=$auto shoot=$shoot pending=$pendingPhoto file=${file.name}")
         flow = PhotoFlow.Loading(file)
+        thinking = ""
         error = null
+        // Everything the reader has typed about this photo travels with it, so a
+        // second correction does not overwrite the first.
+        val extra = buildList {
+            analysisNote.takeIf { it.isNotBlank() }?.let { add(it) }
+            note?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }.joinToString("；")
+        if (!note.isNullOrBlank()) analysisNote = extra
         scope.launch {
             try {
                 val bytes = withContext(Dispatchers.IO) { shrinkForUpload(file.readBytes()) }
-                val text = withContext(Dispatchers.IO) {
-                    AiClient(settings).vision(bytes, FOOD_PROMPT)
+                val prompt = if (extra.isBlank()) {
+                    FOOD_PROMPT
+                } else {
+                    "$FOOD_PROMPT\n\n用户的补充说明：$extra"
                 }
+                // Streamed instead of awaited in one piece: the thinking text and
+                // the answer arrive chunk by chunk, so the card can show both.
+                val answer = StringBuilder()
+                AiClient(settings).visionStream(bytes, prompt).collect { (chunk, thought) ->
+                    if (thought.isNotEmpty()) thinking += thought
+                    if (chunk.isNotEmpty()) answer.append(chunk)
+                }
+                val text = answer.toString()
                 val json = parseFoodJson(text)
                     ?: error("AI 返回的内容不是可用的估算：${text.take(60)}")
                 val estimated = MealDraft(
@@ -209,6 +234,8 @@ fun DietDetail(
                 // written: the AI's estimate is a proposal, and the reader
                 // confirms (or fixes) the foods there.
                 android.util.Log.i("YdooDiet", "estimate done items=${estimated.items.size}")
+                reply = ""
+                analysisNote = ""
                 draft = estimated
                 flow = null
             } catch (e: Exception) {
@@ -728,36 +755,90 @@ fun DietDetail(
     // Floating cards: the spinner / failure while the model looks at the photo,
     // then the editable list the user confirms.
     when (val state = flow) {
-        is PhotoFlow.Loading -> FloatingCard(onDismiss = {}) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.file != null) {
-                    MealThumb(state.file.absolutePath, 54.dp)
-                } else {
-                    Box(
-                        Modifier
-                            .size(54.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Rounded.EditNote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+        is PhotoFlow.Loading -> {
+            val thinkingScroll = rememberScrollState()
+            LaunchedEffect(thinking) {
+                // Keep the newest reasoning line in view: the text only grows.
+                thinkingScroll.scrollTo(thinkingScroll.maxValue)
+            }
+            FloatingCard(onDismiss = {}) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (state.file != null) {
+                        MealThumb(state.file.absolutePath, 54.dp)
+                    } else {
+                        Box(
+                            Modifier
+                                .size(54.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.EditNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("AI 正在估算这份食物", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (thinking.isBlank()) "识别食物、份量与热量，通常需要几秒"
+                            else "模型的思考过程",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-                Spacer(Modifier.width(12.dp))
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("AI 正在估算这份食物", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "识别食物、份量与热量，通常需要几秒",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (thinking.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 132.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .verticalScroll(thinkingScroll)
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            thinking,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                // A reply continues the same photo: the note is sent with the
+                // image and the answer replaces the draft that would have opened.
+                if (state.file != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CapsuleField(
+                            value = reply,
+                            onValueChange = { reply = it },
+                            placeholder = "补充说明，例如：还有一碗米饭",
+                            modifier = Modifier.weight(1f)
+                        )
+                        RoundIconButton(
+                            icon = Icons.Rounded.Send,
+                            contentDescription = "补充后再估算",
+                            onClick = {
+                                val file = state.file
+                                if (file != null && reply.isNotBlank()) {
+                                    analyze(file, auto = true, note = reply)
+                                }
+                            },
+                            enabled = reply.isNotBlank(),
+                            primary = reply.isNotBlank()
+                        )
+                    }
                 }
             }
         }

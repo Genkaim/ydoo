@@ -292,30 +292,6 @@ fun AiScreen(
         }
     }
 
-    // The drawer is painted in a dialog window, which the IME always covers, so a
-    // tap only asks the IME to leave and the sheet is shown once it is really
-    // gone. With the field unfocused that is the same frame, so history still
-    // opens on the tap.
-    var historyPending by remember { mutableStateOf(false) }
-    LaunchedEffect(historyPending, imeVisible) {
-        if (!historyPending || imeVisible) return@LaunchedEffect
-        // Nothing left to hide: the field may as well let go of focus too, so it
-        // does not pull the IME back when the drawer closes.
-        focusManager.clearFocus(force = true)
-        showHistory = true
-        historyPending = false
-    }
-    LaunchedEffect(historyPending) {
-        if (!historyPending) return@LaunchedEffect
-        // A ROM that never reports the IME as gone must not eat the tap.
-        kotlinx.coroutines.delay(400)
-        if (historyPending) {
-            focusManager.clearFocus(force = true)
-            showHistory = true
-            historyPending = false
-        }
-    }
-
     var followBottom by remember { mutableStateOf(true) }
     // The follow animation scrolls the list itself. Without this flag the
     // gesture observer below would read that as a drag and stop following.
@@ -604,10 +580,11 @@ fun AiScreen(
                 }
                 IconButton(
                     onClick = {
-                        // Ask the IME down now; the sheet follows once it is out
-                        // of the way (usually the next few frames).
+                        // Both on this frame: the IME starts sliding down while
+                        // the drawer starts sliding up. One hide request, no
+                        // waiting, nothing else scheduled behind it.
                         hideKeyboard()
-                        historyPending = true
+                        showHistory = true
                     }
                 ) {
                     Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
@@ -631,12 +608,12 @@ fun AiScreen(
                 sessions = AiChatSession.sessions,
                 currentId = AiChatSession.currentId,
                 onOpen = { id ->
-                    // The conversation changes right here, on the tap; the drawer
-                    // folds away on its own animation beside it instead of
-                    // holding the switch up.
-                    AiChatSession.open(id)
                     scope.launch {
+                        // The drawer leaves first, and only then does the tapped
+                        // conversation become the current one — otherwise the
+                        // green moved across the list on its way out.
                         runCatching { sheetState.hide() }
+                        AiChatSession.open(id)
                         showHistory = false
                     }
                 },

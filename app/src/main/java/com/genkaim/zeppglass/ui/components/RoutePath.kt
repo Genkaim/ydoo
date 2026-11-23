@@ -73,7 +73,7 @@ fun RoutePath(
     val startColor = MaterialTheme.colorScheme.tertiary
     val endColor = MaterialTheme.colorScheme.primary
     val ramp = listOf(palette.sleepLight, palette.accent, palette.warn, palette.critical)
-    val chevronSize = with(LocalDensity.current) { 4.2.dp.toPx() }
+    val chevronSize = with(LocalDensity.current) { 3.dp.toPx() }
 
     Box(
         modifier
@@ -440,14 +440,14 @@ private fun DrawScope.drawTrack(
     shape.bins.forEach { bin ->
         drawPath(bin.path, rampColor(ramp, bin.t), style = stroke)
     }
-    val arrowStroke = Stroke(1.3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+    val arrowStroke = Stroke(1.1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
     shape.chevrons.forEach { chevron ->
         drawPath(chevron, Color.White, style = arrowStroke)
     }
 
     val start = shape.points.first()
-    drawCircle(Color.White, radius = 6.dp.toPx(), center = start)
-    drawCircle(startColor, radius = 4.dp.toPx(), center = start)
+    drawCircle(Color.White, radius = 4.4.dp.toPx(), center = start)
+    drawCircle(startColor, radius = 3.dp.toPx(), center = start)
     // The finish is a checkered flag inside a disc, planted on the last fix.
     drawFinishBadge(shape.points.last(), endColor)
 }
@@ -458,23 +458,24 @@ private fun DrawScope.drawTrack(
  * disc colour, which is what makes it read as a flag rather than a solid block.
  */
 private fun DrawScope.drawFinishBadge(at: Offset, color: Color) {
-    val radius = 6.5.dp.toPx()
-    drawCircle(Color.White, radius = radius + 1.dp.toPx(), center = at)
+    // Just a little wider than the line itself (4.6 dp), not a big marker.
+    val radius = 4.4.dp.toPx()
+    drawCircle(Color.White, radius = radius + 0.8.dp.toPx(), center = at)
     drawCircle(color, radius = radius, center = at)
 
-    val poleHeight = 7.dp.toPx()
-    val poleX = at.x - 2.dp.toPx()
+    val poleHeight = 5.2.dp.toPx()
+    val poleX = at.x - 1.8.dp.toPx()
     val top = at.y - poleHeight / 2f
     drawLine(
         Color.White,
         start = Offset(poleX, top),
         end = Offset(poleX, top + poleHeight),
-        strokeWidth = 1.1.dp.toPx(),
+        strokeWidth = 1.dp.toPx(),
         cap = StrokeCap.Round
     )
 
-    val square = 1.8.dp.toPx()
-    val flagLeft = poleX + 0.8.dp.toPx()
+    val square = 1.4.dp.toPx()
+    val flagLeft = poleX + 0.6.dp.toPx()
     for (row in 0 until 2) {
         for (col in 0 until 3) {
             if ((row + col) % 2 != 0) continue
@@ -522,9 +523,9 @@ private fun buildChevrons(points: List<Offset>, size: Float): List<Path> {
         val tip = Offset(center.x + ux * size * 0.45f, center.y + uy * size * 0.45f)
         val backX = center.x - ux * size * 0.45f
         val backY = center.y - uy * size * 0.45f
-        // Wings stay inside the line's own thickness, so the chevron reads as
-        // part of the track instead of a marker sitting on top of it.
-        val wing = size * 0.45f
+        // Wings stay inside the line's thickness with a hair of margin, so the
+        // chevron never touches the curve's edge.
+        val wing = size * 0.42f
         out.add(
             Path().apply {
                 moveTo(backX + nx * wing, backY + ny * wing)

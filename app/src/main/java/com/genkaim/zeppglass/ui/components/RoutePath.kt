@@ -460,23 +460,23 @@ private fun DrawScope.drawTrack(
 private fun DrawScope.drawFinishBadge(at: Offset, color: Color) {
     // A touch wider than the line itself (4.6 dp): visible at a glance without
     // turning into a marker that covers the route.
-    val radius = 5.6.dp.toPx()
-    drawCircle(Color.White, radius = radius + 1.dp.toPx(), center = at)
+    val radius = 7.dp.toPx()
+    drawCircle(Color.White, radius = radius + 1.2.dp.toPx(), center = at)
     drawCircle(color, radius = radius, center = at)
 
-    val poleHeight = 6.2.dp.toPx()
-    val poleX = at.x - 2.2.dp.toPx()
+    val poleHeight = 7.5.dp.toPx()
+    val poleX = at.x - 2.8.dp.toPx()
     val top = at.y - poleHeight / 2f
     drawLine(
         Color.White,
         start = Offset(poleX, top),
         end = Offset(poleX, top + poleHeight),
-        strokeWidth = 1.1.dp.toPx(),
+        strokeWidth = 1.3.dp.toPx(),
         cap = StrokeCap.Round
     )
 
-    val square = 1.7.dp.toPx()
-    val flagLeft = poleX + 0.8.dp.toPx()
+    val square = 2.dp.toPx()
+    val flagLeft = poleX + 1.dp.toPx()
     for (row in 0 until 2) {
         for (col in 0 until 3) {
             if ((row + col) % 2 != 0) continue

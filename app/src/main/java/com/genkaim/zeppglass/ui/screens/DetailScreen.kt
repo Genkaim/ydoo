@@ -2238,8 +2238,12 @@ private fun MiniTrendChart(
 
     Canvas(modifier) {
         // X runs over the whole comparison window, so the curve shows the recent
-        // month even when there are only a couple of readings.
+        // month even when there are only a couple of readings. The left gutter
+        // holds the value labels, so the curve starts clear of them.
         val inset = 4.dp.toPx()
+        val gutter = 28.dp.toPx()
+        val plotLeft = gutter
+        val plotRight = size.width - inset
         val startMs = start.atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
         val endMs = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli().toFloat()
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
@@ -2259,17 +2263,17 @@ private fun MiniTrendChart(
         val low = lowD.toFloat()
         val spanY = (highD - lowD).toFloat().coerceAtLeast(step.toFloat())
         fun xOf(epochMs: Long) =
-            (inset + (epochMs.toFloat() - startMs) / xSpan * (size.width - inset * 2f))
-                .coerceIn(inset, size.width - inset)
+            (plotLeft + (epochMs.toFloat() - startMs) / xSpan * (plotRight - plotLeft))
+                .coerceIn(plotLeft, plotRight)
         fun yOf(value: Double) =
             (size.height - (value.toFloat() - low) / spanY * size.height)
                 .coerceIn(0f, size.height)
 
-        // Grid at the adaptive step, each line labelled with its value.
+        // The values on the axis, without the thin guide lines: the labels alone
+        // are enough, and the lines crossed the curve at every level.
         var tick = lowD
         while (tick <= highD + step * 0.5) {
             val y = yOf(tick)
-            drawLine(grid.copy(alpha = 0.20f), Offset(0f, y), Offset(size.width, y), 1f)
             val text = if (step < 1.0) {
                 String.format(java.util.Locale.CHINA, "%.1f", tick)
             } else {
@@ -2288,7 +2292,7 @@ private fun MiniTrendChart(
 
         current?.let { level ->
             val y = yOf(level)
-            drawLine(grid, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+            drawLine(grid, Offset(plotLeft, y), Offset(plotRight, y), 1.dp.toPx())
         }
 
         val path = Path()

@@ -4237,7 +4237,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 listOf(
-                    "收缩压" to MaterialTheme.colorScheme.primary,
+                    "收缩压" to palette.critical,
                     "舒张压" to palette.accent
                 ).forEach { (label, color) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4318,10 +4318,11 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
 }
 
 /**
- * One column per hour on a 24-hour axis, with the two pressures as two colours:
- * systolic on the left of the slot, diastolic on the right. Inside each column
- * the values are cut into vertical segments — ranges no reading covered stay
- * empty, so an hour that jumped from 95 to 150 shows two blocks, not one band.
+ * One column per hour on a 24-hour axis, the same width as the oxygen chart's
+ * bars, with the two pressures in two colours inside it: systolic on top,
+ * diastolic below. Values are cut into vertical segments — ranges no reading
+ * covered stay empty, so an hour that jumped from 95 to 150 shows two blocks,
+ * not one band.
  */
 @Composable
 private fun HourlyBloodPressureChart(
@@ -4332,7 +4333,7 @@ private fun HourlyBloodPressureChart(
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
-    val systolicColor = MaterialTheme.colorScheme.primary
+    val systolicColor = palette.critical
     val diastolicColor = palette.accent
     val lo = 40f
     val hi = 180f
@@ -4381,8 +4382,9 @@ private fun HourlyBloodPressureChart(
         }
 
         val slot = chartWidth / 24f
-        val gap = 1.5.dp.toPx()
-        val halfWidth = ((slot * 0.46f - gap) / 2f).coerceAtLeast(1.5.dp.toPx())
+        // Same bar width as the oxygen chart, so the two pages' hourly columns
+        // line up one for one.
+        val barWidth = (slot * 0.46f).coerceAtLeast(2.dp.toPx())
         val radius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
 
         fun drawSegments(segments: List<Pair<Int, Int>>, centerX: Float, color: Color) {
@@ -4390,10 +4392,10 @@ private fun HourlyBloodPressureChart(
                 val top = yOf(highest.toFloat())
                 val bottom = yOf(lowest.toFloat())
                 drawRoundRect(
-                    color = color.copy(alpha = 0.70f),
-                    topLeft = Offset(centerX - halfWidth / 2f, top),
+                    color = color,
+                    topLeft = Offset(centerX - barWidth / 2f, top),
                     size = androidx.compose.ui.geometry.Size(
-                        halfWidth,
+                        barWidth,
                         (bottom - top).coerceAtLeast(2.dp.toPx())
                     ),
                     cornerRadius = radius
@@ -4402,11 +4404,9 @@ private fun HourlyBloodPressureChart(
         }
 
         hourly.forEachIndexed { hour, pair ->
-            val slotCenter = left + slot * hour + slot / 2f
-            val systolicX = slotCenter - halfWidth / 2f - gap / 2f
-            val diastolicX = slotCenter + halfWidth / 2f + gap / 2f
-            drawSegments(pair.first, systolicX, systolicColor)
-            drawSegments(pair.second, diastolicX, diastolicColor)
+            val centerX = left + slot * hour + slot / 2f
+            drawSegments(pair.first, centerX, systolicColor)
+            drawSegments(pair.second, centerX, diastolicColor)
         }
 
         listOf(0, 6, 12, 18, 24).forEach { hour ->

@@ -529,47 +529,55 @@ private fun LoadVo2Card(
                 }
             }
             if (advice != null) {
-                MetricsDivider(Modifier.padding(horizontal = 16.dp))
-                val status = advice.status
+                // The lower tap zone starts on the hairline itself, so the two
+                // pressed areas meet at the divider instead of leaving a strip
+                // that belongs to neither target.
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onStatusClick)
-                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 15.dp)
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    MetricsDivider(Modifier.padding(horizontal = 16.dp))
+                    val status = advice.status
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 15.dp)
                     ) {
-                        StatBlock(
-                            Modifier.weight(1f),
-                            Icons.Rounded.LocalFireDepartment,
-                            "疲劳",
-                            advice.fatigue?.roundToInt()?.toString() ?: "--",
-                            warn
-                        )
-                        StatBlock(
-                            Modifier.weight(1f),
-                            Icons.Rounded.Favorite,
-                            "体能",
-                            advice.fitness?.roundToInt()?.toString() ?: "--",
-                            MaterialTheme.colorScheme.primary
-                        )
-                        StatBlock(
-                            Modifier.weight(1f),
-                            Icons.Rounded.Timer,
-                            "训练状态",
-                            status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
-                            MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                    if (status != null && status < -10) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "偏疲劳，建议降低强度",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = warn
-                        )
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StatBlock(
+                                Modifier.weight(1f),
+                                Icons.Rounded.LocalFireDepartment,
+                                "疲劳",
+                                advice.fatigue?.roundToInt()?.toString() ?: "--",
+                                warn
+                            )
+                            StatBlock(
+                                Modifier.weight(1f),
+                                Icons.Rounded.Favorite,
+                                "体能",
+                                advice.fitness?.roundToInt()?.toString() ?: "--",
+                                MaterialTheme.colorScheme.primary
+                            )
+                            StatBlock(
+                                Modifier.weight(1f),
+                                Icons.Rounded.Timer,
+                                "训练状态",
+                                status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
+                                MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                        if (status != null && status < -10) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "偏疲劳，建议降低强度",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = warn
+                            )
+                        }
                     }
                 }
             }
@@ -593,7 +601,8 @@ private fun MetricsDivider(modifier: Modifier = Modifier) {
     )
 }
 
-/** Zepp-style VO2 max rating (52 shows 良好 in the official app). */private fun vo2Rating(value: Int?): String = when {
+/** Zepp-style VO2 max rating (52 shows 良好 in the official app). */
+private fun vo2Rating(value: Int?): String = when {
     value == null -> "还没测算"
     value >= 55 -> "优秀"
     value >= 50 -> "良好"

@@ -8,6 +8,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -174,8 +176,8 @@ fun DietDetail(
     var description by remember { mutableStateOf("") }
     var goalOpen by remember { mutableStateOf(false) }
 
-    // The recognition dialog: a photo or a written description, the model's
-    // thinking, then the estimate, with a reply box pinned to the card's bottom.
+    // The recognition dialog: a photo or a written description, a short
+    // 思考中 line, then the estimate, with a reply box pinned to the card's bottom.
     var aiPhoto by remember { mutableStateOf<File?>(null) }
     var aiText by remember { mutableStateOf("") }
     var aiOpen by remember { mutableStateOf(false) }
@@ -198,8 +200,8 @@ fun DietDetail(
     ) { saved ->
         val file = cameraFile
         cameraFile = null
-        // The capture opens the recognition page: that page shows the thinking,
-        // the estimate and the reply box, and writes nothing until confirmed.
+        // The capture opens the recognition dialog: it shows 思考中, then the
+        // estimate and the reply box, and writes nothing until confirmed.
         if (saved && file != null) openRecognition(file) else file?.delete()
     }
 
@@ -1407,7 +1409,7 @@ private fun MealThumb(path: String?, size: Dp) {
  * list replaced by either a question (when the input cannot be estimated) or
  * the foods the model did find.
  *
- * Before an answer arrives it shows the model's streamed thinking. A reply
+ * Before an answer arrives it shows a plain 思考中… line. A reply
  * continues the same photo or description — the note is sent along and the
  * estimate is rebuilt — and nothing is written until 记录这一餐 is pressed.
  */
@@ -1422,7 +1424,6 @@ private fun DietAiDialog(
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DietStore.attach(context) }
 
-    var thinking by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var guidance by remember { mutableStateOf<String?>(null) }
@@ -1441,7 +1442,6 @@ private fun DietAiDialog(
         ).joinToString("；")
         if (!note.isNullOrBlank()) notes = extra
         running = true
-        thinking = ""
         error = null
         guidance = null
         scope.launch {
@@ -1453,8 +1453,7 @@ private fun DietAiDialog(
                     } ?: error("读不到这张照片")
                     AiClient(settings)
                         .visionStream(bytes, photoFollowUp(extra, previousJson))
-                        .collect { (chunk, thought) ->
-                            if (thought.isNotEmpty()) thinking += thought
+                        .collect { (chunk, _) ->
                             if (chunk.isNotEmpty()) answer.append(chunk)
                         }
                 } else {
@@ -1472,8 +1471,7 @@ private fun DietAiDialog(
                         }
                     }
                     AiClient(settings).streamReasoning(messages, maxTokens = 2048)
-                        .collect { (chunk, thought) ->
-                            if (thought.isNotEmpty()) thinking += thought
+                        .collect { (chunk, _) ->
                             if (chunk.isNotEmpty()) answer.append(chunk)
                         }
                 }
@@ -1552,7 +1550,13 @@ private fun DietAiDialog(
                 .padding(horizontal = 18.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+            FlatPanel(
+                Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(tween(220)),
+                color = MaterialTheme.colorScheme.background,
+                shape = RoundedCornerShape(24.dp)
+            ) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (photoPath != null) {
@@ -1561,18 +1565,18 @@ private fun DietAiDialog(
                         }
                         Column(Modifier.weight(1f)) {
                             Text("饮食识别", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                when {
-                                    running && result == null -> "正在识别食物、份量与热量…"
-                                    guidance != null -> "需要你补充一点信息"
-                                    result != null -> "${result!!.items.size} 样食物 · 共 ${
-                                        result!!.items.sumOf { it.kcal ?: 0 }
-                                    } kcal"
-                                    else -> "这一步没有结果"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            val subtitle = when {
+                                running && result == null -> "思考中…"
+                                guidance != null -> "需要你补充一点信息"
+                                else -> null
+                            }
+                            subtitle?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                         if (running) {
                             CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -1591,14 +1595,9 @@ private fun DietAiDialog(
                         }
                     }
 
-                    // The middle: a question, the thinking, or the food list. It
-                    // scrolls on its own so the card stays short.
+                    // The middle: a question or the food list. It scrolls on its
+                    // own so the card stays short.
                     val middle = rememberScrollState()
-                    LaunchedEffect(thinking) {
-                        if (result == null && guidance == null) {
-                            middle.scrollTo(middle.maxValue)
-                        }
-                    }
                     Column(
                         Modifier
                             .fillMaxWidth()
@@ -1623,15 +1622,6 @@ private fun DietAiDialog(
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
-
-                        thinking.takeIf { it.isNotBlank() && result == null && guidance == null }
-                            ?.let { text ->
-                                Text(
-                                    text,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
 
                         result?.let { current ->
                             // Same rows as the old editor card: the name on the
@@ -1685,18 +1675,16 @@ private fun DietAiDialog(
                             )
                             if (macros.isNotEmpty()) {
                                 Rule()
-                                Text(
-                                    macros.joinToString(" · "),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            current.note?.let {
-                                Text(
-                                    "估算依据：$it",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Text(
+                                        macros.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }

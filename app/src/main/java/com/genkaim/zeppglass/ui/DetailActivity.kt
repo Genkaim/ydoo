@@ -62,7 +62,7 @@ class DetailActivity : ComponentActivity() {
         val kindName = getStringExtra(EXTRA_KIND) ?: return null
         val kind = runCatching { DetailKind.valueOf(kindName) }.getOrNull() ?: return null
         val date = getStringExtra(EXTRA_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        return DetailTarget(kind, date, getStringExtra(EXTRA_WORKOUT), getStringExtra(EXTRA_TEXT))
+        return DetailTarget(kind, date, getStringExtra(EXTRA_WORKOUT))
     }
 
     companion object {
@@ -71,7 +71,6 @@ class DetailActivity : ComponentActivity() {
         private const val EXTRA_WORKOUT = "detail_workout"
         private const val EXTRA_SHOOT = "detail_shoot"
         private const val EXTRA_PHOTO = "detail_photo"
-        private const val EXTRA_TEXT = "detail_text"
 
         fun intent(
             context: android.content.Context,
@@ -83,7 +82,6 @@ class DetailActivity : ComponentActivity() {
                 putExtra(EXTRA_KIND, target.kind.name)
                 target.date?.let { putExtra(EXTRA_DATE, it.toString()) }
                 target.workoutId?.let { putExtra(EXTRA_WORKOUT, it) }
-                target.text?.let { putExtra(EXTRA_TEXT, it) }
                 if (shoot) putExtra(EXTRA_SHOOT, true)
                 photoPath?.let { putExtra(EXTRA_PHOTO, it) }
             }

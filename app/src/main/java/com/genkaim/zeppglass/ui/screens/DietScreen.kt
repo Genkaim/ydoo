@@ -16,13 +16,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,7 +32,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -85,9 +83,6 @@ import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.Meal
 import com.genkaim.zeppglass.data.MealItem
 import com.genkaim.zeppglass.data.WeightPoint
-import com.genkaim.zeppglass.ui.DetailActivity
-import com.genkaim.zeppglass.ui.DetailKind
-import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.SettingsActivity
 import com.genkaim.zeppglass.ui.components.CapsuleField
@@ -119,6 +114,8 @@ private const val FOOD_PROMPT = """
 - 整餐合计：总热量 kcal，蛋白质、碳水、脂肪（克）
 只输出一个 JSON 对象，不要 Markdown 代码块、不要解释，格式：
 {"items":[{"name":"米饭","amount":"1 碗","kcal":230},{"name":"鸡胸肉","amount":"150 g","kcal":250}],"calories":480,"protein_g":38,"carbs_g":52,"fat_g":9,"note":"估算依据"}
+如果照片看不清、画面里没有明确的食物、或无法判断食物种类与份量，不要猜具体食物和热量，改输出：
+{"need_more":true,"message":"一句引导用户修正的话，例如：这张图看不清主食，是米饭还是面条？大概多少量？"}
 看不清或份量不确定时给保守估计，并在 note 里说明。不要编造看不到的食物。
 """
 
@@ -128,6 +125,8 @@ private const val TEXT_FOOD_PROMPT = """
 - 整餐合计：总热量 kcal，蛋白质、碳水、脂肪（克）
 只输出一个 JSON 对象，不要 Markdown 代码块、不要解释，格式：
 {"items":[{"name":"米饭","amount":"1 碗","kcal":230}],"calories":480,"protein_g":38,"carbs_g":52,"fat_g":9,"note":"估算依据"}
+如果描述太笼统（例如只说「吃了点东西」「一顿饭」），无法判断食物种类和热量，不要编造食物，改输出：
+{"need_more":true,"message":"一句引导用户修正的话，例如：具体吃了什么？大概多少量？"}
 描述里没写份量就按常见一人份估计，并在 note 里说明。不要添加用户没有提到的食物。
 """
 
@@ -176,17 +175,16 @@ fun DietDetail(
     var description by remember { mutableStateOf("") }
     var goalOpen by remember { mutableStateOf(false) }
 
-    // Every capture and every written description ends on the same second page:
-    // it shows the model's thinking, then the estimate, and keeps a reply box at
-    // the bottom for corrections. Nothing pops up over this page any more.
-    fun openAiPage(file: File?, text: String? = null) {
-        context.startActivity(
-            DetailActivity.intent(
-                context,
-                DetailTarget(DetailKind.DIET_AI, text = text),
-                photoPath = file?.absolutePath
-            )
-        )
+    // The recognition dialog: a photo or a written description, the model's
+    // thinking, then the estimate, with a reply box pinned to the card's bottom.
+    var aiPhoto by remember { mutableStateOf<File?>(null) }
+    var aiText by remember { mutableStateOf("") }
+    var aiOpen by remember { mutableStateOf(false) }
+
+    fun openRecognition(file: File?, text: String? = null) {
+        aiPhoto = file
+        aiText = text.orEmpty()
+        aiOpen = true
     }
 
     // No saved goal yet (new install, or an upgrade from a build that had no
@@ -203,7 +201,7 @@ fun DietDetail(
         cameraFile = null
         // The capture opens the recognition page: that page shows the thinking,
         // the estimate and the reply box, and writes nothing until confirmed.
-        if (saved && file != null) openAiPage(file) else file?.delete()
+        if (saved && file != null) openRecognition(file) else file?.delete()
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -215,7 +213,7 @@ fun DietDetail(
                 if (file == null) {
                     error = "读不到这张图片"
                 } else {
-                    openAiPage(file)
+                    openRecognition(file)
                 }
             }
         }
@@ -261,7 +259,7 @@ fun DietDetail(
         if (pendingAnalysed) return@LaunchedEffect
         pendingAnalysed = true
         val file = File(path)
-        if (file.exists()) openAiPage(file)
+        if (file.exists()) openRecognition(file)
     }
 
     fun pickPhoto() {
@@ -707,7 +705,20 @@ fun DietDetail(
             onDismiss = { describeOpen = false },
             onSubmit = { text ->
                 describeOpen = false
-                openAiPage(null, text)
+                openRecognition(null, text)
+            }
+        )
+    }
+
+    if (aiOpen) {
+        DietAiDialog(
+            settings = settings,
+            photoPath = aiPhoto?.absolutePath,
+            description = aiText,
+            onDismiss = {
+                aiOpen = false
+                aiPhoto = null
+                aiText = ""
             }
         )
     }
@@ -1390,22 +1401,23 @@ private fun MealThumb(path: String?, size: Dp) {
         }
     }
 }
-
 /**
- * The meal-recognition page: every photo and every written description ends
- * here, on its own screen with a reply box pinned to the bottom.
+ * The meal-recognition dialog: every photo and every written description opens
+ * it, and it stays over the diet page instead of taking over the screen.
  *
  * Before an answer arrives it shows the model's streamed thinking; once an
- * estimate lands it shows that estimate instead. A reply continues the same
- * photo or description — the note is sent along and the estimate is rebuilt —
- * and nothing is written to the log until 记录这一餐 is pressed.
+ * estimate lands it shows that estimate instead. If the input cannot pin down
+ * the foods, the model answers with a question rather than inventing food, and
+ * that question is shown here. A reply continues the same photo or description
+ * — the note is sent along and the estimate is rebuilt — and nothing is written
+ * to the log until 记录这一餐 is pressed.
  */
 @Composable
-fun DietAiDetail(
+private fun DietAiDialog(
     settings: AppSettings,
     photoPath: String?,
     description: String,
-    onClose: () -> Unit
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1414,12 +1426,14 @@ fun DietAiDetail(
     var thinking by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var guidance by remember { mutableStateOf<String?>(null) }
     var reply by remember { mutableStateOf("") }
     // Everything the reader has typed about this input, kept so a second
     // correction does not overwrite the first.
     var notes by remember { mutableStateOf("") }
     var result by remember { mutableStateOf<MealDraft?>(null) }
     var previousJson by remember { mutableStateOf<String?>(null) }
+    var saved by remember { mutableStateOf(false) }
 
     fun run(note: String? = null) {
         val extra = listOfNotNull(
@@ -1430,6 +1444,7 @@ fun DietAiDetail(
         running = true
         thinking = ""
         error = null
+        guidance = null
         scope.launch {
             try {
                 val answer = StringBuilder()
@@ -1466,6 +1481,15 @@ fun DietAiDetail(
                 val raw = answer.toString()
                 val json = parseFoodJson(raw)
                     ?: error("AI 返回的内容不是可用的估算：${raw.take(60)}")
+                previousJson = json.toString()
+                // Unable to tell what the food is: keep the model's question and
+                // drop any earlier estimate, so the card asks instead of guessing.
+                if (json.optBoolean("need_more", false)) {
+                    guidance = json.optString("message").takeIf { it.isNotBlank() }
+                        ?: "再多说一点这份食物，我才能估热量。"
+                    result = null
+                    return@launch
+                }
                 val items = parseItems(json)
                 if (items.isEmpty()) error("AI 没有给出具体的食物，换个说法再试")
                 result = MealDraft(
@@ -1478,7 +1502,6 @@ fun DietAiDetail(
                     fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
                     note = json.optString("note").takeIf { it.isNotBlank() }
                 )
-                previousJson = json.toString()
                 reply = ""
             } catch (e: Exception) {
                 error = e.message ?: "估算失败"
@@ -1506,213 +1529,239 @@ fun DietAiDetail(
                 note = current.note
             )
         )
+        saved = true
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .imePadding()
+    // Closing without recording leaves no photo behind: the capture exists only
+    // for this dialog, and a stored meal is what keeps its picture.
+    fun close() {
+        if (!saved) photoPath?.let { runCatching { File(it).delete() } }
+        onDismiss()
+    }
+
+    Dialog(
+        onDismissRequest = { close() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
-        Row(
+        Box(
             Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 18.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .imePadding()
+                .padding(horizontal = 12.dp, vertical = 26.dp),
+            contentAlignment = Alignment.Center
         ) {
-            IconButton(onClick = onClose) {
-                Icon(
-                    Icons.Rounded.ArrowBack,
-                    contentDescription = "返回",
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Text("饮食识别", style = MaterialTheme.typography.titleLarge)
-        }
-
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (photoPath != null) {
-                MealThumb(photoPath, 88.dp)
-            }
-
-            if (thinking.isNotBlank()) {
-                val thinkingScroll = rememberScrollState()
-                LaunchedEffect(thinking) {
-                    thinkingScroll.scrollTo(thinkingScroll.maxValue)
-                }
-                FlatPanel {
-                    Column(Modifier.padding(16.dp)) {
+            FlatPanel(Modifier.fillMaxWidth().fillMaxHeight(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 18.dp, end = 8.dp, top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            "思考过程",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "饮食识别",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 220.dp)
-                                .verticalScroll(thinkingScroll)
-                        ) {
-                            Text(
-                                thinking,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        IconButton(onClick = { close() }) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = "关闭",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                }
-            }
 
-            error?.let { message ->
-                FlatPanel {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("这次没识别出来", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            result?.let { current ->
-                val total = current.items.sumOf { it.kcal ?: 0 }
-                FlatPanel {
                     Column(
-                        Modifier.padding(16.dp),
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 18.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (photoPath != null) {
+                            MealThumb(photoPath, 84.dp)
+                        }
+
+                        if (thinking.isNotBlank()) {
+                            val thinkingScroll = rememberScrollState()
+                            LaunchedEffect(thinking) {
+                                thinkingScroll.scrollTo(thinkingScroll.maxValue)
+                            }
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(
+                                    "思考过程",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 150.dp)
+                                        .verticalScroll(thinkingScroll)
+                                ) {
+                                    Text(
+                                        thinking,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        guidance?.let { message ->
+                            FlatPanel(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Text("需要再确认一下", style = MaterialTheme.typography.titleSmall)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(message, style = MaterialTheme.typography.bodySmall)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "在下面补充后重新估算。",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        error?.let { message ->
+                            Text(
+                                "这次没识别出来：$message",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        result?.let { current ->
+                            val total = current.items.sumOf { it.kcal ?: 0 }
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("估算结果", style = MaterialTheme.typography.titleSmall)
+                                        Text(
+                                            "${current.items.size} 样食物",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Text(total.toString(), style = MaterialTheme.typography.headlineSmall)
+                                    Text(
+                                        " kcal",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 3.dp)
+                                    )
+                                }
+                                Rule()
+                                current.items.forEach { item ->
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            item.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        item.amount?.let {
+                                            Text(
+                                                it,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                        }
+                                        Text(
+                                            item.kcal?.let { "$it" } ?: "--",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            " kcal",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(bottom = 2.dp)
+                                        )
+                                    }
+                                }
+                                val macros = listOfNotNull(
+                                    current.proteinG?.roundToInt()?.let { "蛋白 $it g" },
+                                    current.carbsG?.roundToInt()?.let { "碳水 $it g" },
+                                    current.fatG?.roundToInt()?.let { "脂肪 $it g" }
+                                )
+                                if (macros.isNotEmpty()) {
+                                    Rule()
+                                    Text(
+                                        macros.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                current.note?.let {
+                                    Text(
+                                        "估算依据：$it",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Column(Modifier.weight(1f)) {
-                                Text("估算结果", style = MaterialTheme.typography.titleSmall)
+                        if (running) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
                                 Text(
-                                    "${current.items.size} 样食物",
+                                    if (result == null) "正在识别这份食物…" else "正在按补充说明重新估算…",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Text(
-                                total.toString(),
-                                style = MaterialTheme.typography.headlineSmall
-                            )
-                            Text(
-                                " kcal",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 3.dp)
-                            )
                         }
-                        Rule()
-                        current.items.forEach { item ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    item.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                item.amount?.let {
-                                    Text(
-                                        it,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(Modifier.width(10.dp))
-                                }
-                                Text(
-                                    item.kcal?.let { "$it" } ?: "--",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    " kcal",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 2.dp)
-                                )
-                            }
-                        }
-                        val macros = listOfNotNull(
-                            current.proteinG?.roundToInt()?.let { "蛋白 $it g" },
-                            current.carbsG?.roundToInt()?.let { "碳水 $it g" },
-                            current.fatG?.roundToInt()?.let { "脂肪 $it g" }
-                        )
-                        if (macros.isNotEmpty()) {
-                            Rule()
-                            Text(
-                                macros.joinToString(" · "),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (result != null) {
+                            FlatButton(
+                                text = "记录这一餐",
+                                onClick = {
+                                    save()
+                                    close()
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
-                        current.note?.let {
-                            Text(
-                                "估算依据：$it",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CapsuleField(
+                                value = reply,
+                                onValueChange = { reply = it },
+                                placeholder = "继续补充或修改，例如：米饭是两碗",
+                                modifier = Modifier.weight(1f)
+                            )
+                            RoundIconButton(
+                                icon = Icons.Rounded.Send,
+                                contentDescription = "按补充说明重新估算",
+                                onClick = {
+                                    if (reply.isNotBlank() && !running) run(reply)
+                                },
+                                enabled = reply.isNotBlank() && !running,
+                                primary = reply.isNotBlank() && !running
                             )
                         }
                     }
                 }
-            }
-        }
-
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (running) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (result == null) "正在识别这份食物…" else "正在按补充说明重新估算…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (result != null) {
-                FlatButton(
-                    text = "记录这一餐",
-                    onClick = {
-                        save()
-                        onClose()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CapsuleField(
-                    value = reply,
-                    onValueChange = { reply = it },
-                    placeholder = "继续补充或修改，例如：米饭是两碗",
-                    modifier = Modifier.weight(1f)
-                )
-                RoundIconButton(
-                    icon = Icons.Rounded.Send,
-                    contentDescription = "按补充说明重新估算",
-                    onClick = {
-                        if (reply.isNotBlank() && !running) run(reply)
-                    },
-                    enabled = reply.isNotBlank() && !running,
-                    primary = reply.isNotBlank() && !running
-                )
             }
         }
     }

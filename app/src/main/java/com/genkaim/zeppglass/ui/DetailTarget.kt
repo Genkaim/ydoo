@@ -24,18 +24,13 @@ enum class DetailKind {
     WORKOUT_MORE,
 
     /** 疲劳 / 体能 / 训练状态 (ATL / CTL / TSB) history. */
-    TRAINING_STATUS,
-
-    /** The AI meal-recognition page: thinking, result and a reply box. */
-    DIET_AI
+    TRAINING_STATUS
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */
 data class DetailTarget(
     val kind: DetailKind,
     val date: LocalDate? = null,
-    val workoutId: String? = null,
-    /** A meal the reader wrote out, handed to the AI page. */
-    val text: String? = null
+    val workoutId: String? = null
 )
 

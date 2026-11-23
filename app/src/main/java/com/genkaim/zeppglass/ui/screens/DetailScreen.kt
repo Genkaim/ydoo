@@ -183,17 +183,6 @@ fun DetailScreen(
     photoPath: String? = null
 ) {
     val data = store.displayData
-    // The meal-recognition page owns its whole screen: a fixed reply box at the
-    // bottom does not fit inside the shared scrolling column.
-    if (target.kind == DetailKind.DIET_AI) {
-        DietAiDetail(
-            settings = settings,
-            photoPath = photoPath,
-            description = target.text.orEmpty(),
-            onClose = onClose
-        )
-        return
-    }
     val bodySource = settings.resolveBodySource(data?.weights.orEmpty())
     val palette = LocalZgPalette.current
     var headerHeight by remember { mutableStateOf(0.dp) }
@@ -369,7 +358,6 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.ACTIVITY -> "活动"
     DetailKind.LOAD -> "运动状态"
     DetailKind.TRAINING_STATUS -> "训练状态"
-    DetailKind.DIET_AI -> "饮食识别"
     DetailKind.PAI -> "PAI"
     DetailKind.WEIGHT -> "身体成分"
     DetailKind.SPO2 -> "血氧"
@@ -397,7 +385,6 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.ACTIVITY -> target.date?.let(Fmt::date) ?: "今天"
     DetailKind.LOAD -> target.date?.let(Fmt::date) ?: "7 天累计负荷与个人合适区间"
     DetailKind.TRAINING_STATUS -> target.date?.let(Fmt::date) ?: Fmt.date(LocalDate.now())
-    DetailKind.DIET_AI -> ""
     DetailKind.PAI -> target.date?.let(Fmt::date) ?: "个人活动强度积分"
     DetailKind.WEIGHT -> target.date?.let(Fmt::date) ?: "来自体脂秤与手动记录"
     DetailKind.SPO2 -> target.date?.let(Fmt::date) ?: "最近读数"

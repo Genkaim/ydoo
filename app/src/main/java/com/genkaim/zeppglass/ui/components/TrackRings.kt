@@ -60,7 +60,9 @@ fun TrackRings(
     LaunchedEffect(values) {
         values.forEachIndexed { index, value ->
             launch {
-                val target = value.coerceAtLeast(0f)
+                // At most one lap plus one over-lap: ten laps over the goal is
+                // still drawn as a single extra round, not ten.
+                val target = value.coerceIn(0f, 2f)
                 val distance = abs(target - animated[index].value)
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)

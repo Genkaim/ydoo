@@ -60,9 +60,9 @@ fun TrackRings(
     LaunchedEffect(values) {
         values.forEachIndexed { index, value ->
             launch {
-                // At most one lap plus one over-lap: ten laps over the goal is
-                // still drawn as a single extra round, not ten.
-                val target = value.coerceIn(0f, 2f)
+                // One lap of animation, whatever the overshoot: the extra lap
+                // is shown as a static head mark, not by spinning again.
+                val target = value.coerceIn(0f, 1f)
                 val distance = abs(target - animated[index].value)
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)
@@ -118,24 +118,16 @@ fun TrackRings(
                 // they do not merge into one fat ring. Drawn after the first lap
                 // (so it sits above it) and before the badge (so the logo stays
                 // on top).
-                if (progress > 1f) {
-                    // Same ring, same width: the extra lap runs on top of the
-                    // first one, so the only visible mark is a hairline notch at
-                    // the head that says "one more lap".
-                    val over = (progress - 1f).coerceAtMost(1f)
-                    drawPath(
-                        rect.path(fraction = over),
-                        color = colors[index],
-                        style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                    )
-                    // The badge sits at the start of the track and always keeps
-                    // its fill, so a head mark that would land underneath it is
-                    // pushed a little further along the arc instead.
-                    val badgeClear = (stroke * 1.25f) / rect.perimeter
-                    // Never all the way round: at exactly one full extra lap the
-                    // head would sit under the badge again, so it stops just
-                    // short and stays visible.
-                    val markAt = over.coerceAtLeast(badgeClear).coerceAtMost(0.96f)
+                val realValue = values.getOrElse(index) { 0f }
+                if (realValue > 1f && progress >= 1f) {
+                    // The extra lap shares the ring's track and width, so drawing
+                    // it again would be invisible. What marks "past the goal" is
+                    // a single hairline outline at the head.
+                    val over = (realValue - 1f).coerceAtMost(1f)
+                    // The badge sits at the start and keeps its fill: push the
+                    // mark well past it, and never all the way round.
+                    val badgeClear = (stroke * 2.1f) / rect.perimeter
+                    val markAt = over.coerceAtLeast(badgeClear).coerceAtMost(0.90f)
                     val head = rect.pointAt(rect.perimeter * markAt)
                     val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
                     val dir = Math.toDegrees(

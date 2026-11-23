@@ -390,8 +390,8 @@ fun OverviewScreen(
                                 goal = dayStat?.stepGoal ?: 7000,
                                 distance = dayStat?.distanceM,
                                 calories = dayStat?.calories,
-                                activeMinutes = dayStat?.activityMinutes,
-                                activeGoal = dayStat?.activityGoal,
+                                points = data?.exertionOn(date)?.totalScore,
+                                pointsTarget = data?.exertionOn(date)?.targetScore,
                                 onClick = { onOpenTab(AppTab.ACTIVITY) }
                             )
 
@@ -1465,8 +1465,8 @@ private fun ActivityCard(
     goal: Int,
     distance: Double?,
     calories: Double?,
-    activeMinutes: Int?,
-    activeGoal: Int?,
+    points: Int?,
+    pointsTarget: Int?,
     onClick: () -> Unit
 ) {
     FlatPanel(
@@ -1495,10 +1495,10 @@ private fun ActivityCard(
                     ActivityStat("${Fmt.km(distance)} km", "距离")
                     ActivityStat("${Fmt.int(calories)} kcal", "消耗")
                     ActivityStat(
-                        activeMinutes?.let { m ->
-                            if (activeGoal != null) "$m/$activeGoal" else "$m"
+                        points?.let { p ->
+                            if (pointsTarget != null) "$p/$pointsTarget" else "$p"
                         } ?: "--",
-                        "活动时长"
+                        "活动点数"
                     )
                 }
             }
@@ -1506,8 +1506,9 @@ private fun ActivityCard(
             ActivityRings(
                 stepsProgress = if (goal > 0) (steps ?: 0).toFloat() / goal else 0f,
                 caloriesProgress = ((calories ?: 0.0) / 500.0).toFloat(),
-                activeProgress = ((activeMinutes ?: 0).toFloat() /
-                    (activeGoal?.takeIf { it > 0 } ?: 60).toFloat()),
+                activeProgress = pointsTarget?.takeIf { it > 0 }?.let { target ->
+                    (points ?: 0).toFloat() / target
+                } ?: 0f,
                 modifier = Modifier.size(84.dp)
             )
         }

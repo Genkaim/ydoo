@@ -83,7 +83,9 @@ fun chargeSpans(
             .curveValue ?: return null
         val after = (points.firstOrNull { it.epochMs / 1000 >= end } ?: points.last())
             .curveValue ?: return null
-        return (after - before).roundToInt()
+        // Truncated toward zero rather than rounded: -7.5 has to read -7, the way
+        // Zepp's own app shows it, not -8.
+        return (after - before).toInt()
     }
 
     val spans = mutableListOf<ChargeSpan>()
@@ -156,7 +158,7 @@ fun ChargeDayChart(
     val dotColor = MaterialTheme.colorScheme.surface
     val valueStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
-    val outlineColor = MaterialTheme.colorScheme.background
+    val outlineColor = MaterialTheme.colorScheme.surface
 
     val sleepIcon = rememberVectorPainter(chargeSpanIcon(ChargeSpanKind.SLEEP))
     val workoutIcon = rememberVectorPainter(chargeSpanIcon(ChargeSpanKind.WORKOUT))
@@ -228,14 +230,20 @@ fun ChargeDayChart(
                     val side = 15.dp.toPx()
                     val left = ((x0 + x1) / 2f - side / 2f)
                         .coerceIn(0f, (size.width - side).coerceAtLeast(0f))
-                    // A background-coloured hairline around the icon keeps it from
-                    // melting into the band it sits on.
-                    drawCircle(
-                        color = outlineColor,
-                        radius = side * 0.62f,
-                        center = Offset(left + side / 2f, side / 2f),
-                        style = Stroke(1.5.dp.toPx())
-                    )
+                    // The hairline has to hug the icon itself: the same glyph is
+                    // stamped in the card colour just outside every edge first,
+                    // then the tinted one is drawn on top. A circle around it
+                    // would read as a badge, not an outline.
+                    val outline = 1.2.dp.toPx()
+                    listOf(-outline, 0f, outline).forEach { dx ->
+                        listOf(-outline, 0f, outline).forEach { dy ->
+                            if (dx != 0f || dy != 0f) {
+                                translate(left + dx, dy) {
+                                    draw(Size(side, side), colorFilter = ColorFilter.tint(outlineColor))
+                                }
+                            }
+                        }
+                    }
                     translate(left, 0f) {
                         draw(Size(side, side), colorFilter = ColorFilter.tint(tint))
                     }

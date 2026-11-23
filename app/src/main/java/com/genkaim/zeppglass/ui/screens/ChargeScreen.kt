@@ -506,7 +506,7 @@ private fun SplitTrend(
     series: List<ChargeSample?>,
     labels: List<String>
 ) {
-    SectionTitle("体力", trailing = "晨起")
+    SectionTitle("体力")
     FlatPanel {
         TrendLineChart(
             values = series.map { it?.physical?.toFloat() },
@@ -518,7 +518,7 @@ private fun SplitTrend(
             color = LocalZgPalette.current.chargePhysical
         )
     }
-    SectionTitle("精力", trailing = "晨起")
+    SectionTitle("精力")
     FlatPanel {
         TrendLineChart(
             values = series.map { it?.mental?.toFloat() },

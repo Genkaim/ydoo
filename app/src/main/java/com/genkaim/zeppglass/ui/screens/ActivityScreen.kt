@@ -337,10 +337,12 @@ private fun ActivityStatsCard(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 16.dp)
+                .padding(horizontal = 16.dp)
         ) {
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 15.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -388,7 +390,9 @@ private fun ActivityStatsCard(
                 }
                 MetricsDivider()
                 Row(
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 15.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     AdviceCell(
@@ -471,7 +475,7 @@ private fun LoadVo2Card(
                 Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 15.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Column(Modifier.weight(1f)) {
@@ -530,7 +534,7 @@ private fun LoadVo2Card(
                     Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onStatusClick)
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .padding(horizontal = 16.dp, vertical = 15.dp)
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),

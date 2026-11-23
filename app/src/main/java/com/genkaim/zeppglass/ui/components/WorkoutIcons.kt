@@ -23,44 +23,7 @@ import androidx.compose.material.icons.rounded.SportsTennis
 import androidx.compose.material.icons.rounded.SportsVolleyball
 import androidx.compose.material.icons.rounded.Surfing
 import androidx.compose.material.icons.rounded.Terrain
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.addPathNodes
-import androidx.compose.ui.unit.dp
-
-/**
- * A person lifting a dumbbell overhead, drawn as one filled silhouette: the
- * Material icon set has a bare dumbbell (FitnessCenter) but no figure holding
- * one, which is what 自由训练 should look like.
- */
-val DumbbellPerson: ImageVector by lazy {
-    val body = buildString {
-        // dumbbell: bar plus a plate on each end
-        append("M5 4.4h14v1.6H5z")
-        append("M3.4 2.8h2v4.8h-2z")
-        append("M18.6 2.8h2v4.8h-2z")
-        // head
-        append("M10.3 9.4a1.7 1.7 0 1 1 3.4 0 1.7 1.7 0 1 1-3.4 0z")
-        // torso
-        append("M10.7 11.2h2.6v4.6h-2.6z")
-        // arms up to the bar
-        append("M10.9 11.6 9.9 12.7 5.6 7.8 6.6 6.9z")
-        append("M13.1 11.6 14.1 12.7 18.4 7.8 17.4 6.9z")
-        // legs
-        append("M10.4 15.6 9.8 15.9 8.4 21 9.2 21.2z")
-        append("M13.6 15.6 14.2 15.9 15.6 21 14.8 21.2z")
-    }
-    ImageVector.Builder(
-        name = "DumbbellPerson",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    ).apply {
-        addPath(pathData = addPathNodes(body), fill = SolidColor(Color.Black))
-    }.build()
-}
 
 /**
  * One icon per sport, chosen from the workout's own name.
@@ -95,7 +58,8 @@ fun workoutSportIcon(name: String): ImageVector {
         has("骑", "单车", "骑行", "自行", "cycle", "cycl", "bike", "biking", "spinning", "动感单车") ->
             Icons.Rounded.DirectionsBike
         has("越野", "trail", "障碍", "obstacle") -> Icons.Rounded.Terrain
-        has("自由训练", "自由活动", "freestyle", "free train", "custom workout") -> DumbbellPerson
+        has("自由训练", "自由活动", "freestyle", "free train", "custom workout") ->
+            Icons.Rounded.SportsGymnastics
         has("力量", "器械", "撸铁", "weight", "strength", "gym") -> Icons.Rounded.FitnessCenter
         has("瑜伽", "yoga", "拉伸", "stretch", "普拉提", "pilates") -> Icons.Rounded.SelfImprovement
         has("跳绳", "jump rope", "r rope") -> Icons.Rounded.SportsGymnastics

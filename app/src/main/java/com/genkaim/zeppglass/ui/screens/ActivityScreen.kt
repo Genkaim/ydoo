@@ -312,7 +312,7 @@ private fun ActivityHero(
     // The three hues the phone's health app uses on the same three values: a
     // yellow-green for steps, a bright orange for the score, a sky blue for the
     // time spent in the suggested band.
-    val stepColor = Color(0xFFA0CE4E)
+    val stepColor = Color(0xFFB4E05C)
     val pointColor = Color(0xFFF2682A)
     val activeColor = Color(0xFF4FA8E8)
     Column(
@@ -346,7 +346,7 @@ private fun ActivityStatsCard(
     advice: ExertionDay?
 ) {
     val palette = LocalZgPalette.current
-    val stepColor = Color(0xFFA0CE4E)
+    val stepColor = Color(0xFFB4E05C)
     val pointColor = Color(0xFFF2682A)
     val activeColor = Color(0xFF4FA8E8)
     val kcalColor = palette.critical

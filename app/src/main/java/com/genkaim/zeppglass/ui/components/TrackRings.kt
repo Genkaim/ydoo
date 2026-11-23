@@ -50,9 +50,11 @@ fun TrackRings(
     val painters: List<Painter?> = icons.map { rememberVectorPainter(it) }
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
+    // Not clamped to 1: a value past the goal keeps counting so the ring can show
+    // the extra lap on top of the first one.
     val animatedValues = values.mapIndexed { index, value ->
         animateFloatAsState(
-            targetValue = if (appeared) value.coerceIn(0f, 1f) else 0f,
+            targetValue = if (appeared) value.coerceAtLeast(0f) else 0f,
             animationSpec = tween(700),
             label = "ring$index"
         ).value
@@ -83,12 +85,38 @@ fun TrackRings(
                     color = colors[index].copy(alpha = 0.18f),
                     style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
-                val progress = animatedValues.getOrElse(index) { 0f }.coerceIn(0f, 1f)
-                if (progress > 0f) {
+                val progress = animatedValues.getOrElse(index) { 0f }.coerceAtLeast(0f)
+                val firstLap = progress.coerceAtMost(1f)
+                if (firstLap > 0f) {
                     drawPath(
-                        rect.path(fraction = progress),
+                        rect.path(fraction = firstLap),
                         color = colors[index],
                         style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                }
+                // Past the goal, the overflow is a second lap drawn just outside
+                // the first one: a background-coloured halo separates the two so
+                // they do not merge into one fat ring. Drawn after the first lap
+                // (so it sits above it) and before the badge (so the logo stays
+                // on top).
+                if (progress > 1f) {
+                    val over = (progress - 1f).coerceAtMost(1f)
+                    val lift = stroke * 0.42f
+                    val outer = TrackRect(
+                        left = rect.left - lift,
+                        top = rect.top - lift,
+                        width = rect.width + lift * 2f,
+                        height = rect.height + lift * 2f
+                    )
+                    drawPath(
+                        outer.path(fraction = over),
+                        color = badgeColor,
+                        style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                    drawPath(
+                        outer.path(fraction = over),
+                        color = colors[index],
+                        style = Stroke(stroke * 0.62f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                 }
 

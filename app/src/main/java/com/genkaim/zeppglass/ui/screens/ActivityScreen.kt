@@ -357,14 +357,11 @@ private fun ActivityStatsCard(
                 StatBlock(
                     Modifier.weight(1f),
                     Icons.Rounded.Timer,
-                    if (bandBased) "区间时长" else "活动时长",
-                    when {
-                        activeMinutes == null -> "--"
-                        activeGoal != null -> "$activeMinutes/$activeGoal"
-                        else -> activeMinutes.toString()
-                    },
+                    if (bandBased) "心率区间时长" else "活动时长",
+                    activeMinutes?.toString() ?: "--",
                     activeColor,
-                    unit = "分"
+                    unit = "分",
+                    valueSuffix = activeGoal?.let { "/$it" }
                 )
                 StatBlock(
                     Modifier.weight(1f),
@@ -377,12 +374,11 @@ private fun ActivityStatsCard(
             // The day's advice lives in the same card as the totals: it is the
             // target those numbers are measured against, not a separate report.
             if (advice != null) {
-                val points = when {
-                    advice.totalScore == null && advice.targetScore == null -> null
-                    advice.targetScore != null && advice.targetScore > 0 ->
-                        "${advice.totalScore ?: 0}/${advice.targetScore}"
-                    else -> advice.totalScore?.toString()
-                }
+                val points = advice.totalScore
+                // The goal half of "12/30" is printed smaller, in the same ink.
+                val pointGoal = advice.targetScore
+                    ?.takeIf { it > 0 }
+                    ?.let { "/$it" }
                 val hr = if (advice.planHrLow != null && advice.planHrHigh != null) {
                     "${advice.planHrLow}-${advice.planHrHigh}"
                 } else {
@@ -399,8 +395,9 @@ private fun ActivityStatsCard(
                         Modifier.weight(1f),
                         Icons.Rounded.Star,
                         "活动点数",
-                        points ?: "--",
-                        MaterialTheme.colorScheme.primary
+                        points?.toString() ?: "--",
+                        MaterialTheme.colorScheme.primary,
+                        valueSuffix = if (points == null) null else pointGoal
                     )
                     StatBlock(
                         Modifier.weight(1f),

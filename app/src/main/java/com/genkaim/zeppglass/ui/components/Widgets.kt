@@ -221,6 +221,14 @@ fun DataRow(
  * the sleep cards): small tinted icon + label on top, the value and an
  * optional unit underneath.
  */
+/**
+ * Icon, a small label, then the reading — the shared tile of the activity,
+ * heart-rate and workout strips.
+ *
+ * [valueSuffix] is the "/60" half of a "34/60" reading: it is printed in the
+ * label size next to the figure, in the same ink, so the goal does not compete
+ * with the reading it belongs to.
+ */
 @Composable
 fun StatBlock(
     modifier: Modifier = Modifier,
@@ -228,7 +236,8 @@ fun StatBlock(
     label: String,
     value: String,
     tint: Color,
-    unit: String? = null
+    unit: String? = null,
+    valueSuffix: String? = null
 ) {
     Column(modifier, horizontalAlignment = Alignment.Start) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -253,6 +262,15 @@ fun StatBlock(
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 1
             )
+            if (valueSuffix != null) {
+                Text(
+                    valueSuffix,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 1.dp, bottom = 3.dp)
+                )
+            }
             if (unit != null) {
                 Text(
                     unit,

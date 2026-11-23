@@ -2934,11 +2934,11 @@ private data class TeZone(val from: Double, val to: Double, val label: String, v
 @Composable
 private fun teZones(): List<TeZone> {
     return listOf(
-        TeZone(0.0, 1.0, "无效果", Color(0xFF7FB2E5)),
-        TeZone(1.0, 2.0, "无效果", Color(0xFF8CCB9B)),
-        TeZone(2.0, 3.0, "适中", Color(0xFFE6C766)),
-        TeZone(3.0, 4.0, "良好", Color(0xFFE8A05C)),
-        TeZone(4.0, 5.0, "过量", Color(0xFFE08080))
+        TeZone(0.0, 1.0, "无效果", Color(0xFF5A93D6)),
+        TeZone(1.0, 2.0, "无效果", Color(0xFF5FAE77)),
+        TeZone(2.0, 3.0, "适中", Color(0xFFD9B23F)),
+        TeZone(3.0, 4.0, "良好", Color(0xFFDE8A38)),
+        TeZone(4.0, 5.0, "过量", Color(0xFFD45C5C))
     )
 }
 
@@ -4308,8 +4308,8 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
 // ---------------- blood pressure ----------------
 
 /** Blood pressure's two series colours: light blue systolic, light green diastolic. */
-private val BpSystolicColor = Color(0xFF7FB2E5)
-private val BpDiastolicColor = Color(0xFF8CCB9B)
+private val BpSystolicColor = Color(0xFF5A93D6)
+private val BpDiastolicColor = Color(0xFF5FAE77)
 
 @Composable
 private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {

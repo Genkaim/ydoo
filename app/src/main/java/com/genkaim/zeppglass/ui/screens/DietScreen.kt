@@ -174,12 +174,10 @@ fun DietDetail(
     var cameraFile by remember { mutableStateOf<File?>(null) }
     var draft by remember { mutableStateOf<MealDraft?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var describeOpen by remember { mutableStateOf(false) }
     // Tapping a capture button without an endpoint used to push an inline card
     // into the page, which shoved everything below it down. A dialog asks the
     // question without moving the page.
     var setupPrompt by remember { mutableStateOf(false) }
-    var description by remember { mutableStateOf("") }
     var goalOpen by remember { mutableStateOf(false) }
 
     // The recognition dialog: a photo or a written description, a short
@@ -284,7 +282,9 @@ fun DietDetail(
             setupPrompt = true
             return
         }
-        describeOpen = true
+        // The recognition dialog opens first and asks for the words itself, so
+        // the page scrim never drops between two windows.
+        openRecognition(null, "")
     }
 
     val meals = DietStore.mealsOn(day)
@@ -705,18 +705,6 @@ fun DietDetail(
         )
     }
 
-    if (describeOpen) {
-        DescriptionDialog(
-            text = description,
-            onTextChange = { description = it },
-            onDismiss = { describeOpen = false },
-            onSubmit = { text ->
-                describeOpen = false
-                openRecognition(null, text)
-            }
-        )
-    }
-
     if (aiOpen) {
         DietAiDialog(
             settings = settings,
@@ -741,81 +729,6 @@ fun DietDetail(
             },
             onDismiss = { goalOpen = false }
         )
-    }
-}
-
-/**
- * Written description of a meal. The AI turns it into the same item list the
- * photo path produces, so the confirmation card afterwards is identical.
- */
-@Composable
-private fun DescriptionDialog(
-    text: String,
-    onTextChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onSubmit: (String) -> Unit
-) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        // decorFitsSystemWindows = false is what makes the keyboard inset
-        // reach these composables. Without it the card never moves, and the
-        // 估算 key sits behind the keyboard — which reads as "there is no
-        // confirm button at all".
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .imePadding()
-                .padding(horizontal = 18.dp, vertical = 24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                Column(
-                    Modifier
-                        .heightIn(max = 560.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("用文字描述这一餐", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "例如：一碗米饭、两个鸡腿、一份炒青菜、一杯无糖豆浆。份量没写就按常见一人份算。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    CapsuleField(
-                        value = text,
-                        onValueChange = onTextChange,
-                        placeholder = "吃了什么，大概多少…",
-                        singleLine = false,
-                        minLines = 4,
-                        maxLines = 8
-                    )
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RoundIconButton(
-                            icon = Icons.Rounded.Close,
-                            contentDescription = "取消",
-                            onClick = onDismiss
-                        )
-                        RoundIconButton(
-                            icon = Icons.Rounded.Check,
-                            contentDescription = "估算",
-                            onClick = { onSubmit(text) },
-                            enabled = text.isNotBlank(),
-                            primary = text.isNotBlank()
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1439,6 +1352,10 @@ private fun DietAiDialog(
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DietStore.attach(context) }
 
+    // No photo and nothing written: this card asks for the words first, then
+    // turns into the same 思考中 / 结果 card. One dialog, one scrim.
+    var text by remember { mutableStateOf(description) }
+    var asking by remember { mutableStateOf(photoPath == null && description.isBlank()) }
     var running by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var guidance by remember { mutableStateOf<String?>(null) }
@@ -1474,7 +1391,7 @@ private fun DietAiDialog(
                 } else {
                     val messages = buildList {
                         add(ChatMessage("system", TEXT_FOOD_PROMPT))
-                        add(ChatMessage("user", "这一餐：$description"))
+                        add(ChatMessage("user", "这一餐：$text"))
                         previousJson?.let { add(ChatMessage("assistant", it)) }
                         if (extra.isNotBlank()) {
                             add(
@@ -1523,7 +1440,7 @@ private fun DietAiDialog(
         }
     }
 
-    LaunchedEffect(Unit) { run() }
+    LaunchedEffect(Unit) { if (!asking) run() }
 
     fun save() {
         val current = result ?: return
@@ -1574,6 +1491,49 @@ private fun DietAiDialog(
                 shape = RoundedCornerShape(24.dp)
             ) {
                 Column(Modifier.padding(16.dp)) {
+                    if (asking) {
+                        Text("用文字描述这一餐", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "例如：一碗米饭、两个鸡腿、一份炒青菜、一杯无糖豆浆。份量没写就按常见一人份算。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        CapsuleField(
+                            value = text,
+                            onValueChange = { text = it },
+                            placeholder = "吃了什么，大概多少…",
+                            singleLine = false,
+                            minLines = 4,
+                            maxLines = 8
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RoundIconButton(
+                                icon = Icons.Rounded.Close,
+                                contentDescription = "取消",
+                                onClick = onDismiss
+                            )
+                            RoundIconButton(
+                                icon = Icons.Rounded.Check,
+                                contentDescription = "估算",
+                                onClick = {
+                                    if (text.isNotBlank()) {
+                                        asking = false
+                                        run()
+                                    }
+                                },
+                                enabled = text.isNotBlank(),
+                                primary = text.isNotBlank()
+                            )
+                        }
+                        return@Column
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (photoPath != null) {
                             MealThumb(photoPath, 48.dp)

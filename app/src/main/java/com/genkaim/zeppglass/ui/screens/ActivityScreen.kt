@@ -342,7 +342,7 @@ private fun ActivityStatsCard(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 15.dp),
+                    .padding(top = 15.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -475,7 +475,7 @@ private fun LoadVo2Card(
                 Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 16.dp, vertical = 15.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 15.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Column(Modifier.weight(1f)) {
@@ -528,7 +528,7 @@ private fun LoadVo2Card(
                 }
             }
             if (advice != null) {
-                MetricsDivider()
+                MetricsDivider(Modifier.padding(horizontal = 16.dp))
                 val status = advice.status
                 Column(
                     Modifier
@@ -582,9 +582,9 @@ private fun LoadVo2Card(
  * stacked on each other.
  */
 @Composable
-private fun MetricsDivider() {
+private fun MetricsDivider(modifier: Modifier = Modifier) {
     Box(
-        Modifier
+        modifier
             .padding(vertical = 2.dp)
             .fillMaxWidth()
             .height(1.dp)

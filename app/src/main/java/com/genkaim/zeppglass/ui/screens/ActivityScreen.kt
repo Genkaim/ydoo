@@ -472,77 +472,88 @@ private fun LoadVo2Card(
     SectionTitle("运动状态")
     FlatPanel {
         Column(Modifier.fillMaxWidth()) {
-            Row(
+            // Each tap zone stops exactly on the hairline: the upper one ends
+            // where the line starts, the lower one begins where it ends, so a
+            // pressed tint never spills past the divider.
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onClick)
-                    .padding(start = 16.dp, end = 16.dp, top = 15.dp, bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text("运动负荷", style = MaterialTheme.typography.labelSmall, color = muted)
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            weekLoad?.roundToInt()?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = loadColor
-                        )
-                        Text(
-                            " EPOC",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = loadColor,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            loadVerdict.first,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = loadColor,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 15.dp, bottom = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("运动负荷", style = MaterialTheme.typography.labelSmall, color = muted)
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                weekLoad?.roundToInt()?.toString() ?: "--",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = loadColor
+                            )
+                            Text(
+                                " EPOC",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = loadColor,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                loadVerdict.first,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = loadColor,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
                     }
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("最大摄氧量", style = MaterialTheme.typography.labelSmall, color = muted)
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            vo2?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = vo2Color
-                        )
-                        Text(
-                            " ml/kg",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = vo2Color,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            rating,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = vo2Color,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
+                    Column(Modifier.weight(1f)) {
+                        Text("最大摄氧量", style = MaterialTheme.typography.labelSmall, color = muted)
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                vo2?.toString() ?: "--",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = vo2Color
+                            )
+                            Text(
+                                " ml/kg",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = vo2Color,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                rating,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = vo2Color,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
                     }
                 }
             }
             if (advice != null) {
-                // The lower tap zone starts on the hairline itself, so the two
-                // pressed areas meet at the divider instead of leaving a strip
-                // that belongs to neither target.
+                Box(
+                    Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onStatusClick)
                 ) {
-                    MetricsDivider(Modifier.padding(horizontal = 16.dp))
                     val status = advice.status
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 15.dp)
+                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 15.dp)
                     ) {
                         Row(
                             Modifier.fillMaxWidth(),

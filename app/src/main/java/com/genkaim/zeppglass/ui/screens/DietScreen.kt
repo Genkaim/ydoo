@@ -8,8 +8,14 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1402,6 +1408,15 @@ private fun MealThumb(path: String?, size: Dp) {
         }
     }
 }
+/** What the recognition dialog is showing at the moment. */
+private sealed interface DietStep {
+    /** Nothing back yet: the header already says 思考中. */
+    data object Loading : DietStep
+    data class Guidance(val message: String) : DietStep
+    data class Failure(val message: String) : DietStep
+    data class Estimate(val draft: MealDraft) : DietStep
+}
+
 /**
  * The meal-recognition dialog: every photo and every written description opens
  * it over the diet page. It is a compact card, not a full screen — the same
@@ -1551,9 +1566,7 @@ private fun DietAiDialog(
             contentAlignment = Alignment.Center
         ) {
             FlatPanel(
-                Modifier
-                    .fillMaxWidth()
-                    .animateContentSize(tween(220)),
+                Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.background,
                 shape = RoundedCornerShape(24.dp)
             ) {
@@ -1565,14 +1578,9 @@ private fun DietAiDialog(
                         }
                         Column(Modifier.weight(1f)) {
                             Text("饮食识别", style = MaterialTheme.typography.titleSmall)
-                            val subtitle = when {
-                                running && result == null -> "思考中…"
-                                guidance != null -> "需要你补充一点信息"
-                                else -> null
-                            }
-                            subtitle?.let {
+                            if (running && result == null) {
                                 Text(
-                                    it,
+                                    "思考中…",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1595,95 +1603,108 @@ private fun DietAiDialog(
                         }
                     }
 
-                    // The middle: a question or the food list. It scrolls on its
-                    // own so the card stays short.
-                    val middle = rememberScrollState()
-                    Column(
-                        Modifier
+                    // The middle crossfades between 思考中 / a question / the food
+                    // list. AnimatedContent animates the container size together
+                    // with a fade, so the card grows smoothly instead of the text
+                    // being drawn at its final size inside a still-growing panel.
+                    val step: DietStep = when {
+                        result != null -> DietStep.Estimate(result!!)
+                        guidance != null -> DietStep.Guidance(guidance!!)
+                        error != null -> DietStep.Failure(error!!)
+                        else -> DietStep.Loading
+                    }
+                    AnimatedContent(
+                        targetState = step,
+                        transitionSpec = {
+                            (fadeIn(tween(160)) togetherWith fadeOut(tween(100)))
+                        },
+                        modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp)
-                            .heightIn(max = 230.dp)
-                            .verticalScroll(middle),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        guidance?.let { message ->
-                            Text(message, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                "在下面补充后重新估算。",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        error?.let { message ->
-                            Text(
-                                "这次没识别出来：$message",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-
-                        result?.let { current ->
-                            // Same rows as the old editor card: the name on the
-                            // left, "份量 · 热量" in small muted text on the right.
-                            current.items.forEach { item ->
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        item.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Spacer(Modifier.width(10.dp))
-                                    Text(
-                                        listOfNotNull(
-                                            item.amount?.takeIf { it.isNotBlank() },
-                                            item.kcal?.let { "$it kcal" }
-                                        ).joinToString(" · "),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "合计",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f)
+                            .padding(top = 10.dp),
+                        label = "dietStep"
+                    ) { state ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 230.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            when (state) {
+                                is DietStep.Loading -> Unit
+                                is DietStep.Guidance -> Text(
+                                    state.message,
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
-                                Text(
-                                    "${current.items.sumOf { it.kcal ?: 0 }} kcal",
-                                    style = MaterialTheme.typography.titleMedium
+                                is DietStep.Failure -> Text(
+                                    "这次没识别出来：${state.message}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
                                 )
-                            }
-                            val macros = listOfNotNull(
-                                current.proteinG?.roundToInt()?.let { "蛋白 $it g" },
-                                current.carbsG?.roundToInt()?.let { "碳水 $it g" },
-                                current.fatG?.roundToInt()?.let { "脂肪 $it g" }
-                            )
-                            if (macros.isNotEmpty()) {
-                                Rule()
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    Text(
-                                        macros.joinToString(" · "),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                is DietStep.Estimate -> {
+                                    val current = state.draft
+                                    // Same rows as the old editor card: the name on
+                                    // the left, "份量 · 热量" in small muted text.
+                                    current.items.forEach { item ->
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                item.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            Text(
+                                                listOfNotNull(
+                                                    item.amount?.takeIf { it.isNotBlank() },
+                                                    item.kcal?.let { "$it kcal" }
+                                                ).joinToString(" · "),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "合计",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            "${current.items.sumOf { it.kcal ?: 0 }} kcal",
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                    }
+                                    val macros = listOfNotNull(
+                                        current.proteinG?.roundToInt()?.let { "蛋白 $it g" },
+                                        current.carbsG?.roundToInt()?.let { "碳水 $it g" },
+                                        current.fatG?.roundToInt()?.let { "脂肪 $it g" }
                                     )
+                                    if (macros.isNotEmpty()) {
+                                        Rule()
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            Text(
+                                                macros.joinToString(" · "),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1712,11 +1733,17 @@ private fun DietAiDialog(
                     }
                     // Once there is an estimate, the old card's cancel / confirm
                     // pair sits under the input box: close without saving, or
-                    // write the meal into the log.
-                    if (result != null) {
-                        Spacer(Modifier.height(8.dp))
+                    // write the meal into the log. It expands into place instead
+                    // of making the card jump.
+                    AnimatedVisibility(
+                        visible = result != null,
+                        enter = expandVertically(tween(180)) + fadeIn(tween(180)),
+                        exit = shrinkVertically(tween(120)) + fadeOut(tween(90))
+                    ) {
                         Row(
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

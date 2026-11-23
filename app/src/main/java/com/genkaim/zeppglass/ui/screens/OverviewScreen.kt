@@ -96,7 +96,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.genkaim.zeppglass.BuildConfig
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.BloodPressureBand
 import com.genkaim.zeppglass.data.DailySummary
@@ -534,15 +533,7 @@ fun OverviewScreen(
 
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 // 血压 takes the slot 准备度 used to hold.
-                                // TEMP: debug builds show one made-up reading so
-                                // the blood pressure pages have something to draw.
-                                val bp = data?.latestBloodPressure() ?: if (BuildConfig.DEBUG) {
-                                    com.genkaim.zeppglass.data.BloodPressure(
-                                        System.currentTimeMillis(), 121, 79
-                                    )
-                                } else {
-                                    null
-                                }
+                                val bp = data?.latestBloodPressure()
                                 val bpVerdict: Pair<String, Color>? = bp?.band?.let { band ->
                                     when (band) {
                                         BloodPressureBand.NORMAL -> "正常" to ink

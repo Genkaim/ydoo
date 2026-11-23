@@ -95,7 +95,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.genkaim.zeppglass.BuildConfig
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.ChargeDay
 import com.genkaim.zeppglass.data.DietStore
@@ -4115,28 +4114,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     val palette = LocalZgPalette.current
     val ink = MaterialTheme.colorScheme.onSurface
     val zone = java.time.ZoneId.systemDefault()
-    // TEMP: a few made-up readings so the chart can be eyeballed while the
-    // account has no blood pressure at all. Debug builds only; the real data
-    // always wins once the account has any.
-    fun previewReadings(day: LocalDate): List<BloodPressure> {
-        val start = day.atStartOfDay(zone).toInstant().toEpochMilli()
-        fun at(hour: Int, minute: Int) = start + (hour * 60L + minute) * 60_000L
-        // Twelve readings every hour, so the chart shows what a dense day looks
-        // like; the numbers wander in a realistic band instead of a flat line.
-        return buildList {
-            for (hour in 0 until 24) {
-                for (i in 0 until 12) {
-                    val systolic = 108 + ((hour * 7 + i * 3) % 44)
-                    val diastolic = 68 + ((hour * 5 + i * 2) % 26)
-                    add(BloodPressure(at(hour, i * 5), systolic, diastolic))
-                }
-            }
-        }
-    }
-
-    val readings = data?.bloodPressure.orEmpty().ifEmpty {
-        if (BuildConfig.DEBUG) previewReadings(date ?: LocalDate.now()) else emptyList()
-    }
+    val readings = data?.bloodPressure.orEmpty()
     fun readingsOn(day: LocalDate): List<BloodPressure> = readings.filter {
         java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() == day
     }

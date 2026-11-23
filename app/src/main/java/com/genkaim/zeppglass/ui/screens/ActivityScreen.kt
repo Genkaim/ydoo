@@ -182,18 +182,10 @@ fun ActivityScreen(
                 } else {
                     val advice = data.exertionOn(today) ?: data.exertion.lastOrNull()
                     // Minutes actually spent inside the heart-rate band Zepp
-                    // suggests for today. The band data is one sample per minute,
-                    // so counting samples is counting minutes.
-                    val bandMinutes = remember(data, today, advice?.planHrLow, advice?.planHrHigh) {
-                        val low = advice?.planHrLow
-                        val high = advice?.planHrHigh
-                        if (data == null || low == null || high == null) {
-                            null
-                        } else {
-                            val start = today.atStartOfDay(zone).toInstant().toEpochMilli() / 1000
-                            val end = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() / 1000
-                            data.heartRate.count { it.first in start until end && it.second in low..high }
-                        }
+                    // suggests for today, counted from the one-sample-a-minute
+                    // heart rate the same way the overview card does.
+                    val bandMinutes = remember(data, today, advice, zone) {
+                        data.bandMinutesOn(today, advice, zone)
                     }
                     val planMinutes = advice?.planMinutes
                     ActivityHero(

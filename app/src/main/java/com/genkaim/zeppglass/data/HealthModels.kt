@@ -436,6 +436,25 @@ data class HealthData(
     fun exertionOn(date: LocalDate): ExertionDay? = exertion.lastOrNull { it.date == date }
 
     /**
+     * Minutes spent inside the heart-rate band Zepp suggests for [date].
+     *
+     * The stored heart rate is one sample per minute, so counting the samples in
+     * the band is counting minutes. Null when the advice carries no band — the
+     * caller then shows a row without a target instead of inventing one.
+     */
+    fun bandMinutesOn(
+        date: LocalDate,
+        advice: ExertionDay?,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Int? {
+        val low = advice?.planHrLow ?: return null
+        val high = advice?.planHrHigh ?: return null
+        val start = date.atStartOfDay(zone).toInstant().toEpochMilli() / 1000
+        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() / 1000
+        return heartRate.count { it.first in start until end && it.second in low..high }
+    }
+
+    /**
      * The load day that is still accumulating. It only rolls over at the end of
      * the sleep that crosses midnight (minus a half-hour seed), so a heart rate
      * at 01:00 adds to the day being closed instead of starting a fresh zero.

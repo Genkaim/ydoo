@@ -384,14 +384,21 @@ fun OverviewScreen(
                                 )
                             }
 
+                            // The card carries the same three values, in the same
+                            // colours, as the activity page's rings: points, steps
+                            // and the minutes spent in the suggested heart-rate band.
+                            val activityAdvice = data.exertionOn(date)
                             ActivityCard(
                                 title = if (isToday) "今日活动" else "${Fmt.date(date)} 活动",
                                 steps = dayStat?.steps,
                                 goal = dayStat?.stepGoal ?: 7000,
                                 distance = dayStat?.distanceM,
                                 calories = dayStat?.calories,
-                                points = data?.exertionOn(date)?.totalScore,
-                                pointsTarget = data?.exertionOn(date)?.targetScore,
+                                points = activityAdvice?.totalScore,
+                                pointsTarget = activityAdvice?.targetScore,
+                                activeMinutes = data.bandMinutesOn(date, activityAdvice, zone)
+                                    ?: dayStat?.activityMinutes,
+                                activeGoal = activityAdvice?.planMinutes ?: dayStat?.activityGoal,
                                 onClick = { onOpenTab(AppTab.ACTIVITY) }
                             )
 
@@ -1467,6 +1474,8 @@ private fun ActivityCard(
     calories: Double?,
     points: Int?,
     pointsTarget: Int?,
+    activeMinutes: Int?,
+    activeGoal: Int?,
     onClick: () -> Unit
 ) {
     FlatPanel(
@@ -1504,11 +1513,12 @@ private fun ActivityCard(
             }
             Spacer(Modifier.width(12.dp))
             ActivityRings(
-                stepsProgress = if (goal > 0) (steps ?: 0).toFloat() / goal else 0f,
-                caloriesProgress = ((calories ?: 0.0) / 500.0).toFloat(),
-                activeProgress = pointsTarget?.takeIf { it > 0 }?.let { target ->
+                pointsProgress = pointsTarget?.takeIf { it > 0 }?.let { target ->
                     (points ?: 0).toFloat() / target
                 } ?: 0f,
+                stepsProgress = if (goal > 0) (steps ?: 0).toFloat() / goal else 0f,
+                activeProgress = ((activeMinutes ?: 0).toFloat() /
+                    (activeGoal?.takeIf { it > 0 } ?: 60).toFloat()),
                 modifier = Modifier.size(84.dp)
             )
         }
@@ -1525,18 +1535,20 @@ private fun ActivityStat(value: String, label: String) {
 
 @Composable
 private fun ActivityRings(
+    pointsProgress: Float,
     stepsProgress: Float,
-    caloriesProgress: Float,
     activeProgress: Float,
     modifier: Modifier = Modifier
 ) {
-    val palette = LocalZgPalette.current
+    // The same three hues the activity page rings use, in the same order: points
+    // outermost, steps in the middle, band minutes innermost. Values are clamped:
+    // at or past the goal the ring simply closes, with no overshoot mark here.
     val colors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.tertiary,
-        palette.sleepRem
+        Color(0xFFF2682A),
+        Color(0xFFB4E05C),
+        Color(0xFF4FA8E8)
     )
-    val values = listOf(stepsProgress, caloriesProgress, activeProgress)
+    val values = listOf(pointsProgress, stepsProgress, activeProgress)
         .map { it.coerceIn(0f, 1f) }
     Box(modifier) {
         androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {

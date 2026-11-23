@@ -255,9 +255,6 @@ fun DetailScreen(
                         (workout?.distanceM ?: 0.0) > 0.0
                     } else {
                         (workoutDetail?.points?.size ?: 0) >= 2
-                    },
-                    onOpenMore = {
-                        onOpen(DetailTarget(DetailKind.WORKOUT_MORE, workoutId = target.workoutId))
                     }
                 )
                 DetailKind.STRAIN -> StrainDetail(data, target.date)
@@ -2607,8 +2604,7 @@ private fun PinnedTrack(points: List<GeoPoint>, scroll: ScrollState, modifier: M
 private fun WorkoutDetail(
     workout: Workout?,
     detail: WorkoutDetail?,
-    showTrack: Boolean,
-    onOpenMore: () -> Unit
+    showTrack: Boolean
 ) {
     if (workout == null) {
         Missing("还没有运动记录")
@@ -2621,11 +2617,39 @@ private fun WorkoutDetail(
     // slot is reserved here so nothing shifts when the payload lands.
     if (showTrack) Spacer(Modifier.height(270.dp))
 
-    // The three numbers people look for first, laid out like the heart-rate
-    // strip on the activity page. A strength session has no distance, so that
-    // slot shows its average heart rate instead.
+    // The numbers people look for first, laid out like the heart-rate strip on
+    // the activity page. A strength session has no distance, so that slot shows
+    // its average heart rate instead.
     val distanceKm = workout.distanceM?.takeIf { it > 0.0 }
     val showsDistance = distanceKm != null
+    // Both the strip and the grid read as pairs. When the grid would have an odd
+    // number of tiles, one strip number moves into it instead of being left over,
+    // so nothing needs an 其他数据 page to hold the stray tile.
+    val extrasBase = workoutStats(workout, showsDistance)
+    val oddGrid = extrasBase.size % 2 == 1
+    // Calories go first when the watch gave them; otherwise the distance (or the
+    // average heart rate, for a session without one) steps down.
+    val demoteCalories = oddGrid && workout.calories != null
+    val demoteDistance = oddGrid && workout.calories == null
+    val extras = buildList {
+        if (demoteCalories) {
+            add(WorkoutStat("消耗", Fmt.int(workout.calories), "kcal"))
+        }
+        if (demoteDistance) {
+            if (showsDistance) {
+                add(WorkoutStat("距离", Fmt.km(distanceKm), "km"))
+            } else {
+                add(
+                    WorkoutStat(
+                        "平均心率",
+                        workout.avgHr?.roundToInt()?.toString() ?: "--",
+                        "bpm"
+                    )
+                )
+            }
+        }
+        addAll(extrasBase)
+    }
     FlatPanel {
         Row(
             Modifier
@@ -2641,32 +2665,36 @@ private fun WorkoutDetail(
                 Fmt.duration(workout.durationSec),
                 MaterialTheme.colorScheme.primary
             )
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.LocalFireDepartment,
-                "消耗",
-                Fmt.int(workout.calories),
-                LocalZgPalette.current.warn,
-                unit = "kcal"
-            )
-            if (showsDistance) {
+            if (!demoteCalories) {
                 StatBlock(
                     Modifier.weight(1f),
-                    Icons.Rounded.Straighten,
-                    "距离",
-                    Fmt.km(distanceKm),
-                    LocalZgPalette.current.accent,
-                    unit = "km"
+                    Icons.Rounded.LocalFireDepartment,
+                    "消耗",
+                    Fmt.int(workout.calories),
+                    LocalZgPalette.current.warn,
+                    unit = "kcal"
                 )
-            } else {
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Favorite,
-                    "平均心率",
-                    workout.avgHr?.roundToInt()?.toString() ?: "--",
-                    MaterialTheme.colorScheme.tertiary,
-                    unit = "bpm"
-                )
+            }
+            if (!demoteDistance) {
+                if (showsDistance) {
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.Straighten,
+                        "距离",
+                        Fmt.km(distanceKm),
+                        LocalZgPalette.current.accent,
+                        unit = "km"
+                    )
+                } else {
+                    StatBlock(
+                        Modifier.weight(1f),
+                        Icons.Rounded.Favorite,
+                        "平均心率",
+                        workout.avgHr?.roundToInt()?.toString() ?: "--",
+                        MaterialTheme.colorScheme.tertiary,
+                        unit = "bpm"
+                    )
+                }
             }
         }
     }
@@ -2674,18 +2702,13 @@ private fun WorkoutDetail(
     // Everything else the watch attached to the session. Only the values that
     // are actually there get a tile: a missing field is left out rather than
     // printed as a dash, because this grid is about what the watch measured.
-    val extras = workoutStats(workout, showsDistance)
-    // The grid reads as pairs. An odd tile would sit alone in half a row, so the
-    // last one moves into 其他数据 together with the raw watch fields.
-    val paired = extras.size - extras.size % 2
-    extras.take(paired).chunked(2).forEach { pair ->
+    extras.chunked(2).forEach { pair ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             pair.forEach { stat ->
                 MetricTile(stat.label, stat.value, stat.unit, Modifier.weight(1f))
             }
         }
     }
-    val hasMore = extras.size > paired
 
     // 训练效果: the watch's two 0–5 scales. The ring is cut into the rating
     // zones, each with its own faint colour, and a needle marks where this
@@ -2702,37 +2725,6 @@ private fun WorkoutDetail(
                     EffectGauge("有氧", workout.aerobicTe, Modifier.weight(1f))
                     EffectGauge("无氧", workout.anaerobicTe, Modifier.weight(1f))
                 }
-            }
-        }
-    }
-
-    // The entry sits under the last card: a pill-shaped tap target with no
-    // fill, so the press ripple still follows the capsule.
-    if (hasMore) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 2.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .clickable { onOpenMore() }
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "其他数据",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Icon(
-                    Icons.Rounded.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
             }
         }
     }

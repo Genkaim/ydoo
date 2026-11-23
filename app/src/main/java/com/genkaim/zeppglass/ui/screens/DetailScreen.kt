@@ -4224,11 +4224,13 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
         return
     }
 
-    // The day's numbers first: highest, lowest and mean of both pressures.
+    SectionTitle("日统计")
+    // The day's numbers, laid out like the activity page's heart-rate strip:
+    // one row per pressure, each with the highest, lowest and mean reading.
     FlatPanel {
         Column(
             Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             BloodPressureStatRow(
                 name = "收缩压",
@@ -4246,7 +4248,6 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
 
     // Below it: the day's readings on a 24-hour axis. One column per hour, cut
     // into vertical segments, so the gaps between measurements stay visible.
-    SectionTitle("日统计")
     FlatPanel {
         Column(Modifier.padding(12.dp)) {
             HourlyBloodPressureChart(
@@ -4363,35 +4364,46 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     )
 }
 
-/** One pressure of the day: highest, lowest and mean in three columns. */
+/** One pressure of the day, laid out like a stat strip: highest, lowest, mean. */
 @Composable
 private fun BloodPressureStatRow(name: String, values: List<Int>, color: Color) {
     if (values.isEmpty()) return
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.width(70.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(52.dp)) {
             Box(
                 Modifier
                     .size(7.dp)
                     .clip(CircleShape)
                     .background(color)
             )
-            Spacer(Modifier.width(6.dp))
-            Text(name, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(5.dp))
+            Text(
+                name,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-        listOf(
-            "最高" to values.max(),
-            "最低" to values.min(),
-            "平均" to values.average().roundToInt()
-        ).forEach { (label, value) ->
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(value.toString(), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        StatBlock(
+            Modifier.weight(1f),
+            Icons.Rounded.ArrowUpward,
+            "最高",
+            values.max().toString(),
+            color
+        )
+        StatBlock(
+            Modifier.weight(1f),
+            Icons.Rounded.ArrowDownward,
+            "最低",
+            values.min().toString(),
+            color
+        )
+        StatBlock(
+            Modifier.weight(1f),
+            Icons.Rounded.TrendingFlat,
+            "平均",
+            values.average().roundToInt().toString(),
+            color
+        )
     }
 }
 

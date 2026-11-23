@@ -100,28 +100,21 @@ fun TrackRings(
                 // (so it sits above it) and before the badge (so the logo stays
                 // on top).
                 if (progress > 1f) {
+                    // Same ring, same width: the extra lap runs on top of the
+                    // first one, so the only visible mark is a hairline notch at
+                    // the head that says "one more lap".
                     val over = (progress - 1f).coerceAtMost(1f)
-                    val lift = stroke * 0.42f
-                    val outer = TrackRect(
-                        left = rect.left - lift,
-                        top = rect.top - lift,
-                        width = rect.width + lift * 2f,
-                        height = rect.height + lift * 2f
-                    )
                     drawPath(
-                        outer.path(fraction = over),
+                        rect.path(fraction = over),
                         color = colors[index],
-                        style = Stroke(stroke * 0.62f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                        style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
-                    // Only the head gets an outline: a rounded background-coloured
-                    // ring around the tip, so the overflow reads as "one more lap"
-                    // without a halo along the whole arc.
-                    val head = outer.pointAt(outer.perimeter * over)
+                    val head = rect.pointAt(rect.perimeter * over)
                     drawCircle(
                         color = badgeColor,
-                        radius = stroke * 0.62f,
+                        radius = stroke * 0.40f,
                         center = head,
-                        style = Stroke(stroke * 0.45f)
+                        style = Stroke(stroke * 0.14f)
                     )
                 }
 

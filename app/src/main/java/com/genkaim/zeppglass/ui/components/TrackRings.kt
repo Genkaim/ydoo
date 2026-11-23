@@ -142,11 +142,15 @@ fun TrackRings(
                 }
 
                 // The logo is exactly as wide as the ring: a badge the width of
-                // the stroke, sitting on the start point.
+                // the stroke, sitting on the start point. Once the ring has gone
+                // past one lap the badge's fill is dropped — the ring is there
+                // anyway — and the glyph is knocked out of the colour instead.
                 painters.getOrNull(index)?.let { painter ->
                     val start = rect.pointAt(0f)
                     val badge = stroke / 2f
-                    drawCircle(colors[index], radius = badge, center = start)
+                    if (progress <= 1f) {
+                        drawCircle(colors[index], radius = badge, center = start)
+                    }
                     val glyph = stroke * 0.90f
                     translate(left = start.x - glyph / 2f, top = start.y - glyph / 2f) {
                         with(painter) {

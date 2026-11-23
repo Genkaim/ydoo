@@ -1913,20 +1913,49 @@ private fun BodyMetricDetail(data: HealthData?, metric: String?, source: String?
     val windowStart = dayOf(newest.first).minusMonths(1)
     val window = series.filter { dayOf(it.first) in windowStart..dayOf(newest.first) }
     val values = window.map { it.second }
-    val previous = window.dropLast(1).lastOrNull()?.second
-    val suffix = if (spec.unit.isBlank()) "" else " ${spec.unit}"
     fun number(value: Double): String = when (spec.decimals) {
         0 -> value.roundToInt().toString()
         1 -> Fmt.oneDecimal(value)
         else -> String.format(Locale.CHINA, "%.2f", value)
     }
-    fun text(value: Double?): String = value?.let { number(it) + suffix } ?: "--"
-    val deltaText = previous?.let {
-        val diff = newest.second - it
-        val sign = if (diff > 0) "+" else if (diff < 0) "−" else ""
-        sign + number(abs(diff)) + suffix
-    } ?: "--"
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val onlyUnit = spec.unit.ifBlank { null }
+
+    // The month in three numbers, in the same strip the activity page puts over
+    // its heart-rate curve: icon, label, reading.
+    FlatPanel {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.ArrowUpward,
+                "最高",
+                number(values.max()),
+                MaterialTheme.colorScheme.tertiary,
+                unit = onlyUnit
+            )
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.ArrowDownward,
+                "最低",
+                number(values.min()),
+                LocalZgPalette.current.sleepRem,
+                unit = onlyUnit
+            )
+            StatBlock(
+                Modifier.weight(1f),
+                Icons.Rounded.TrendingFlat,
+                "平均",
+                number(values.average()),
+                MaterialTheme.colorScheme.primary,
+                unit = onlyUnit
+            )
+        }
+    }
 
     FlatPanel {
         Column(
@@ -1945,71 +1974,6 @@ private fun BodyMetricDetail(data: HealthData?, metric: String?, source: String?
                 selector = spec.selector
             )
         }
-    }
-
-    SectionTitle("近 1 个月")
-    FlatPanel {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                BodyDetailStat("较上次", deltaText, Modifier.weight(1f))
-                BodyDetailStat("最高", text(values.maxOrNull()), Modifier.weight(1f))
-                BodyDetailStat("最低", text(values.minOrNull()), Modifier.weight(1f))
-            }
-            MetricDivider(16.dp)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                BodyDetailStat("平均", text(values.average()), Modifier.weight(1f))
-                BodyDetailStat("最新", text(newest.second), Modifier.weight(1f))
-                BodyDetailStat("读数", "${window.size} 次", Modifier.weight(1f))
-            }
-        }
-    }
-
-    // Every reading in the window, newest first: the curve shows the shape, this
-    // shows the numbers behind it.
-    SectionTitle("全部读数", trailing = "${window.size} 次")
-    FlatPanel {
-        Column(Modifier.fillMaxWidth()) {
-            window.asReversed().forEachIndexed { index, entry ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        Fmt.date(dayOf(entry.first)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = muted,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(text(entry.second), style = MaterialTheme.typography.titleSmall)
-                }
-                if (index != window.lastIndex) MetricDivider(16.dp)
-            }
-        }
-    }
-}
-
-/** One number under the trend on a metric's own page. */
-@Composable
-private fun BodyDetailStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(value, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -2753,7 +2717,8 @@ private fun MiniTrendChart(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)
-    val grid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val tickGrid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.16f)
+    val currentGrid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
 
     Canvas(modifier) {
         // X runs over the whole comparison window, so the curve shows the recent
@@ -2787,11 +2752,13 @@ private fun MiniTrendChart(
             (size.height - (value.toFloat() - low) / spanY * size.height)
                 .coerceIn(0f, size.height)
 
-        // The values on the axis, without the thin guide lines: the labels alone
-        // are enough, and the lines crossed the curve at every level.
+        // Every value on the axis also gets a faint rule across the card, so a
+        // reading's height can be followed to the right edge; the newest
+        // reading's rule is heavier and marks where the last point sits.
         var tick = kotlin.math.ceil(lowD / step) * step
         while (tick <= highD + 1e-6) {
             val y = yOf(tick)
+            drawLine(tickGrid, Offset(plotLeft, y), Offset(plotRight, y), 0.7.dp.toPx())
             val text = if (step < 1.0) {
                 String.format(java.util.Locale.CHINA, "%.1f", tick)
             } else {
@@ -2810,7 +2777,7 @@ private fun MiniTrendChart(
 
         current?.let { level ->
             val y = yOf(level)
-            drawLine(grid, Offset(plotLeft, y), Offset(plotRight, y), 1.dp.toPx())
+            drawLine(currentGrid, Offset(plotLeft, y), Offset(plotRight, y), 1.6.dp.toPx())
         }
 
         val path = Path()

@@ -22,6 +22,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -98,6 +99,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -262,9 +264,13 @@ fun AiScreen(
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
-    // Opening another conversation fades the transcript out and back in, so the
-    // words are swapped behind the fade instead of in front of the reader.
-    val contentAlpha = remember { Animatable(1f) }
+    // A switch between conversations brings a page-tint curtain down over the
+    // transcript, swaps the words behind it, then lifts it again: the old reply
+    // fades out and the new one fades in. An alpha on the transcript itself was
+    // invisible here — the sheet's own slide finished first, so the swap only
+    // ever looked like content changing.
+    val curtain = remember { Animatable(0f) }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     var followBottom by remember { mutableStateOf(true) }
     // The follow animation scrolls the list itself. Without this flag the
@@ -390,7 +396,6 @@ fun AiScreen(
         Box(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = contentAlpha.value }
         ) {
             // Seeded with an estimate of the deck (composer + the bar's space):
             // starting at zero made the list sit lower for one frame, then jump
@@ -487,6 +492,15 @@ fun AiScreen(
                     .padding(bottom = deckSpace + 6.dp)
             )
 
+            // The curtain sits over the transcript but under the deck, so the
+            // input field stays put while the words behind it change.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .graphicsLayer { alpha = curtain.value }
+            )
+
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -553,7 +567,15 @@ fun AiScreen(
                 IconButton(onClick = { AiChatSession.newChat() }) {
                     Icon(Icons.Rounded.Add, contentDescription = "新建对话", modifier = Modifier.size(22.dp))
                 }
-                IconButton(onClick = { showHistory = true }) {
+                IconButton(
+                    onClick = {
+                        // The IME is its own window and would cover the sheet's
+                        // lower half (and keep the transcript squeezed), so it
+                        // goes away before the history list comes up.
+                        keyboard?.hide()
+                        showHistory = true
+                    }
+                ) {
                     Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
                 }
                 IconButton(onClick = onOpenSettings) {
@@ -576,15 +598,17 @@ fun AiScreen(
                 currentId = AiChatSession.currentId,
                 onOpen = { id ->
                     scope.launch {
-                        // The sheet is folded away first: fading the page to zero
-                        // behind it only produced a long blank, because the sheet's
-                        // own slide took longer than the fade. Swapped while it is
-                        // still up, the new conversation is then what fades in.
+                        // The keyboard would sit above the sheet's lower half, so
+                        // it leaves before the list is shown.
+                        keyboard?.hide()
+                        // Then the sheet folds away, the old words fade out under
+                        // the curtain, the conversation is swapped while nothing
+                        // is readable, and the new words fade back in.
                         runCatching { sheetState.hide() }
                         showHistory = false
+                        curtain.animateTo(1f, tween(130))
                         AiChatSession.open(id)
-                        contentAlpha.snapTo(0f)
-                        contentAlpha.animateTo(1f, tween(240))
+                        curtain.animateTo(0f, tween(240))
                     }
                 },
                 onDelete = { AiChatSession.delete(it) },
@@ -1187,6 +1211,9 @@ private fun HistorySheet(
                     FlatPanel(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
+                        // Same card as a popup in dark mode, so the list reads as
+                        // raised cards on the page, not as holes in it.
+                        color = popupCardColor(),
                         onClick = { onOpen(session.id) }
                     ) {
                         Row(

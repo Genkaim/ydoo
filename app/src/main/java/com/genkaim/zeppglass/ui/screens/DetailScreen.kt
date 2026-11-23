@@ -1409,14 +1409,18 @@ private fun LoadDetail(data: HealthData?, date: LocalDate?) {
     if (vo2.size > 1) {
         SectionTitle("最大摄氧量")
         FlatPanel {
-            AxisLineChart(
+            TrendLineChart(
                 values = vo2.map { it.second },
-                labels = vo2.map { Fmt.weekdayShort(it.first) },
+                // One weekday every other slot: fourteen labels would collide.
+                labels = vo2.mapIndexed { index, day ->
+                    if ((vo2.lastIndex - index) % 2 == 0) Fmt.weekdayShort(day.first) else ""
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
                     .height(160.dp),
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                showValues = false
             )
         }
     }
@@ -3233,13 +3237,17 @@ private fun Vo2Detail(data: HealthData?) {
         SectionTitle("近 14 天")
         FlatPanel {
             Column(Modifier.padding(14.dp)) {
-                AxisLineChart(
+                TrendLineChart(
                     values = history.map { it?.vo2Max?.toFloat() },
-                    labels = (0..13).map { Fmt.weekdayShort(vo2End.minusDays(13L - it)) },
+                    // One weekday every other slot: fourteen labels would collide.
+                    labels = (0..13).map {
+                        if ((13 - it) % 2 == 0) Fmt.weekdayShort(vo2End.minusDays(13L - it)) else ""
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
-                    color = MaterialTheme.colorScheme.primary
+                        .height(130.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    showValues = false
                 )
             }
         }

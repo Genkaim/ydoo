@@ -196,20 +196,20 @@ fun ActivityScreen(
                         }
                     }
                     val planMinutes = advice?.planMinutes
-                    // 临时测试目标：步数 4220、心率区间时长 17 分钟、活动点数 60。
+                    // 临时测试目标：步数 4100、心率区间时长 5 分钟、活动点数 60。
                     val testAdvice = advice?.copy(targetScore = 60)
                     ActivityHero(
                         steps = day?.steps,
-                        goal = 4220,
+                        goal = 4100,
                         points = testAdvice?.totalScore,
                         pointsTarget = testAdvice?.targetScore,
                         activeMinutes = bandMinutes ?: activityMinutes,
-                        activeGoal = 17
+                        activeGoal = 5
                     )
                     ActivityStatsCard(
                         steps = day?.steps,
                         activeMinutes = bandMinutes ?: activityMinutes,
-                        activeGoal = 17,
+                        activeGoal = 5,
                         calories = day?.calories,
                         bandBased = bandMinutes != null,
                         advice = testAdvice

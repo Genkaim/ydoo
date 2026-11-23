@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Route
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -376,7 +377,6 @@ private fun ActivityStatsCard(
             // The day's advice lives in the same card as the totals: it is the
             // target those numbers are measured against, not a separate report.
             if (advice != null) {
-                val muted = MaterialTheme.colorScheme.onSurfaceVariant
                 val points = when {
                     advice.totalScore == null && advice.targetScore == null -> null
                     advice.targetScore != null && advice.targetScore > 0 ->
@@ -392,22 +392,23 @@ private fun ActivityStatsCard(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 15.dp),
+                        .padding(top = 10.dp, bottom = 15.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AdviceCell(
+                    StatBlock(
                         Modifier.weight(1f),
+                        Icons.Rounded.Star,
                         "活动点数",
                         points ?: "--",
-                        null,
-                        if (points == null) muted else MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.primary
                     )
-                    AdviceCell(
+                    StatBlock(
                         Modifier.weight(1f),
+                        Icons.Rounded.Favorite,
                         "建议心率",
                         hr ?: "--",
-                        if (hr == null) null else "bpm",
-                        if (hr == null) muted else LocalZgPalette.current.sleepRem
+                        LocalZgPalette.current.sleepRem,
+                        unit = if (hr == null) null else "bpm"
                     )
                 }
             }
@@ -534,7 +535,7 @@ private fun LoadVo2Card(
                     Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onStatusClick)
-                        .padding(horizontal = 16.dp, vertical = 15.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 15.dp)
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -764,96 +765,3 @@ private fun WeekStat(label: String, value: String, unit: String?, modifier: Modi
         }
     }
 }
-
-
-
-
-
-
-
-/**
- * The day's activity advice as one compact row right under the top card: the
- * points collected out of the suggested total, and the heart-rate band to spend
- * time in.
- */
-@Composable
-private fun ActivityAdviceStrip(advice: ExertionDay) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val points = when {
-        advice.totalScore == null && advice.targetScore == null -> null
-        advice.targetScore != null && advice.targetScore > 0 ->
-            "${advice.totalScore ?: 0}/${advice.targetScore}"
-        else -> advice.totalScore?.toString()
-    }
-    val hr = if (advice.planHrLow != null && advice.planHrHigh != null) {
-        "${advice.planHrLow}-${advice.planHrHigh}"
-    } else {
-        null
-    }
-    FlatPanel(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AdviceCell(
-                Modifier.weight(1f),
-                "活动点数",
-                points ?: "--",
-                null,
-                if (points == null) muted else MaterialTheme.colorScheme.primary
-            )
-            AdviceCell(
-                Modifier.weight(1f),
-                "建议心率",
-                hr ?: "--",
-                if (hr == null) null else "bpm",
-                if (hr == null) muted else LocalZgPalette.current.sleepRem
-            )
-        }
-    }
-}
-
-/**
- * One of the advice columns: a small label over the value and its unit. The
- * value uses the same size as the steps tile above, so the two rows read as one
- * block.
- */
-@Composable
-private fun AdviceCell(
-    modifier: Modifier,
-    label: String,
-    value: String,
-    unit: String?,
-    color: Color
-) {
-    Column(modifier) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
-        )
-        Spacer(Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                value,
-                style = MaterialTheme.typography.titleLarge,
-                color = color,
-                maxLines = 1
-            )
-            if (unit != null) {
-                Text(
-                    " $unit",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = color,
-                    modifier = Modifier.padding(bottom = 3.dp)
-                )
-            }
-        }
-    }
-}
-
-
-

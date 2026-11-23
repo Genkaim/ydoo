@@ -196,23 +196,21 @@ fun ActivityScreen(
                         }
                     }
                     val planMinutes = advice?.planMinutes
-                    // 临时测试目标：步数 4100、心率区间时长 5 分钟、活动点数 45。
-                    val testAdvice = advice?.copy(targetScore = 45)
                     ActivityHero(
                         steps = day?.steps,
-                        goal = 4100,
-                        points = testAdvice?.totalScore,
-                        pointsTarget = testAdvice?.targetScore,
+                        goal = day?.stepGoal ?: 7000,
+                        points = advice?.totalScore,
+                        pointsTarget = advice?.targetScore,
                         activeMinutes = bandMinutes ?: activityMinutes,
-                        activeGoal = 5
+                        activeGoal = planMinutes ?: activityGoal
                     )
                     ActivityStatsCard(
                         steps = day?.steps,
                         activeMinutes = bandMinutes ?: activityMinutes,
-                        activeGoal = 5,
+                        activeGoal = planMinutes ?: activityGoal,
                         calories = day?.calories,
-                        bandBased = bandMinutes != null,
-                        advice = testAdvice
+                        bandBased = bandMinutes != null && planMinutes != null,
+                        advice = advice
                     )
                     LoadVo2Card(
                         load = load,

@@ -30,6 +30,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Milliseconds one full lap takes, with every ring using the same speed. */
@@ -66,27 +67,31 @@ fun TrackRings(
             launch {
                 val target = value.coerceIn(0f, 1f)
                 val distance = abs(target - animated[index].value)
+                val durationMs = (distance * LAP_MILLIS).toInt().coerceAtLeast(60)
+                // The mark starts while the last part of the lap is still filling.
+                launch {
+                    if (value > 1f) {
+                        delay((durationMs * 0.55f).toLong())
+                        markTravel[index].animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(420, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        markTravel[index].snapTo(0f)
+                    }
+                }
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)
                 } else {
                     animated[index].animateTo(
                         targetValue = target,
                         animationSpec = tween(
-                            durationMillis = (distance * LAP_MILLIS).toInt().coerceAtLeast(60),
+                            durationMillis = durationMs,
                             easing = FastOutSlowInEasing
                         )
                     )
                 }
-                // The mark only starts once the ring has finished: it fades in and
-                // walks out from the start point on its own.
-                if (value > 1f) {
-                    markTravel[index].animateTo(
-                        targetValue = 1f,
-                        animationSpec = tween(420, easing = FastOutSlowInEasing)
-                    )
-                } else {
-                    markTravel[index].snapTo(0f)
-                }
+
             }
         }
     }
@@ -117,7 +122,15 @@ fun TrackRings(
                     style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
                 val progress = animated.getOrNull(index)?.value ?: 0f
-                val firstLap = progress.coerceAtMost(1f)
+                // Arc length the badge covers, as a fraction of the lap.
+                val badgeFrac = ((stroke * 1.3f) / rect.perimeter).coerceAtMost(0.45f)
+                // Very close to the goal the head would slide under the badge:
+                // stop the arc just short of it, except on a completed lap.
+                val firstLap = if (progress >= 1f) {
+                    1f
+                } else {
+                    progress.coerceAtMost(1f - badgeFrac)
+                }
                 if (firstLap > 0f) {
                     drawPath(
                         rect.path(fraction = firstLap),

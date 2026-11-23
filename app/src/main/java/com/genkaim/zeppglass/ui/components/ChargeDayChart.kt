@@ -156,6 +156,7 @@ fun ChargeDayChart(
     val dotColor = MaterialTheme.colorScheme.surface
     val valueStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
+    val outlineColor = MaterialTheme.colorScheme.background
 
     val sleepIcon = rememberVectorPainter(chargeSpanIcon(ChargeSpanKind.SLEEP))
     val workoutIcon = rememberVectorPainter(chargeSpanIcon(ChargeSpanKind.WORKOUT))
@@ -227,6 +228,14 @@ fun ChargeDayChart(
                     val side = 15.dp.toPx()
                     val left = ((x0 + x1) / 2f - side / 2f)
                         .coerceIn(0f, (size.width - side).coerceAtLeast(0f))
+                    // A background-coloured hairline around the icon keeps it from
+                    // melting into the band it sits on.
+                    drawCircle(
+                        color = outlineColor,
+                        radius = side * 0.62f,
+                        center = Offset(left + side / 2f, side / 2f),
+                        style = Stroke(1.5.dp.toPx())
+                    )
                     translate(left, 0f) {
                         draw(Size(side, side), colorFilter = ColorFilter.tint(tint))
                     }

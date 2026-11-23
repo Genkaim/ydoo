@@ -110,13 +110,18 @@ fun TrackRings(
                     )
                     drawPath(
                         outer.path(fraction = over),
-                        color = badgeColor,
-                        style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                    )
-                    drawPath(
-                        outer.path(fraction = over),
                         color = colors[index],
                         style = Stroke(stroke * 0.62f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                    // Only the head gets an outline: a rounded background-coloured
+                    // ring around the tip, so the overflow reads as "one more lap"
+                    // without a halo along the whole arc.
+                    val head = outer.pointAt(outer.perimeter * over)
+                    drawCircle(
+                        color = badgeColor,
+                        radius = stroke * 0.62f,
+                        center = head,
+                        style = Stroke(stroke * 0.45f)
                     )
                 }
 
@@ -150,7 +155,7 @@ private class TrackRect(
 ) {
     private val radius = height / 2f
     private val straight = (width - height).coerceAtLeast(0f)
-    private val perimeter = 2f * straight + 2f * PI.toFloat() * radius
+    val perimeter = 2f * straight + 2f * PI.toFloat() * radius
 
     fun path(fraction: Float): Path {
         val path = Path()

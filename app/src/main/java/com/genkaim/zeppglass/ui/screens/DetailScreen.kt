@@ -2799,8 +2799,8 @@ private fun WorkoutDetail(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    EffectGauge("有氧训练效果", workout.aerobicTe, Modifier.weight(1f))
-                    EffectGauge("无氧训练效果", workout.anaerobicTe, Modifier.weight(1f))
+                    EffectGauge("有氧", workout.aerobicTe, Modifier.weight(1f))
+                    EffectGauge("无氧", workout.anaerobicTe, Modifier.weight(1f))
                 }
             }
         }
@@ -3042,10 +3042,7 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
         BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
-                // 92dp instead of 108: the arc's open ends already leave a gap
-                // above the name, and the extra height only pushed the name away
-                // from the dial.
-                .height(92.dp)
+                .height(108.dp)
         ) {
             val strokeDp = 10.dp
             // The dial is inset from the sides and the top; the bottom needs no

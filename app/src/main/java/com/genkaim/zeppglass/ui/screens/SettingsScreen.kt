@@ -68,6 +68,8 @@ import androidx.compose.ui.res.painterResource
 import com.genkaim.zeppglass.BuildConfig
 import com.genkaim.zeppglass.R
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
@@ -133,7 +135,9 @@ fun SettingsScreen(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+                // Extra room under the last card so it does not sit against the
+                // edge of the screen.
+                .padding(start = 18.dp, end = 18.dp, bottom = 56.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(Modifier.height(headerHeight + 4.dp))
@@ -306,141 +310,150 @@ fun SettingsScreen(
             }
 
             SectionTitle("AI 接入点")
-            val arrowAngle by animateFloatAsState(if (aiOpen) 180f else 0f, label = "aiArrow")
-            // The header card and the fields it uncovers are one child of this
-            // spaced column, and that is the whole point: a child that is a
-            // *direct* sibling would keep its 16 dp gap on both sides of
-            // `Arrangement.spacedBy` even at 0 dp height, and would lose both
-            // gaps in a single frame the moment the animation ends. That
-            // leftover gap was the jump that survived the earlier fix.
-            // Nested like this, everything around the fields lives inside the
-            // animated box and folds away with it, so collapsed height is
-            // exactly the header card.
-            Column {
-                FlatPanel(onClick = { aiOpen = !aiOpen }) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("AI 接入点", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                if (settings.aiApiKey.isBlank()) "未配置" else settings.aiBaseUrl,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
-                            )
-                        }
-                        Icon(
-                            Icons.Rounded.ExpandMore,
-                            contentDescription = if (aiOpen) "收起" else "展开",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.rotate(arrowAngle)
+            // The header is the entry point now: the fields live in a dialog, so
+            // this page keeps one card instead of growing a long form inline.
+            FlatPanel(onClick = { aiOpen = true }) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AI 接入点", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (settings.aiApiKey.isBlank()) "未配置" else settings.aiBaseUrl,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = "设置",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                // Both directions are anchored to the top. The default
-                // expandIn / shrinkOut align the content to the bottom of the
-                // animating box, which made the first field slide down into
-                // place; grown from the top, the fields are simply uncovered.
-                AnimatedVisibility(
-                    visible = aiOpen,
-                    enter = fadeIn(tween(180)) + expandVertically(tween(220), expandFrom = Alignment.Top),
-                    exit = fadeOut(tween(120)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Top)
+            }
+            if (aiOpen) {
+                Dialog(
+                    onDismissRequest = { aiOpen = false },
+                    properties = DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = false
+                    )
                 ) {
-                    // The gap to the card is padding *inside* the animated
-                    // content, so it grows and shrinks with the fields instead
-                    // of appearing at full size on frame one.
-                    Column(
+                    Box(
                         Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .fillMaxSize()
+                            .imePadding()
+                            .padding(horizontal = 18.dp, vertical = 24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        FieldLabel("Base URL")
-                        CapsuleField(
-                            value = baseUrl,
-                            onValueChange = { baseUrl = it },
-                            placeholder = "https://api.openai.com/v1"
-                        )
-                        FieldLabel("API Key")
-                        CapsuleField(
-                            value = apiKey,
-                            onValueChange = { apiKey = it },
-                            placeholder = "sk-…",
-                            visualTransformation = PasswordVisualTransformation()
-                        )
-                        FieldLabel("模型")
-                        CapsuleField(
-                            value = model,
-                            onValueChange = { model = it },
-                            placeholder = "deepseek-v4.1-flash"
-                        )
-                        FieldLabel("识图模型（可留空）")
-                        CapsuleField(
-                            value = visionModel,
-                            onValueChange = { visionModel = it },
-                            placeholder = "gpt-4o / gemini-2.0-flash / qwen-vl"
-                        )
-                        Text(
-                            "拍照识别食物时用这个模型；留空就沿用上面的模型",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        FieldLabel("自定义请求头（每行 Key: Value）")
-                        CapsuleField(
-                            value = headers,
-                            onValueChange = { headers = it },
-                            placeholder = "x-opencode-session: …",
-                            singleLine = false,
-                            minLines = 2,
-                            maxLines = 4
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            FlatButton(
-                                text = if (testing) "测试中…" else "测试连接",
-                                onClick = {
-                                    settings.saveAi(baseUrl, apiKey, model, visionModel = visionModel, headers = headers)
-                                    testing = true
-                                    testResult = null
-                                    scope.launch {
-                                        val result = AiClient(settings).test()
-                                        testing = false
-                                        testOk = result.isSuccess
-                                        testResult = result.fold(
-                                            onSuccess = { it },
-                                            onFailure = { it.message ?: "连接失败" }
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                primary = false,
-                                enabled = !testing
-                            )
-                            FlatButton(
-                                text = "保存",
-                                onClick = {
-                                    settings.saveAi(baseUrl, apiKey, model, visionModel = visionModel, headers = headers)
-                                    onBack()
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+                        FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
+                            // Scrolls when the keyboard leaves too little room,
+                            // so no field is ever unreachable.
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    "AI 接入点",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                FieldLabel("Base URL")
+                                CapsuleField(
+                                    value = baseUrl,
+                                    onValueChange = { baseUrl = it },
+                                    placeholder = "https://api.openai.com/v1"
+                                )
+                                FieldLabel("API Key")
+                                CapsuleField(
+                                    value = apiKey,
+                                    onValueChange = { apiKey = it },
+                                    placeholder = "sk-…",
+                                    visualTransformation = PasswordVisualTransformation()
+                                )
+                                FieldLabel("模型")
+                                CapsuleField(
+                                    value = model,
+                                    onValueChange = { model = it },
+                                    placeholder = "deepseek-v4.1-flash"
+                                )
+                                FieldLabel("识图模型（可留空）")
+                                CapsuleField(
+                                    value = visionModel,
+                                    onValueChange = { visionModel = it },
+                                    placeholder = "gpt-4o / gemini-2.0-flash / qwen-vl"
+                                )
+                                Text(
+                                    "拍照识别食物时用这个模型；留空就沿用上面的模型",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                FieldLabel("自定义请求头（每行 Key: Value）")
+                                CapsuleField(
+                                    value = headers,
+                                    onValueChange = { headers = it },
+                                    placeholder = "x-opencode-session: …",
+                                    singleLine = false,
+                                    minLines = 2,
+                                    maxLines = 4
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    FlatButton(
+                                        text = if (testing) "测试中…" else "测试连接",
+                                        onClick = {
+                                            settings.saveAi(
+                                                baseUrl, apiKey, model,
+                                                visionModel = visionModel, headers = headers
+                                            )
+                                            testing = true
+                                            testResult = null
+                                            scope.launch {
+                                                val result = AiClient(settings).test()
+                                                testing = false
+                                                testOk = result.isSuccess
+                                                testResult = result.fold(
+                                                    onSuccess = { it },
+                                                    onFailure = { it.message ?: "连接失败" }
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        primary = false,
+                                        enabled = !testing
+                                    )
+                                    FlatButton(
+                                        text = "保存",
+                                        onClick = {
+                                            settings.saveAi(
+                                                baseUrl, apiKey, model,
+                                                visionModel = visionModel, headers = headers
+                                            )
+                                            aiOpen = false
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                testResult?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (testOk) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                Text(
+                                    "兼容 OpenAI Chat Completions 格式的接入点。",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                        testResult?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (testOk) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.error
-                            )
-                        }
-                        Text(
-                            "兼容 OpenAI Chat Completions 格式的接入点。",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }

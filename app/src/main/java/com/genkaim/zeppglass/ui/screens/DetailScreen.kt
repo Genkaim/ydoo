@@ -1986,7 +1986,10 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
 
         // Three trends in one card, over the last 170 days, each with the change
         // against the previous weighing and against the reading 170 days ago.
-        BodyTrendCard(points)
+        // The two sources get their own breathing room: the scale's range is a
+        // few kilos, so 14% keeps its curve off the frame; the watch's history
+        // spans decades of kilos, where the same 14% would waste the height.
+        BodyTrendCard(points, padFraction = if (source == "watch") 0.05 else 0.14)
 
         SectionTitle("计算说明")
         FlatPanel {
@@ -2124,16 +2127,16 @@ private fun MetricDivider() {
 
 /** One card with three small trends: weight, body fat and muscle. */
 @Composable
-private fun BodyTrendCard(points: List<WeightPoint>) {
+private fun BodyTrendCard(points: List<WeightPoint>, padFraction: Double = 0.14) {
     val palette = LocalZgPalette.current
     SectionTitle("趋势", trailing = "近 1 个月")
     FlatPanel {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            BodyTrendRow("体重", "kg", points, palette.accent) { it.weightKg }
+            BodyTrendRow("体重", "kg", points, palette.accent, padFraction) { it.weightKg }
             MetricDivider()
-            BodyTrendRow("体脂", "%", points, palette.warn) { it.bodyFatPct }
+            BodyTrendRow("体脂", "%", points, palette.warn, padFraction) { it.bodyFatPct }
             MetricDivider()
-            BodyTrendRow("肌肉", "kg", points, palette.sleepLight) { it.muscleKg }
+            BodyTrendRow("肌肉", "kg", points, palette.sleepLight, padFraction) { it.muscleKg }
         }
     }
 }
@@ -2144,6 +2147,7 @@ private fun BodyTrendRow(
     unit: String,
     points: List<WeightPoint>,
     color: Color,
+    padFraction: Double,
     selector: (WeightPoint) -> Double?
 ) {
     val zone = ZoneId.systemDefault()
@@ -2194,6 +2198,7 @@ private fun BodyTrendRow(
                 color = color,
                 valueLabel = { Fmt.oneDecimal(it) + unit },
                 current = current,
+                padFraction = padFraction,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
@@ -2225,6 +2230,7 @@ private fun MiniTrendChart(
     color: Color,
     valueLabel: (Double) -> String,
     current: Double?,
+    padFraction: Double,
     modifier: Modifier = Modifier
 ) {
     val zone = ZoneId.systemDefault()
@@ -2249,7 +2255,8 @@ private fun MiniTrendChart(
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }
-        val pad = ((maxV - minV) * 0.06).coerceAtLeast(0.12)
+        val pad = ((maxV - minV) * padFraction)
+            .coerceAtLeast(if (padFraction >= 0.1) 0.3 else 0.12)
         // The plot is exactly the data plus that small pad; the labels are placed
         // at round values inside it instead of rounding the plot out to whole
         // steps, which used to add up to a full step of empty space on each side.

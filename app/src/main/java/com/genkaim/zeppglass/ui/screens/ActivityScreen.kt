@@ -65,7 +65,6 @@ import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.MetricTile
 import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
-import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SignedBarChart
 import com.genkaim.zeppglass.ui.components.StatBlock
@@ -387,9 +386,7 @@ private fun ActivityStatsCard(
                 } else {
                     null
                 }
-                Spacer(Modifier.height(12.dp))
-                Rule()
-                Spacer(Modifier.height(12.dp))
+                MetricsDivider()
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -527,7 +524,7 @@ private fun LoadVo2Card(
                 }
             }
             if (advice != null) {
-                Rule()
+                MetricsDivider()
                 val status = advice.status
                 Column(
                     Modifier
@@ -575,8 +572,23 @@ private fun LoadVo2Card(
     }
 }
 
-/** Zepp-style VO2 max rating (52 shows 良好 in the official app). */
-private fun vo2Rating(value: Int?): String = when {
+/**
+ * The same hairline the body-composition metric rows use between items, so a
+ * card split into two blocks reads like those lists rather than like two cards
+ * stacked on each other.
+ */
+@Composable
+private fun MetricsDivider() {
+    Box(
+        Modifier
+            .padding(vertical = 2.dp)
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant)
+    )
+}
+
+/** Zepp-style VO2 max rating (52 shows 良好 in the official app). */private fun vo2Rating(value: Int?): String = when {
     value == null -> "还没测算"
     value >= 55 -> "优秀"
     value >= 50 -> "良好"

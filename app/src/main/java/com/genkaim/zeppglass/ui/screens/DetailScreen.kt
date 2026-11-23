@@ -2157,7 +2157,10 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         SectionTitle("体重与 BMI", trailing = latest?.let { Fmt.date(dayOf(it)) })
         FlatPanel {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                basicMetrics.forEach { BodyMetricRow(it) }
+                basicMetrics.forEachIndexed { index, metric ->
+                    BodyMetricRow(metric)
+                    if (index != basicMetrics.lastIndex) MetricDivider()
+                }
             }
         }
         SectionTitle("其他指标", trailing = comp?.let { Fmt.date(dayOf(it)) })

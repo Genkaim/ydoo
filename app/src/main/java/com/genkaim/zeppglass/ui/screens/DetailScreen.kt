@@ -1379,9 +1379,9 @@ private fun ActivityDetail(data: HealthData?, date: LocalDate) {
 // ---------------- training load ----------------
 
 /**
- * 训练负荷 page: the last week of daily load as a line, with each day's personal
- * band (optimal minimum..maximum) behind it as a light bar, then the VO2 max
- * history the watch re-estimated.
+ * 训练负荷 page: the chart only — the 7-day rolling sum as a line, with each day's
+ * personal band behind it. The band belongs to the rolling sum (`wtlSum`), not to
+ * the single day's load, so those two are what the chart draws.
  */
 @Composable
 private fun LoadDetail(data: HealthData?, date: LocalDate?) {
@@ -1394,37 +1394,14 @@ private fun LoadDetail(data: HealthData?, date: LocalDate?) {
         Missing("还没有训练负荷记录")
         return
     }
-    val latest = (date?.let { d -> days.lastOrNull { it.date == d } }) ?: days.last()
     FlatPanel {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) {
-                    Text("每日负荷", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "浅色是同一天的个人合适区间",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Text(
-                    latest.load?.roundToInt()?.toString() ?: "--",
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Text(
-                    " WTL",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            LoadBandChart(
-                days = days,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-            )
-        }
+        LoadBandChart(
+            days = days,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 14.dp)
+                .height(190.dp)
+        )
     }
 
     val vo2 = source.vo2History.takeLast(14)
@@ -1445,8 +1422,9 @@ private fun LoadDetail(data: HealthData?, date: LocalDate?) {
 }
 
 /**
- * Daily load with that day's recommended band: a light bar from the band's
- * lowest to highest, and the day's own load as a line with dots on top.
+ * The 7-day rolling load as a line, with each day's personal band behind it: a
+ * light bar from the band's lowest to highest, and the rolling sum as dots on
+ * top. The band belongs to the rolling sum, so the two always share a scale.
  */
 @Composable
 private fun LoadBandChart(days: List<LoadDay>, modifier: Modifier = Modifier) {
@@ -1457,7 +1435,7 @@ private fun LoadBandChart(days: List<LoadDay>, modifier: Modifier = Modifier) {
 
     val values = buildList {
         days.forEach { day ->
-            day.load?.let { add(it.toFloat()) }
+            day.weekLoad?.let { add(it.toFloat()) }
             day.optimalMin?.let { add(it.toFloat()) }
             day.optimalMax?.let { add(it.toFloat()) }
         }
@@ -1511,7 +1489,7 @@ private fun LoadBandChart(days: List<LoadDay>, modifier: Modifier = Modifier) {
         }
 
         val points = days.mapIndexedNotNull { index, day ->
-            day.load?.let {
+            day.weekLoad?.let {
                 Offset(axisWidth + slot * index + slot / 2f, yOf(it.toFloat()))
             }
         }
@@ -1564,39 +1542,30 @@ private fun TrainingStatusDetail(data: HealthData?) {
     }
     val labels = days.map { Fmt.weekdayShort(it.date) }
     val warn = LocalZgPalette.current.warn
-    SectionTitle("疲劳与体能")
+    SectionTitle("疲劳")
     FlatPanel {
-        Column(
-            Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                "疲劳（ATL）",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            AxisLineChart(
-                values = days.map { it.fatigue?.toFloat() },
-                labels = labels,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp),
-                color = warn
-            )
-            Text(
-                "体能（CTL）",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            AxisLineChart(
-                values = days.map { it.fitness?.toFloat() },
-                labels = labels,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp),
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+        AxisLineChart(
+            values = days.map { it.fatigue?.toFloat() },
+            labels = labels,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 12.dp)
+                .height(140.dp),
+            color = warn
+        )
+    }
+
+    SectionTitle("体能")
+    FlatPanel {
+        AxisLineChart(
+            values = days.map { it.fitness?.toFloat() },
+            labels = labels,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 12.dp)
+                .height(140.dp),
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 
     SectionTitle("训练状态")
@@ -1612,11 +1581,6 @@ private fun TrainingStatusDetail(data: HealthData?) {
             decimals = 0
         )
     }
-    Text(
-        "训练状态 = 体能 − 疲劳，0 以上还有余力，负数越大越疲劳。",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 

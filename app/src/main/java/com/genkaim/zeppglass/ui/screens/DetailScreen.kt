@@ -3946,7 +3946,7 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
             // blood pressure page uses: from that hour's lowest to its highest
             // reading, coloured by the lowest (the hour is as good as its worst).
             FlatPanel {
-                HourlySpo2Chart(
+                Spo2NightChart(
                     points = points,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4103,15 +4103,6 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
 
 // ---------------- blood pressure ----------------
 
-/** One hour of readings: the span it covered and the two means. */
-private class BpHour(
-    val hour: Int,
-    val lowest: Int,
-    val highest: Int,
-    val systolicMean: Int,
-    val band: BloodPressureBand
-)
-
 @Composable
 private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     val palette = LocalZgPalette.current
@@ -4210,28 +4201,15 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
         return
     }
 
-    // Middle: one day, one bar per hour, from its lowest diastolic to its
-    // highest systolic, coloured by that hour's band.
-    val hours = (0 until 24).mapNotNull { hour ->
-        val bucket = shownReadings.filter {
-            java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).hour == hour
-        }
-        if (bucket.isEmpty()) return@mapNotNull null
-        BpHour(
-            hour = hour,
-            lowest = bucket.minOf { it.diastolic },
-            highest = bucket.maxOf { it.systolic },
-            systolicMean = bucket.map { it.systolic }.average().roundToInt(),
-            // The hour is as serious as its worst reading.
-            band = bucket.map { it.band }.maxByOrNull { it.ordinal } ?: BloodPressureBand.NORMAL
-        )
-    }
-
+    // Middle: the day's readings on a 24-hour axis. Each reading is its own
+    // short bar from diastolic to systolic, so the gaps between measurements
+    // stay visible instead of being filled by an hour-wide column.
     SectionTitle(if (shownDay == LocalDate.now()) "今天各小时" else "${Fmt.date(shownDay)} 各小时")
     FlatPanel {
         Column(Modifier.padding(12.dp)) {
             HourlyBloodPressureChart(
-                hours = hours,
+                readings = shownReadings,
+                day = shownDay,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(190.dp)
@@ -4239,27 +4217,26 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 listOf(
-                    BloodPressureBand.NORMAL,
-                    BloodPressureBand.ELEVATED,
-                    BloodPressureBand.HIGH
-                ).forEach { band ->
+                    "正常" to palette.accent,
+                    "偏高" to palette.critical
+                ).forEach { (label, color) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             Modifier
                                 .size(7.dp)
                                 .clip(CircleShape)
-                                .background(tone(band))
+                                .background(color)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            word(band),
+                            label,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-            if (hours.size <= 1) {
+            if (shownReadings.size <= 1) {
                 Text(
                     "这一天只有一次记录，所以是一段很短的柱子。",
                     style = MaterialTheme.typography.labelSmall,
@@ -4320,33 +4297,46 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     )
 }
 
+/**
+ * The day's readings on a 24-hour axis. Each reading is drawn as its own short
+ * bar from diastolic to systolic at the time it was taken, so hours without a
+ * measurement stay empty instead of being bridged by an hour-wide column. Two
+ * colours only: 正常 and 偏高 (正常高值 counts as 偏高 here).
+ */
 @Composable
-private fun HourlyBloodPressureChart(hours: List<BpHour>, modifier: Modifier = Modifier) {
+private fun HourlyBloodPressureChart(
+    readings: List<BloodPressure>,
+    day: LocalDate,
+    modifier: Modifier = Modifier
+) {
+    if (readings.isEmpty()) return
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
-    val ink = MaterialTheme.colorScheme.onSurface
     val lo = 40f
     val hi = 180f
+    val zone = ZoneId.systemDefault()
+    val dayStartMs = day.atStartOfDay(zone).toInstant().toEpochMilli()
+    val dayMs = 24 * 60 * 60 * 1000L
 
-    fun tone(band: BloodPressureBand): Color = when (band) {
-        BloodPressureBand.NORMAL -> palette.accent
-        BloodPressureBand.ELEVATED -> palette.warn
-        BloodPressureBand.HIGH -> palette.critical
-    }
+    fun barTone(band: BloodPressureBand): Color =
+        if (band == BloodPressureBand.NORMAL) palette.accent else palette.critical
 
     Canvas(modifier) {
         val axisWidth = 30.dp.toPx()
         val axisHeight = 16.dp.toPx()
         val topPad = 10.dp.toPx()
         val bottomPad = 6.dp.toPx()
+        val left = axisWidth
         val chartWidth = (size.width - axisWidth).coerceAtLeast(1f)
         val chartHeight = (size.height - axisHeight - topPad - bottomPad).coerceAtLeast(8f)
         fun yOf(value: Float): Float = topPad + chartHeight - ((value - lo) / (hi - lo)) * chartHeight
+        fun xOf(epochMs: Long): Float =
+            left + (((epochMs - dayStartMs).toFloat() / dayMs).coerceIn(0f, 1f)) * chartWidth
 
         listOf(60, 100, 140, 180).forEach { tick ->
             val y = yOf(tick.toFloat())
-            drawLine(palette.grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
+            drawLine(palette.grid, Offset(left, y), Offset(size.width, y), 1f)
             val layout = measurer.measure(tick.toString(), axisStyle)
             drawText(
                 layout,
@@ -4354,34 +4344,25 @@ private fun HourlyBloodPressureChart(hours: List<BpHour>, modifier: Modifier = M
             )
         }
 
-        val slot = chartWidth / 24f
-        val barWidth = (slot * 0.46f).coerceAtLeast(2f)
-        hours.forEach { hour ->
-            val centerX = axisWidth + slot * hour.hour + slot / 2f
-            val top = yOf(hour.highest.toFloat())
-            val bottom = yOf(hour.lowest.toFloat())
+        val barWidth = 5.dp.toPx()
+        readings.forEach { reading ->
+            val centerX = xOf(reading.epochMs)
+            val top = yOf(reading.systolic.toFloat())
+            val bottom = yOf(reading.diastolic.toFloat())
             drawRoundRect(
-                color = tone(hour.band).copy(alpha = 0.45f),
+                color = barTone(reading.band).copy(alpha = 0.70f),
                 topLeft = Offset(centerX - barWidth / 2f, top),
                 size = androidx.compose.ui.geometry.Size(
                     barWidth,
-                    (bottom - top).coerceAtLeast(1f)
+                    (bottom - top).coerceAtLeast(2.dp.toPx())
                 ),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
-            )
-            drawCircle(
-                ink.copy(alpha = 0.6f),
-                radius = 1.8.dp.toPx(),
-                center = Offset(centerX, yOf(hour.systolicMean.toFloat()))
+                cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
             )
         }
 
-        listOf(0, 6, 12, 18, 23).forEach { hour ->
-            val layout = measurer.measure(
-                if (hour == 23) "24" else hour.toString(),
-                axisStyle
-            )
-            val centerX = axisWidth + slot * hour + slot / 2f
+        listOf(0, 6, 12, 18, 24).forEach { hour ->
+            val layout = measurer.measure(hour.toString(), axisStyle)
+            val centerX = left + chartWidth * hour / 24f
             drawText(
                 layout,
                 topLeft = Offset(
@@ -4395,61 +4376,51 @@ private fun HourlyBloodPressureChart(hours: List<BpHour>, modifier: Modifier = M
 }
 
 /**
- * Oxygen for the whole night, one bar per hour: from that hour's lowest to its
- * highest reading, coloured by the lowest. The value axis comes from the night
- * itself instead of a fixed 85–100, so a steady night is not drawn against a lot
- * of empty space.
- *
- * An hour with a single sample has no range to draw. It only gets a short stub,
- * and only when it falls outside every range already on screen — inside one, the
- * stub would be noise on top of an existing bar.
+ * The night's oxygen as one bar per uninterrupted run of samples. A run is a
+ * stretch of readings no more than three minutes apart; a longer pause is a hole
+ * in the data and is left empty, so the bars are only where the watch actually
+ * measured. One colour for the whole chart — the 7-day line above already shows
+ * how the values move.
  */
 @Composable
-private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifier) {
-    val zone = ZoneId.systemDefault()
-    val bars = (0 until 24).mapNotNull { hour ->
-        val bucket = points.filter {
-            Instant.ofEpochMilli(it.epochMs).atZone(zone).hour == hour
-        }
-        if (bucket.isEmpty()) {
-            null
+private fun Spo2NightChart(points: List<Spo2Point>, modifier: Modifier = Modifier) {
+    val sorted = points.sortedBy { it.epochMs }
+    if (sorted.isEmpty()) return
+    val gapMs = 3 * 60 * 1000L
+    val runs = mutableListOf<MutableList<Spo2Point>>()
+    sorted.forEach { point ->
+        val run = runs.lastOrNull()
+        if (run != null && point.epochMs - run.last().epochMs <= gapMs) {
+            run.add(point)
         } else {
-            Triple(hour, bucket.minOf { it.value }, bucket.maxOf { it.value })
+            runs.add(mutableListOf(point))
         }
     }
-    val ranged = bars.filter { it.second != it.third }
-    val shown = if (ranged.isEmpty()) {
-        bars
-    } else {
-        val lowBound = ranged.minOf { it.second }
-        val highBound = ranged.maxOf { it.third }
-        bars.filter { bar -> bar.second != bar.third || bar.second < lowBound || bar.second > highBound }
-    }
-    if (shown.isEmpty()) return
+    val startMs = sorted.first().epochMs
+    val endMs = sorted.last().epochMs
+    val spanMs = (endMs - startMs).coerceAtLeast(1L)
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
-    val lo = kotlin.math.floor(shown.minOf { it.second }.toFloat() - 1f)
-    val hi = kotlin.math.ceil(shown.maxOf { it.third }.toFloat() + 1f)
-
-    fun tone(value: Int): Color = when {
-        value >= 95 -> palette.accent
-        value >= 90 -> palette.warn
-        else -> palette.critical
-    }
+    val tint = MaterialTheme.colorScheme.tertiary
+    val lo = kotlin.math.floor(sorted.minOf { it.value }.toFloat() - 1f)
+    val hi = kotlin.math.ceil(sorted.maxOf { it.value }.toFloat() + 1f)
 
     Canvas(modifier) {
         val axisWidth = 30.dp.toPx()
         val axisHeight = 16.dp.toPx()
         val topPad = 10.dp.toPx()
         val bottomPad = 6.dp.toPx()
+        val left = axisWidth
         val chartWidth = (size.width - axisWidth).coerceAtLeast(1f)
         val chartHeight = (size.height - axisHeight - topPad - bottomPad).coerceAtLeast(8f)
         fun yOf(value: Float): Float = topPad + chartHeight - ((value - lo) / (hi - lo)) * chartHeight
+        fun xOf(epochMs: Long): Float =
+            left + ((epochMs - startMs).toFloat() / spanMs) * chartWidth
 
         listOf(hi, (hi + lo) / 2f, lo).forEach { tick ->
             val y = yOf(tick)
-            drawLine(palette.grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
+            drawLine(palette.grid, Offset(left, y), Offset(size.width, y), 1f)
             val layout = measurer.measure(tick.roundToInt().toString(), axisStyle)
             drawText(
                 layout,
@@ -4457,30 +4428,26 @@ private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifi
             )
         }
 
-        val slot = chartWidth / 24f
-        val barWidth = (slot * 0.46f).coerceAtLeast(2f)
-        val stub = 3.dp.toPx()
-        shown.forEach { (hour, lowest, highest) ->
-            val centerX = axisWidth + slot * hour + slot / 2f
-            val top = yOf(highest.toFloat())
-            val bottom = yOf(lowest.toFloat())
-            // A single sample has no span; it gets a short stub instead of a
-            // hairline that would read as a rendering artefact.
-            val height = if (lowest == highest) stub else (bottom - top).coerceAtLeast(1f)
+        val minBar = 3.dp.toPx()
+        runs.forEach { run ->
+            val from = xOf(run.first().epochMs)
+            val to = xOf(run.last().epochMs)
+            val top = yOf(run.maxOf { it.value }.toFloat())
+            val bottom = yOf(run.minOf { it.value }.toFloat())
             drawRoundRect(
-                color = tone(lowest).copy(alpha = 0.55f),
-                topLeft = Offset(centerX - barWidth / 2f, top),
-                size = androidx.compose.ui.geometry.Size(barWidth, height),
-                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                color = tint.copy(alpha = 0.55f),
+                topLeft = Offset(from, top),
+                size = androidx.compose.ui.geometry.Size(
+                    (to - from).coerceAtLeast(minBar),
+                    (bottom - top).coerceAtLeast(minBar)
+                ),
+                cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
             )
         }
 
-        listOf(0, 6, 12, 18, 23).forEach { hour ->
-            val layout = measurer.measure(
-                if (hour == 23) "24" else hour.toString(),
-                axisStyle
-            )
-            val centerX = axisWidth + slot * hour + slot / 2f
+        listOf(startMs, (startMs + endMs) / 2, endMs).forEach { stamp ->
+            val layout = measurer.measure(Fmt.time(stamp), axisStyle)
+            val centerX = xOf(stamp)
             drawText(
                 layout,
                 topLeft = Offset(

@@ -2246,9 +2246,19 @@ private fun MiniTrendChart(
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }
-        val pad = ((maxV - minV) * 0.18).coerceAtLeast(0.5)
-        val low = (minV - pad).toFloat()
-        val spanY = ((maxV + pad).toFloat() - low).coerceAtLeast(0.1f)
+        val pad = ((maxV - minV) * 0.18).coerceAtLeast(0.4)
+        // One grid step, chosen so three to five lines fit the fixed height: a
+        // 0.6 kg swing gets 0.2 steps, a 5 kg swing gets 1 kg steps. Only the
+        // value per step changes with the data; the chart keeps its height.
+        val rawLow = minV - pad
+        val rawHigh = maxV + pad
+        val rawSpan = (rawHigh - rawLow).coerceAtLeast(0.1)
+        val niceSteps = listOf(0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0)
+        val step = niceSteps.firstOrNull { rawSpan / it <= 4.5 } ?: (rawSpan / 4.0)
+        val lowD = kotlin.math.floor(rawLow / step) * step
+        val highD = kotlin.math.ceil(rawHigh / step) * step
+        val low = lowD.toFloat()
+        val spanY = (highD - lowD).toFloat().coerceAtLeast(step.toFloat())
         fun xOf(epochMs: Long) =
             (inset + (epochMs.toFloat() - startMs) / xSpan * (size.width - inset * 2f))
                 .coerceIn(inset, size.width - inset)
@@ -2256,40 +2266,31 @@ private fun MiniTrendChart(
             (size.height - (value.toFloat() - low) / spanY * size.height)
                 .coerceIn(0f, size.height)
 
-        fun levelLine(
-            value: Double,
-            lineColor: Color,
-            label: String?,
-            labelAbove: Boolean
-        ) {
-            val y = yOf(value)
-            drawLine(
-                color = lineColor,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1.dp.toPx()
-            )
-            if (label != null) {
-                val layout = measurer.measure(label, labelStyle)
-                val gap = 6.dp.toPx()
-                val top = if (labelAbove) y - layout.size.height - gap
-                else y + gap
-                drawText(
-                    layout,
-                    topLeft = Offset(
-                        inset,
-                        top.coerceIn(0f, size.height - layout.size.height)
-                    )
-                )
+        // Grid at the adaptive step, each line labelled with its value.
+        var tick = lowD
+        while (tick <= highD + step * 0.5) {
+            val y = yOf(tick)
+            drawLine(grid.copy(alpha = 0.20f), Offset(0f, y), Offset(size.width, y), 1f)
+            val text = if (step < 1.0) {
+                String.format(java.util.Locale.CHINA, "%.1f", tick)
+            } else {
+                tick.roundToInt().toString()
             }
+            val layout = measurer.measure(text, labelStyle)
+            drawText(
+                layout,
+                topLeft = Offset(
+                    inset,
+                    (y - layout.size.height / 2f).coerceIn(0f, size.height - layout.size.height)
+                )
+            )
+            tick += step
         }
 
-        // Highest and lowest of the window, labelled above/below their own line
-        // on the left; the current level is a plain grey line (its number is
-        // already above the chart).
-        levelLine(maxV, color.copy(alpha = 0.55f), valueLabel(maxV), labelAbove = true)
-        levelLine(minV, color.copy(alpha = 0.55f), valueLabel(minV), labelAbove = false)
-        current?.let { levelLine(it, grid, null, labelAbove = true) }
+        current?.let { level ->
+            val y = yOf(level)
+            drawLine(grid, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+        }
 
         val path = Path()
         values.forEachIndexed { index, (epochMs, value) ->
@@ -4276,36 +4277,55 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     val diastolicWeek = weekDays.map { dayMean(it) { p -> p.diastolic } }
     val weekLabels = weekDays.map { Fmt.weekdayShort(it) }
 
-    if (systolicWeek.count { it != null } >= 1) {
-        SectionTitle("近 7 天 · 收缩压")
+    if (systolicWeek.any { it != null } || diastolicWeek.any { it != null }) {
+        SectionTitle("近 7 天")
         FlatPanel {
-            AxisLineChart(
-                values = systolicWeek,
-                labels = weekLabels,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 12.dp)
-                    .height(150.dp),
-                color = palette.critical,
-                minValue = 80f,
-                maxValue = 180f
-            )
-        }
-    }
-    if (diastolicWeek.count { it != null } >= 1) {
-        SectionTitle("近 7 天 · 舒张压")
-        FlatPanel {
-            AxisLineChart(
-                values = diastolicWeek,
-                labels = weekLabels,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 12.dp)
-                    .height(150.dp),
-                color = palette.warn,
-                minValue = 40f,
-                maxValue = 120f
-            )
+            Column(
+                Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AxisLineChart(
+                    values = systolicWeek,
+                    labels = weekLabels,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    color = palette.critical,
+                    minValue = 80f,
+                    maxValue = 180f
+                )
+                AxisLineChart(
+                    values = diastolicWeek,
+                    labels = weekLabels,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    color = palette.accent,
+                    minValue = 40f,
+                    maxValue = 120f
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    listOf(
+                        "收缩压" to palette.critical,
+                        "舒张压" to palette.accent
+                    ).forEach { (label, color) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 

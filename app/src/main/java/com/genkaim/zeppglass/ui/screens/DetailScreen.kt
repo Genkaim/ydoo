@@ -2935,7 +2935,10 @@ private data class TeZone(val from: Double, val to: Double, val label: String, v
 private fun teZones(): List<TeZone> {
     return listOf(
         TeZone(0.0, 1.0, "无效果", Color(0xFF5A93D6)),
-        TeZone(1.0, 2.0, "无效果", Color(0xFF5FAE77)),
+        // 1.0–1.9 is the "small" band of the 0–5 scale (0 = none, 1 = minor,
+        // 2 = maintaining, 3 = improving, 4 = highly improving, 5 = overreaching).
+        // It used to reuse the first band's text, so 1.4 read 无效果.
+        TeZone(1.0, 2.0, "微弱", Color(0xFF5FAE77)),
         TeZone(2.0, 3.0, "适中", Color(0xFFD9B23F)),
         TeZone(3.0, 4.0, "良好", Color(0xFFDE8A38)),
         TeZone(4.0, 5.0, "过量", Color(0xFFD45C5C))

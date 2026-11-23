@@ -60,10 +60,8 @@ fun TrackRings(
     LaunchedEffect(values) {
         values.forEachIndexed { index, value ->
             launch {
-                // One lap plus at most one over-lap: enough for the head mark to
-                // travel to its real position instead of jumping there, but never
-                // a third revolution.
-                val target = value.coerceIn(0f, 2f)
+                // Exactly one lap of animation, whatever the overshoot.
+                val target = value.coerceIn(0f, 1f)
                 val distance = abs(target - animated[index].value)
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)
@@ -114,51 +112,46 @@ fun TrackRings(
                         style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                 }
-                // Past the goal, the overflow is a second lap drawn just outside
-                // the first one: a background-coloured halo separates the two so
-                // they do not merge into one fat ring. Drawn after the first lap
-                // (so it sits above it) and before the badge (so the logo stays
-                // on top).
-                if (progress > 1f) {
-                    // The extra lap shares the ring's track and width, so drawing
-                    // it again would be invisible. What marks "past the goal" is
-                    // a single hairline outline at the head.
-                    // Follows the running animation, so the mark arrives at the
-                    // overshoot position with the arc instead of appearing there.
-                    val over = (progress - 1f).coerceAtMost(1f)
-                    // A full extra lap lands back on the start point, which is
-                    // where the badge is: wrap it to zero before the clearance
-                    // check.
-                    val wrapped = if (over >= 1f) 0f else over
-                    // The badge (radius stroke/2) plus the outline itself (outer
-                    // radius 0.57 + 0.07 stroke) would cover the mark: the arc
-                    // length that must be skipped is their sum, in fractions of
-                    // the lap. Only when the real overshoot is smaller than that
-                    // is the mark pushed forward to exactly this distance.
-                    val clearFrac = ((stroke * 0.85f) / rect.perimeter).coerceAtMost(0.5f)
-                    val markAt = if (wrapped < clearFrac) clearFrac else wrapped
-                    val head = rect.pointAt(rect.perimeter * markAt)
-                    val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
-                    val dir = Math.toDegrees(
-                        kotlin.math.atan2(
-                            (head.y - before.y).toDouble(),
-                            (head.x - before.x).toDouble()
+                // Past the goal there is nothing left to draw on this track: it is
+                // already full, and a second lap would be identical. The overshoot
+                // is shown by a hairline at the head of the extra distance, which
+                // fades in as the lap completes — so it never jumps into place and
+                // the ring never runs a second revolution.
+                val realValue = values.getOrElse(index) { 0f }
+                if (realValue > 1f) {
+                    val appear = ((progress - 0.85f) / 0.15f).coerceIn(0f, 1f)
+                    if (appear > 0f) {
+                        val over = (realValue - 1f).coerceAtMost(1f)
+                        // A whole extra lap ends on the start point, where the
+                        // badge is; wrap it to zero before the clearance check.
+                        val wrapped = if (over >= 1f) 0f else over
+                        // Arc length the badge would cover: its radius plus a hair,
+                        // as a fraction of the lap. Only a smaller overshoot is
+                        // pushed forward to that distance.
+                        val clearFrac = ((stroke * 0.85f) / rect.perimeter).coerceAtMost(0.5f)
+                        val markAt = if (wrapped < clearFrac) clearFrac else wrapped
+                        val head = rect.pointAt(rect.perimeter * markAt)
+                        val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
+                        val dir = Math.toDegrees(
+                            kotlin.math.atan2(
+                                (head.y - before.y).toDouble(),
+                                (head.x - before.x).toDouble()
+                            )
+                        ).toFloat()
+                        val r = stroke * 0.57f
+                        drawArc(
+                            color = badgeColor.copy(alpha = appear),
+                            startAngle = dir - 90f,
+                            sweepAngle = 180f,
+                            useCenter = false,
+                            topLeft = Offset(head.x - r, head.y - r),
+                            size = Size(r * 2f, r * 2f),
+                            style = Stroke(
+                                stroke * 0.14f * appear,
+                                cap = StrokeCap.Round
+                            )
                         )
-                    ).toFloat()
-                    // Only the half that faces forward: it traces the arc's head
-                    // instead of drawing a full little circle.
-                    // Inner diameter of the outline equals the ring width:
-                    // 2 * (r - outlineWidth / 2) = stroke.
-                    val r = stroke * 0.57f
-                    drawArc(
-                        color = badgeColor,
-                        startAngle = dir - 90f,
-                        sweepAngle = 180f,
-                        useCenter = false,
-                        topLeft = Offset(head.x - r, head.y - r),
-                        size = Size(r * 2f, r * 2f),
-                        style = Stroke(stroke * 0.14f, cap = StrokeCap.Round)
-                    )
+                    }
                 }
 
                 // The logo is exactly as wide as the ring: a badge the width of

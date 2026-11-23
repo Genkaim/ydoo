@@ -2205,11 +2205,15 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                 boneRate, 1.0, 5.0, boneBands,
                 listOf(boneLow to cut(boneLow), boneHigh to cut(boneHigh))
             ),
+            // The watch reports skeletal muscle, not visceral fat: that row is
+            // what the body-composition reading actually carries. It has no
+            // official normal band here, so the bar stays neutral instead of
+            // inventing a verdict.
             BodyMetric(
-                "内脏脂肪", Icons.Rounded.Favorite,
-                comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
-                visceralRate, 1.0, 20.0, visceralBands,
-                listOf(10.0 to "10", 15.0 to "15")
+                "骨骼肌", Icons.Rounded.Accessibility,
+                kg(latest?.skeletalMuscleKg ?: comp?.skeletalMuscleKg),
+                latest?.skeletalMuscleKg ?: comp?.skeletalMuscleKg,
+                null, 10.0, 60.0, emptyList(), emptyList()
             ),
             BodyMetric(
                 "基础代谢", Icons.Rounded.LocalFireDepartment,

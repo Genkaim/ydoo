@@ -1,16 +1,14 @@
 package com.genkaim.zeppglass.ui.components
 
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -28,9 +26,11 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlinx.coroutines.launch
 
 /** Milliseconds one full lap takes, with every ring using the same speed. */
 private const val LAP_MILLIS = 700f
@@ -52,22 +52,29 @@ fun TrackRings(
     rotateDeg: Float = -18f
 ) {
     val painters: List<Painter?> = icons.map { rememberVectorPainter(it) }
-    var appeared by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { appeared = true }
-    // Not clamped to 1: a value past the goal keeps counting so the ring can show
-    // the extra lap on top of the first one.
-    // Constant speed: a full lap always takes the same time, so a small value
-    // fills quickly and a long one is not rushed through in the same 700 ms.
-    val animatedValues = values.mapIndexed { index, value ->
-        val target = if (appeared) value.coerceAtLeast(0f) else 0f
-        animateFloatAsState(
-            targetValue = target,
-            animationSpec = tween(
-                durationMillis = (target * LAP_MILLIS).toInt().coerceAtLeast(120),
-                easing = LinearEasing
-            ),
-            label = "ring$index"
-        ).value
+    // Each ring keeps its own animation so the duration follows the distance it
+    // still has to travel: a small top-up is quick, a full lap takes LAP_MILLIS,
+    // and the speed on screen stays the same either way. Values past 1 are not
+    // clamped, so the extra lap can be drawn.
+    val animated = values.map { remember { Animatable(0f) } }
+    LaunchedEffect(values) {
+        values.forEachIndexed { index, value ->
+            launch {
+                val target = value.coerceAtLeast(0f)
+                val distance = abs(target - animated[index].value)
+                if (distance <= 0.001f) {
+                    animated[index].snapTo(target)
+                } else {
+                    animated[index].animateTo(
+                        targetValue = target,
+                        animationSpec = tween(
+                            durationMillis = (distance * LAP_MILLIS).toInt().coerceAtLeast(60),
+                            easing = LinearEasing
+                        )
+                    )
+                }
+            }
+        }
     }
     val badgeColor = MaterialTheme.colorScheme.background
     Canvas(modifier) {
@@ -95,7 +102,7 @@ fun TrackRings(
                     color = colors[index].copy(alpha = 0.18f),
                     style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
-                val progress = animatedValues.getOrElse(index) { 0f }.coerceAtLeast(0f)
+                val progress = animated.getOrNull(index)?.value ?: 0f
                 val firstLap = progress.coerceAtMost(1f)
                 if (firstLap > 0f) {
                     drawPath(
@@ -119,8 +126,13 @@ fun TrackRings(
                         color = colors[index],
                         style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
-                    val head = rect.pointAt(rect.perimeter * over)
-                    val before = rect.pointAt(rect.perimeter * over - 0.5f)
+                    // The badge sits at the start of the track and always keeps
+                    // its fill, so a head mark that would land underneath it is
+                    // pushed a little further along the arc instead.
+                    val badgeClear = (stroke * 1.25f) / rect.perimeter
+                    val markAt = over.coerceAtLeast(badgeClear).coerceAtMost(1f)
+                    val head = rect.pointAt(rect.perimeter * markAt)
+                    val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
                     val dir = Math.toDegrees(
                         kotlin.math.atan2(
                             (head.y - before.y).toDouble(),
@@ -150,9 +162,7 @@ fun TrackRings(
                 painters.getOrNull(index)?.let { painter ->
                     val start = rect.pointAt(0f)
                     val badge = stroke / 2f
-                    if (progress <= 1f) {
-                        drawCircle(colors[index], radius = badge, center = start)
-                    }
+                    drawCircle(colors[index], radius = badge, center = start)
                     val glyph = stroke * 0.90f
                     translate(left = start.x - glyph / 2f, top = start.y - glyph / 2f) {
                         with(painter) {

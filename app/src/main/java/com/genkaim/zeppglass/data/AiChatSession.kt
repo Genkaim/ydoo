@@ -296,6 +296,17 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         write()
     }
 
+    /** Deletes every archived conversation; the starter questions stay. */
+    fun deleteAll() {
+        stop()
+        stored.clear()
+        currentId = null
+        contextSent = false
+        messages.clear()
+        rebuildList()
+        write()
+    }
+
     /** Clears the open conversation without touching the others. */
     fun clear() {
         stop()

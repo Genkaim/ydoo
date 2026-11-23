@@ -69,7 +69,10 @@ fun FlatBottomBar(
             spotColor = Color.Black.copy(alpha = 0.30f)
         ),
         shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface,
+        // On the dark page the bar is lifted a step above the cards: a floating
+        // control has to read as nearer to the reader than the content below it.
+        color = if (palette.isDark) MaterialTheme.colorScheme.surfaceVariant
+        else MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp

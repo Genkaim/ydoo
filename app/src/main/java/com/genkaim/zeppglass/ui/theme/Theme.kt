@@ -64,7 +64,7 @@ private val LightScheme = lightColorScheme(
  */
 @Composable
 fun popupCardColor(): Color =
-    if (LocalZgPalette.current.isDark) Color(0xFF1E2024)
+    if (LocalZgPalette.current.isDark) Color(0xFF14161A)
     else MaterialTheme.colorScheme.surface
 
 private val DarkScheme = darkColorScheme(

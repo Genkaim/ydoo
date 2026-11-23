@@ -64,6 +64,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -116,6 +117,7 @@ import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.RoundIconButton
 import com.genkaim.zeppglass.ui.components.TypingDots
+import com.genkaim.zeppglass.ui.theme.popupCardColor
 import kotlinx.coroutines.launch
 
 /**
@@ -330,15 +332,7 @@ fun AiScreen(
     )
     val travelPx = (keyboardPx - navBarPx).coerceAtLeast(1)
     val insetTyping = ((imePx - navBarPx).toFloat() / travelPx).coerceIn(0f, 1f)
-    val rawTyping = if (insetTravels) insetTyping else fallbackTyping
-    // The field follows the keyboard with an ease in and out of its own. Pinned
-    // straight to the inset it copied every frame — including the one frame a ROM
-    // jumps the whole height in — and read as a snap.
-    val typing by animateFloatAsState(
-        targetValue = rawTyping,
-        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
-        label = "composerFollow"
-    )
+    val typing = if (insetTravels) insetTyping else fallbackTyping
     // Measured by the shell, so the field clears the bar on every device no
     // matter which system-bar insets it reports.
     val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace
@@ -552,6 +546,7 @@ fun AiScreen(
                     showHistory = false
                 },
                 onDelete = { AiChatSession.delete(it) },
+                onDeleteAll = { AiChatSession.deleteAll() },
                 onNew = {
                     AiChatSession.newChat()
                     showHistory = false
@@ -783,29 +778,30 @@ private fun UserBubble(text: String) {
  */
 @Composable
 private fun StreamingAnswer(content: String, streaming: Boolean, data: HealthData?) {
-    var shown by remember { mutableStateOf("") }
-    LaunchedEffect(content, streaming) {
-        if (!streaming) return@LaunchedEffect
-        while (shown.length < content.length) {
-            shown = content.substring(0, revealUpTo(content, shown.length))
-            kotlinx.coroutines.delay(80)
-        }
-    }
-    // Once the request ends the full text is shown at once: the last few
-    // characters must not keep trickling in after the typing dots are gone.
-    val visible = if (streaming) shown else content
+    // What is shown is only what the model has finished: the paragraph it is
+    // still writing stays hidden, so the answer arrives in whole pieces instead
+    // of growing a character at a time.
+    val visible = if (streaming) finishedParagraphs(content) else content
     MarkdownView(visible, data = data, animateNewBlocks = streaming)
 }
 
-/** How much of [text] can be shown in one step, starting at [from]. */
-private fun revealUpTo(text: String, from: Int): Int {
-    if (from >= text.length) return text.length
-    val limit = minOf(text.length, from + 90)
-    for (i in from until limit) {
-        val c = text[i]
-        if (c == '\n' || c in "。！？!?；;") return i + 1
+/**
+ * Everything up to the last finished paragraph.
+ *
+ * A line break is what finishes a paragraph here; an unfinished fenced block is
+ * dropped back to its own opening fence, otherwise half a card's JSON would be
+ * drawn as a code box.
+ */
+private fun finishedParagraphs(text: String): String {
+    val cut = text.lastIndexOf('\n')
+    if (cut <= 0) return ""
+    var shown = text.substring(0, cut)
+    while (shown.isNotEmpty() && Regex("```").findAll(shown).count() % 2 == 1) {
+        val fence = shown.lastIndexOf("```")
+        if (fence <= 0) return ""
+        shown = shown.substring(0, fence).trimEnd('\n')
     }
-    return limit
+    return shown
 }
 
 /** The three faces one answer can have; swapping them is animated. */
@@ -1102,8 +1098,10 @@ private fun HistorySheet(
     currentId: String?,
     onOpen: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onDeleteAll: () -> Unit,
     onNew: () -> Unit
 ) {
+    var confirmDeleteAll by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxHeight(0.72f)) {
         Row(
             Modifier
@@ -1116,6 +1114,11 @@ private fun HistorySheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f)
             )
+            if (sessions.isNotEmpty()) {
+                TextButton(onClick = { confirmDeleteAll = true }) {
+                    Text("全部删除", color = MaterialTheme.colorScheme.error)
+                }
+            }
             TextButton(onClick = onNew) {
                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.size(4.dp))
@@ -1211,5 +1214,28 @@ private fun HistorySheet(
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+
+    if (confirmDeleteAll) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            containerColor = popupCardColor(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            title = { Text("删除全部历史对话？") },
+            text = { Text("本机保存的所有对话都会删除，删掉之后找不回来。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteAll()
+                        confirmDeleteAll = false
+                    }
+                ) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteAll = false }) { Text("取消") }
+            }
+        )
     }
 }

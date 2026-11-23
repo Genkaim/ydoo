@@ -12,6 +12,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -46,6 +47,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -72,6 +74,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -79,6 +82,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,6 +139,14 @@ private val ComposerAir = 8.dp
  * The transcript follows the newest text while an answer streams in, stops the
  * moment the reader drags upward, and offers a jump-to-bottom button afterwards.
  */
+/**
+ * The one conversation's scroll position, remembered across tab switches.
+ *
+ * Only the last one is kept: returning to the tab restores it, and any other
+ * session (history, a new chat) deliberately starts at its bottom.
+ */
+private var lastScroll: Triple<String?, Int, Int>? = null
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AiScreen(
@@ -149,7 +161,32 @@ fun AiScreen(
     val sending = AiChatSession.sending
     val phase = AiChatSession.phase
     val input = AiChatSession.draft
-    val listState = rememberLazyListState()
+    val sessionId = AiChatSession.currentId
+    // Where the conversation was left when the tab was switched away from. Kept
+    // for one conversation only: coming back to the tab puts the page exactly
+    // where it was, while opening a conversation from history starts at the
+    // newest text, as a chat should.
+    val listState = remember(sessionId) {
+        val memory = lastScroll
+        if (memory != null && memory.first == sessionId) {
+            LazyListState(memory.second, memory.third)
+        } else {
+            // A conversation that was not on screen before opens on its newest
+            // message, measured straight away instead of scrolling after the
+            // first frame.
+            LazyListState(messages.lastIndex.coerceAtLeast(0))
+        }
+    }
+    val restoredScroll = remember(sessionId) { lastScroll?.first == sessionId }
+    DisposableEffect(sessionId) {
+        onDispose {
+            lastScroll = Triple(
+                sessionId,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }
+    }
     val configured = settings.aiApiKey.isNotBlank() && settings.aiBaseUrl.isNotBlank()
     // The AI reads the raw snapshot: the three-hour rule is about what the UI
     // presents as "now", not about which rows the model may examine.
@@ -184,9 +221,27 @@ fun AiScreen(
     // bottom edge. Doing both in one pass computed the overflow from the frame
     // before the new text was measured, which is what made the list flicker
     // while a long answer streamed in.
+    // The first pass lands without animation: a restored page must not move, and
+    // a conversation opened from history must simply be at its bottom, not
+    // slide there. The follow below is eased only from the second frame on.
+    var firstPass by remember(sessionId) { mutableStateOf(true) }
+    var followAnimated by remember(sessionId) { mutableStateOf(false) }
+    LaunchedEffect(sessionId) {
+        withFrameNanos { }
+        withFrameNanos { }
+        followAnimated = true
+    }
     LaunchedEffect(messages.size) {
+        val landing = firstPass
+        firstPass = false
+        if (landing && restoredScroll) return@LaunchedEffect
         if (!followBottom || messages.isEmpty()) return@LaunchedEffect
-        listState.scrollToItem(messages.lastIndex)
+        autoScroll = true
+        try {
+            listState.scrollToItem(messages.lastIndex)
+        } finally {
+            autoScroll = false
+        }
     }
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -207,10 +262,14 @@ fun AiScreen(
             if (overflow > 1) {
                 autoScroll = true
                 try {
-                    listState.animateScrollBy(
-                        overflow.toFloat(),
-                        tween(durationMillis = 160, easing = LinearEasing)
-                    )
+                    if (followAnimated) {
+                        listState.animateScrollBy(
+                            overflow.toFloat(),
+                            tween(durationMillis = 160, easing = LinearEasing)
+                        )
+                    } else {
+                        listState.scrollBy(overflow.toFloat())
+                    }
                 } finally {
                     autoScroll = false
                 }
@@ -271,7 +330,15 @@ fun AiScreen(
     )
     val travelPx = (keyboardPx - navBarPx).coerceAtLeast(1)
     val insetTyping = ((imePx - navBarPx).toFloat() / travelPx).coerceIn(0f, 1f)
-    val typing = if (insetTravels) insetTyping else fallbackTyping
+    val rawTyping = if (insetTravels) insetTyping else fallbackTyping
+    // The field follows the keyboard with an ease in and out of its own. Pinned
+    // straight to the inset it copied every frame — including the one frame a ROM
+    // jumps the whole height in — and read as a snap.
+    val typing by animateFloatAsState(
+        targetValue = rawTyping,
+        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+        label = "composerFollow"
+    )
     // Measured by the shell, so the field clears the bar on every device no
     // matter which system-bar insets it reports.
     val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace

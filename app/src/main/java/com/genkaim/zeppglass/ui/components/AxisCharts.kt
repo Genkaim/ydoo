@@ -152,7 +152,9 @@ fun AxisLineChart(
     minValue: Float? = null,
     maxValue: Float? = null,
     valueSuffix: String = "",
-    showGrid: Boolean = true
+    showGrid: Boolean = true,
+    /** true draws a soft curve; false joins the readings with straight lines. */
+    smooth: Boolean = true
 ) {
     val valid = values.filterNotNull()
     if (valid.isEmpty()) {
@@ -204,8 +206,12 @@ fun AxisLineChart(
             } else {
                 val p = prev
                 if (p != null) {
-                    val midX = (p.x + point.x) / 2f
-                    path.cubicTo(midX, p.y, midX, point.y, point.x, point.y)
+                    if (smooth) {
+                        val midX = (p.x + point.x) / 2f
+                        path.cubicTo(midX, p.y, midX, point.y, point.x, point.y)
+                    } else {
+                        path.lineTo(point.x, point.y)
+                    }
                 }
             }
             prev = point

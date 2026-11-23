@@ -1268,25 +1268,12 @@ private fun KeyIndicator(label: String, value: Int?, unit: String = "分") {    
 @Composable
 private fun ActivityDetail(data: HealthData?, date: LocalDate) {
     val day = data?.day(date)
+    // Two tiles at the top: the day's step goal and how far it went. Steps,
+    // burn, active minutes and resting heart rate each have a card of their own
+    // further down, so repeating them here only crowded the page.
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("步数", day?.steps?.toString() ?: "--", null, Modifier.weight(1f))
-        MetricTile("目标", day?.stepGoal?.toString() ?: "--", null, Modifier.weight(1f))
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        MetricTile("步数目标", day?.stepGoal?.toString() ?: "--", null, Modifier.weight(1f))
         MetricTile("距离", Fmt.km(day?.distanceM), "km", Modifier.weight(1f))
-        MetricTile("消耗", Fmt.int(day?.calories), "kcal", Modifier.weight(1f))
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val activityText = day?.let { d ->
-            val minutes = d.activityMinutes
-            when {
-                minutes == null -> "--"
-                d.activityGoal != null -> "$minutes/${d.activityGoal}"
-                else -> minutes.toString()
-            }
-        } ?: "--"
-        MetricTile("活动时长", activityText, "分", Modifier.weight(1f))
-        MetricTile("静息心率", day?.restingHr?.toString() ?: "--", "bpm", Modifier.weight(1f))
     }
 
     // 近 7 天步数 used to sit on the activity page; it moved here, behind that
@@ -1340,105 +1327,40 @@ private fun ActivityDetail(data: HealthData?, date: LocalDate) {
         }
     }
 
-    // The week's own totals: the score Zepp asked for and collected, the burn,
-    // and the minutes actually spent inside the suggested band. Each total only
-    // counts days that carried a reading.
-    val weekPoints = (6 downTo 0)
-        .mapNotNull { data?.exertionOn(date.minusDays(it.toLong()))?.totalScore }
-        .takeIf { it.isNotEmpty() }?.sum()
-    val weekCalories = weekSlots.mapNotNull { it?.calories }.takeIf { it.isNotEmpty() }?.sum()
-    val weekBandMinutes = (6 downTo 0)
-        .mapNotNull { offset ->
-            val d = date.minusDays(offset.toLong())
-            data?.bandMinutesOn(d, data.exertionOn(d))
-        }
-        .takeIf { it.isNotEmpty() }?.sum()
-    SectionTitle("近 7 天合计")
-    FlatPanel {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricTile(
-                    "步数",
-                    weekSteps.takeIf { it.isNotEmpty() }?.sum()?.let { Fmt.int(it.toDouble()) } ?: "--",
-                    null,
-                    Modifier.weight(1f)
-                )
-                MetricTile("活动点数", weekPoints?.toString() ?: "--", null, Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricTile("活动消耗", weekCalories?.let { Fmt.int(it) } ?: "--", "kcal", Modifier.weight(1f))
-                MetricTile("区间时长", weekBandMinutes?.toString() ?: "--", "分", Modifier.weight(1f))
-            }
-        }
-    }
     val days = (13 downTo 0).map { data?.day(date.minusDays(it.toLong())) }
     val labels = (13 downTo 0).map { Fmt.weekdayShort(date.minusDays(it.toLong())) }
     if (days.any { it != null }) {
         // The steps chart moved up to the 7-day block; keeping the 14-day bars
         // here too would draw the same metric twice on one page.
-        SectionTitle("距离与消耗")
-        FlatPanel {
-            Column(Modifier.padding(14.dp)) {
-                AxisLineChart(
-                    values = days.map { it?.distanceM?.let { d -> (d / 1000).toFloat() } },
-                    labels = labels,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(110.dp),
-                    color = MaterialTheme.colorScheme.tertiary,
-                    valueSuffix = " km"
-                )
-                Spacer(Modifier.height(10.dp))
-                AxisLineChart(
-                    values = days.map { it?.calories?.toFloat() },
-                    labels = labels,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(110.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    valueSuffix = " kcal"
-                )
-            }
-        }
-    }
-    val hr = data?.heartRate?.filter {
-        Instant.ofEpochSecond(it.first).atZone(ZoneId.systemDefault()).toLocalDate() == date
-    }.orEmpty()
-    if (hr.size > 10) {
-        SectionTitle(
-            "当天心率",
-            trailing = "最低 ${hr.minOf { it.second }} · 平均 ${hr.map { it.second }.average().toInt()} · 最高 ${hr.maxOf { it.second }}"
-        )
+        SectionTitle("距离")
         FlatPanel {
             AxisLineChart(
-                values = hr.map { it.second.toFloat() },
-                labels = emptyList(),
+                values = days.map { it?.distanceM?.let { d -> (d / 1000).toFloat() } },
+                labels = labels,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(14.dp)
-                    .height(130.dp),
-                color = MaterialTheme.colorScheme.primary
+                    .height(110.dp),
+                color = MaterialTheme.colorScheme.tertiary,
+                valueSuffix = " km",
+                // Straight segments: a smoothed line puts peaks between days that
+                // never happened.
+                smooth = false
             )
         }
-    }
-    val week = (6 downTo 0).mapNotNull { data?.day(date.minusDays(it.toLong())) }
-    if (week.isNotEmpty()) {
-        SectionTitle("这 7 天合计")
+        SectionTitle("消耗")
         FlatPanel {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val steps = week.mapNotNull { it.steps }.takeIf { it.isNotEmpty() }?.sum()
-                val distance = week.mapNotNull { it.distanceM }.takeIf { it.isNotEmpty() }?.sum()
-                val active = week.mapNotNull { it.activityMinutes }.takeIf { it.isNotEmpty() }?.sum()
-                Text(
-                    "${steps?.toString() ?: "--"} 步 · ${Fmt.km(distance)} km · ${active?.toString() ?: "--"} 活动时长",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    "${week.size} 天有记录，缺失日不补 0。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            AxisLineChart(
+                values = days.map { it?.calories?.toFloat() },
+                labels = labels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp)
+                    .height(110.dp),
+                color = MaterialTheme.colorScheme.primary,
+                valueSuffix = " kcal",
+                smooth = false
+            )
         }
     }
 }

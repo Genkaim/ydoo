@@ -4106,6 +4106,10 @@ private fun SkinTempDetail(data: HealthData?, date: LocalDate?) {
 
 // ---------------- blood pressure ----------------
 
+/** Blood pressure's two series colours: light blue systolic, light green diastolic. */
+private val BpSystolicColor = Color(0xFF7FB2E5)
+private val BpDiastolicColor = Color(0xFF8CCB9B)
+
 @Composable
 private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     val palette = LocalZgPalette.current
@@ -4235,13 +4239,13 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
             BloodPressureStatRow(
                 name = "收缩压",
                 values = shownReadings.map { it.systolic },
-                color = palette.warn
+                color = BpSystolicColor
             )
             MetricDivider()
             BloodPressureStatRow(
                 name = "舒张压",
                 values = shownReadings.map { it.diastolic },
-                color = palette.accent
+                color = BpDiastolicColor
             )
         }
     }
@@ -4262,8 +4266,8 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 listOf(
-                    "收缩压" to palette.warn,
-                    "舒张压" to palette.accent
+                    "收缩压" to BpSystolicColor,
+                    "舒张压" to BpDiastolicColor
                 ).forEach { (label, color) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -4314,7 +4318,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(120.dp),
-                    color = palette.warn,
+                    color = BpSystolicColor,
                     minValue = 80f,
                     maxValue = 180f
                 )
@@ -4324,7 +4328,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(120.dp),
-                    color = palette.accent,
+                    color = BpDiastolicColor,
                     minValue = 40f,
                     maxValue = 120f
                 )
@@ -4333,8 +4337,8 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     listOf(
-                        "收缩压" to palette.warn,
-                        "舒张压" to palette.accent
+                        "收缩压" to BpSystolicColor,
+                        "舒张压" to BpDiastolicColor
                     ).forEach { (label, color) ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
@@ -4423,8 +4427,8 @@ private fun HourlyBloodPressureChart(
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
-    val systolicColor = palette.warn
-    val diastolicColor = palette.accent
+    val systolicColor = BpSystolicColor
+    val diastolicColor = BpDiastolicColor
     val lo = 40f
     val hi = 180f
     val zone = ZoneId.systemDefault()

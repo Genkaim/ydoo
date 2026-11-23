@@ -208,10 +208,7 @@ fun ActivityScreen(
                         calories = day?.calories,
                         bandBased = bandMinutes != null && planMinutes != null
                     )
-                    if (advice != null) {
-                        SectionTitle("今日活动")
-                        ActivityAdviceCard(advice)
-                    }
+                    advice?.let { ActivityAdviceStrip(it) }
                     LoadVo2Card(
                         load = load,
                         vo2 = vo2,
@@ -713,99 +710,87 @@ private fun WeekStat(label: String, value: String, unit: String?, modifier: Modi
 
 
 /**
- * Zepp's activity advice for the day: the score it suggests, what has been
- * collected so far split into exercise and everyday movement, and the
- * heart-rate band plus minutes it recommends.
+ * The day's activity advice as one compact row right under the top card: the
+ * points collected out of the suggested total, the heart-rate band to spend
+ * time in, and how hard Zepp wants today's session to be.
  */
 @Composable
-private fun ActivityAdviceCard(advice: ExertionDay) {
-    val palette = LocalZgPalette.current
-    val target = advice.targetScore
-    val total = advice.totalScore
-    val percent = advice.completionPercent?.coerceIn(0, 100)
-        ?: if (target != null && target > 0 && total != null) {
-            (total * 100 / target).coerceIn(0, 100)
-        } else {
-            null
-        }
-    val plan = buildList {
-        if (advice.planHrLow != null && advice.planHrHigh != null) {
-            add("心率 ${advice.planHrLow}-${advice.planHrHigh} bpm")
-        }
-        advice.planMinutes?.let { add("$it 分钟") }
-        advice.planIntensity?.let { add(planIntensityWord(it)) }
-    }.joinToString(" · ")
-    FlatPanel {
-        Column(
+private fun ActivityAdviceStrip(advice: ExertionDay) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val points = when {
+        advice.totalScore == null && advice.targetScore == null -> null
+        advice.targetScore != null && advice.targetScore > 0 ->
+            "${advice.totalScore ?: 0}/${advice.targetScore}"
+        else -> advice.totalScore?.toString()
+    }
+    val hr = if (advice.planHrLow != null && advice.planHrHigh != null) {
+        "${advice.planHrLow}-${advice.planHrHigh}"
+    } else {
+        null
+    }
+    val intensity = advice.planIntensity?.let { planIntensityWord(it) }
+    FlatPanel(Modifier.fillMaxWidth()) {
+        Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) {
-                    Text("今日活动", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        target?.let { "建议 $it 分" } ?: "没有建议分",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            AdviceCell(
+                Modifier.weight(1f),
+                "活动点数",
+                points ?: "--",
+                null,
+                if (points == null) muted else MaterialTheme.colorScheme.primary
+            )
+            AdviceCell(
+                Modifier.weight(1f),
+                "建议心率",
+                hr ?: "--",
+                if (hr == null) null else "bpm",
+                if (hr == null) muted else LocalZgPalette.current.sleepRem
+            )
+            AdviceCell(
+                Modifier.weight(1f),
+                "建议强度",
+                intensity ?: "--",
+                null,
+                if (intensity == null) muted else MaterialTheme.colorScheme.tertiary
+            )
+        }
+    }
+}
+
+/** One of the three advice columns: a small label over the value and its unit. */
+@Composable
+private fun AdviceCell(
+    modifier: Modifier,
+    label: String,
+    value: String,
+    unit: String?,
+    color: Color
+) {
+    Column(modifier) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                color = color,
+                maxLines = 1
+            )
+            if (unit != null) {
                 Text(
-                    total?.toString() ?: "--",
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                if (percent != null) {
-                    Text(
-                        "  $percent%",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                }
-            }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(palette.grid)
-            ) {
-                if (percent != null && percent > 0) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth(percent / 100f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                }
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.DirectionsRun,
-                    "运动获得",
-                    advice.exerciseScore?.toString() ?: "--",
-                    MaterialTheme.colorScheme.primary
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.DirectionsWalk,
-                    "日常活动",
-                    advice.activityScore?.toString() ?: "--",
-                    MaterialTheme.colorScheme.tertiary
-                )
-            }
-            if (plan.isNotEmpty()) {
-                Text(
-                    "建议 $plan",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    " $unit",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = color,
+                    modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
         }

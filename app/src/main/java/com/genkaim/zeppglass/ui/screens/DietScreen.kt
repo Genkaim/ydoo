@@ -1560,10 +1560,13 @@ private fun DietAiDialog(
     ) {
         Box(
             Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .imePadding()
                 .padding(horizontal = 18.dp, vertical = 24.dp),
-            contentAlignment = Alignment.Center
+            // Anchored to the bottom: the card grows upwards when the estimate
+            // arrives and stays put when the keyboard opens, so it never bounces
+            // between two layout positions.
+            contentAlignment = Alignment.BottomCenter
         ) {
             FlatPanel(
                 Modifier.fillMaxWidth(),
@@ -1725,7 +1728,11 @@ private fun DietAiDialog(
                             icon = Icons.Rounded.Send,
                             contentDescription = "按补充说明重新估算",
                             onClick = {
-                                if (reply.isNotBlank() && !running) run(reply)
+                                val text = reply
+                                if (text.isNotBlank() && !running) {
+                                    reply = ""
+                                    run(text)
+                                }
                             },
                             enabled = reply.isNotBlank() && !running,
                             primary = reply.isNotBlank() && !running

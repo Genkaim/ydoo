@@ -1,5 +1,6 @@
 package com.genkaim.zeppglass.ui.components
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -31,6 +32,9 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
 
+/** Milliseconds one full lap takes, with every ring using the same speed. */
+private const val LAP_MILLIS = 700f
+
 /**
  * Activity rings drawn as a running track: a stadium (two straights and two
  * semicircular ends) instead of a circle, tilted a little so it reads like the
@@ -52,10 +56,16 @@ fun TrackRings(
     LaunchedEffect(Unit) { appeared = true }
     // Not clamped to 1: a value past the goal keeps counting so the ring can show
     // the extra lap on top of the first one.
+    // Constant speed: a full lap always takes the same time, so a small value
+    // fills quickly and a long one is not rushed through in the same 700 ms.
     val animatedValues = values.mapIndexed { index, value ->
+        val target = if (appeared) value.coerceAtLeast(0f) else 0f
         animateFloatAsState(
-            targetValue = if (appeared) value.coerceAtLeast(0f) else 0f,
-            animationSpec = tween(700),
+            targetValue = target,
+            animationSpec = tween(
+                durationMillis = (target * LAP_MILLIS).toInt().coerceAtLeast(120),
+                easing = LinearEasing
+            ),
             label = "ring$index"
         ).value
     }
@@ -110,11 +120,24 @@ fun TrackRings(
                         style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                     val head = rect.pointAt(rect.perimeter * over)
-                    drawCircle(
+                    val before = rect.pointAt(rect.perimeter * over - 0.5f)
+                    val dir = Math.toDegrees(
+                        kotlin.math.atan2(
+                            (head.y - before.y).toDouble(),
+                            (head.x - before.x).toDouble()
+                        )
+                    ).toFloat()
+                    // Only the half that faces forward: it traces the arc's head
+                    // instead of drawing a full little circle.
+                    val r = stroke * 0.40f
+                    drawArc(
                         color = badgeColor,
-                        radius = stroke * 0.40f,
-                        center = head,
-                        style = Stroke(stroke * 0.14f)
+                        startAngle = dir - 90f,
+                        sweepAngle = 180f,
+                        useCenter = false,
+                        topLeft = Offset(head.x - r, head.y - r),
+                        size = Size(r * 2f, r * 2f),
+                        style = Stroke(stroke * 0.14f, cap = StrokeCap.Round)
                     )
                 }
 

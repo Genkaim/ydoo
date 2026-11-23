@@ -4332,30 +4332,6 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                     minValue = 40f,
                     maxValue = 120f
                 )
-                Row(
-                    Modifier.padding(horizontal = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    listOf(
-                        "收缩压" to BpSystolicColor,
-                        "舒张压" to BpDiastolicColor
-                    ).forEach { (label, color) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -4383,14 +4359,14 @@ private fun BloodPressureStatRow(name: String, values: List<Int>, color: Color) 
         StatBlock(
             Modifier.weight(1f),
             Icons.Rounded.ArrowDownward,
-            "最低$name",
+            "最低",
             values.min().toString(),
             color
         )
         StatBlock(
             Modifier.weight(1f),
             Icons.Rounded.TrendingFlat,
-            "平均$name",
+            "平均",
             values.average().roundToInt().toString(),
             color
         )

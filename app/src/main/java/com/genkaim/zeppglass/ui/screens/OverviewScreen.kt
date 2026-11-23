@@ -269,15 +269,33 @@ fun OverviewScreen(
     var headerHeight by remember { mutableStateOf(52.dp) }
     val density = LocalDensity.current
     val pageBackground = MaterialTheme.colorScheme.background
-    Box(modifier.fillMaxSize()) {
+    // True while a finger is on the page. The pull buzz is the only thing that
+    // needs it: a background refresh animates the indicator to the same
+    // threshold, but no one is touching the screen then.
+    var fingerDown by remember { mutableStateOf(false) }
+    Box(
+        modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        fingerDown = event.changes.any { it.pressed }
+                    }
+                }
+            }
+    ) {
         val pullState = rememberPullToRefreshState()
         val haptics = LocalHapticFeedback.current
         // Buzz at the moment the pull passes the threshold and the gesture is
-        // armed: that is when the user needs to know "release now refreshes",
-        // not when the request actually starts.
+        // armed: that is when the user needs to know "release now refreshes".
+        // Only a finger-driven pull qualifies — a background refresh animates
+        // the same indicator and must stay silent.
         val armed = pullState.distanceFraction >= 1f
-        LaunchedEffect(armed) {
-            if (armed) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        LaunchedEffect(armed, fingerDown) {
+            if (armed && fingerDown && !state.refreshing) {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
         }
         // The buzz belongs to a manual pull: the indicator fires onRefresh only
         // after a real pull-and-release, while a background refresh (widget,

@@ -110,6 +110,7 @@ import com.genkaim.zeppglass.data.morningScore
 import com.genkaim.zeppglass.ui.DetailKind
 import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.ui.Fmt
+import com.genkaim.zeppglass.ui.components.workoutSportIcon
 import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.LineChart
 import com.genkaim.zeppglass.ui.components.MetricTile
@@ -1696,7 +1697,7 @@ private fun RecentWorkouts(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Rounded.DirectionsRun,
+                        workoutSportIcon(workout.name),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)

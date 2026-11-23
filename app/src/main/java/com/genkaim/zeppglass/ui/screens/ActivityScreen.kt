@@ -70,6 +70,7 @@ import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SignedBarChart
 import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.TrackRings
+import com.genkaim.zeppglass.ui.components.workoutSportIcon
 import com.genkaim.zeppglass.ui.components.TrendLineChart
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import kotlinx.coroutines.launch
@@ -307,8 +308,10 @@ private fun ActivityHero(
     // scale so the arc still moves, but no goal is ever printed as if official.
     val activeProgress = ((activeMinutes ?: 0).toFloat() /
         (activeGoal?.takeIf { it > 0 } ?: 60).toFloat())
-    val pointColor = MaterialTheme.colorScheme.tertiary
-    val stepColor = palette.workout
+    // Light green for steps, a soft blue for the score: the two rings sit next to
+    // the teal heart-band ring, so both stay away from teal and from each other.
+    val stepColor = Color(0xFF86C9A2)
+    val pointColor = palette.chargePhysical
     val activeColor = palette.sleepRem
     Column(
         Modifier
@@ -341,8 +344,8 @@ private fun ActivityStatsCard(
     advice: ExertionDay?
 ) {
     val palette = LocalZgPalette.current
-    val stepColor = palette.workout
-    val pointColor = MaterialTheme.colorScheme.tertiary
+    val stepColor = Color(0xFF86C9A2)
+    val pointColor = palette.chargePhysical
     val activeColor = palette.sleepRem
     val kcalColor = palette.warn
     FlatPanel(Modifier.fillMaxWidth()) {
@@ -711,7 +714,7 @@ private fun RecentWorkoutList(data: HealthData?, onOpen: (String) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Rounded.DirectionsRun,
+                        workoutSportIcon(workout.name),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)

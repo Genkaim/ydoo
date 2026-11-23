@@ -2197,7 +2197,7 @@ private fun BodyTrendRow(
                 current = current,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(96.dp)
+                    .height(140.dp)
             )
         }
         Spacer(Modifier.height(10.dp))

@@ -128,7 +128,7 @@ fun TrackRings(
                     // reaches 0.57 + 0.07 stroke from its centre, so 1.14 stroke is
                     // where they touch; the extra margin absorbs antialiasing and
                     // the badge's own edge.
-                    val clearFrac = ((stroke * 1.4f) / rect.perimeter).coerceAtMost(0.45f)
+                    val clearFrac = ((stroke * 1.3f) / rect.perimeter).coerceAtMost(0.45f)
                     // The badge hides an arc on both sides of the start point: the
                     // one just after it (a value past one lap wraps back to 0) and
                     // the one just before it (a value just under one lap).
@@ -138,8 +138,11 @@ fun TrackRings(
                         else -> wrapped
                     }
                     val markAt = minOf(progress, finalMark)
-                    // Drawn only once it has left the badge on the way out.
-                    if (markAt > clearFrac) {
+                    // Drawn once it has left the badge on the way out. The
+                    // tolerance matters: when the overshoot is small the final
+                    // position IS the clearance, and a strict '>' would hide the
+                    // mark exactly at the end of the animation.
+                    if (markAt >= clearFrac - 0.0001f) {
                         val head = rect.pointAt(rect.perimeter * markAt)
                         val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
                         val dir = Math.toDegrees(

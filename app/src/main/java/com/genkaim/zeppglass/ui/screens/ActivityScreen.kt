@@ -366,9 +366,10 @@ private fun ActivityStatsCard(
                 StatBlock(
                     Modifier.weight(1f),
                     Icons.Rounded.LocalFireDepartment,
-                    "千卡",
+                    "活动消耗",
                     Fmt.int(calories),
-                    kcalColor
+                    kcalColor,
+                    unit = "千卡"
                 )
             }
             // The day's advice lives in the same card as the totals: it is the

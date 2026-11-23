@@ -301,8 +301,10 @@ private fun ActivityHero(
     // The suggested score is the denominator; without one the arc stays at zero
     // rather than inventing a target.
     val pointTarget = pointsTarget?.takeIf { it > 0 }
+    // Not clamped: past the goal the ring shows the over-lap mark, the same way
+    // the step ring does.
     val pointsProgress = if (pointTarget != null) {
-        ((points ?: 0).toFloat() / pointTarget).coerceIn(0f, 1f)
+        (points ?: 0).toFloat() / pointTarget
     } else {
         0f
     }

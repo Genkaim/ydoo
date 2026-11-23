@@ -308,11 +308,11 @@ private fun ActivityHero(
     // scale so the arc still moves, but no goal is ever printed as if official.
     val activeProgress = ((activeMinutes ?: 0).toFloat() /
         (activeGoal?.takeIf { it > 0 } ?: 60).toFloat())
-    // Light green for steps, a soft blue for the score: the two rings sit next to
-    // the teal heart-band ring, so both stay away from teal and from each other.
-    val stepColor = Color(0xFF86C9A2)
-    val pointColor = palette.chargePhysical
-    val activeColor = palette.sleepRem
+    // Green steps, orange score, blue band time: three rings that stay apart from
+    // each other at a glance.
+    val stepColor = palette.accent
+    val pointColor = palette.warn
+    val activeColor = palette.sleepLight
     Column(
         Modifier
             .fillMaxWidth()
@@ -344,10 +344,10 @@ private fun ActivityStatsCard(
     advice: ExertionDay?
 ) {
     val palette = LocalZgPalette.current
-    val stepColor = Color(0xFF86C9A2)
-    val pointColor = palette.chargePhysical
-    val activeColor = palette.sleepRem
-    val kcalColor = palette.warn
+    val stepColor = palette.accent
+    val pointColor = palette.warn
+    val activeColor = palette.sleepLight
+    val kcalColor = palette.critical
     FlatPanel(Modifier.fillMaxWidth()) {
         Column(
             Modifier

@@ -265,17 +265,10 @@ fun AiScreen(
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
-    // A switch closes a sheet of page colour over the transcript, swaps the
-    // conversation behind it, then opens it again: the mask fades in, the page
-    // changes where nothing can be seen, and the mask fades out. The value comes
-    // from the composition rather than a coroutine, and the session key below
-    // always opens it again, so the page can never be left covered.
-    var covering by remember { mutableStateOf(false) }
-    val coverAlpha by animateFloatAsState(
-        targetValue = if (covering) 1f else 0f,
-        animationSpec = tween(if (covering) 200 else 240),
-        label = "cover"
-    )
+    // Switching conversations is immediate: the words change on the frame the
+    // drawer's entry is tapped, and the drawer slides away beside them. A mask
+    // or a fade in front of this only delayed the page the reader asked for.
+
     val focusManager = LocalFocusManager.current
 
     /**
@@ -302,8 +295,6 @@ fun AiScreen(
             }
     }
     LaunchedEffect(AiChatSession.currentId) { followBottom = true }
-    // Whatever becomes of a switch, the page has to be uncovered again.
-    LaunchedEffect(AiChatSession.sessionEpoch) { covering = false }
 
     // A new message jumps to its top; the layout observer below then pins its
     // bottom edge. Doing both in one pass computed the overflow from the frame
@@ -513,22 +504,6 @@ fun AiScreen(
                     .padding(bottom = deckSpace + 6.dp)
             )
 
-            // The switch mask: page colour, so it reads as the transcript
-            // dissolving rather than as a grey veil. It sits over the transcript
-            // but under the deck, so the input field stays where it is while the
-            // words behind it change.
-            //
-            // The colour carries the alpha itself: an alpha modifier outside the
-            // background would fade the content and leave the fill opaque, which
-            // is why the mask used to be painted over the page at rest.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        MaterialTheme.colorScheme.background.copy(alpha = coverAlpha)
-                    )
-            )
-
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -624,20 +599,13 @@ fun AiScreen(
                 sessions = AiChatSession.sessions,
                 currentId = AiChatSession.currentId,
                 onOpen = { id ->
+                    // The conversation changes right here, on the tap; the drawer
+                    // folds away on its own animation beside it instead of
+                    // holding the switch up.
+                    AiChatSession.open(id)
                     scope.launch {
-                        // The drawer goes first: a mask fading behind it would
-                        // have spent itself where nobody could see it.
                         runCatching { sheetState.hide() }
                         showHistory = false
-                        try {
-                            // Old words dissolve, the conversation changes on the
-                            // covered frame, new words come back.
-                            covering = true
-                            kotlinx.coroutines.delay(210)
-                            AiChatSession.open(id)
-                        } finally {
-                            covering = false
-                        }
                     }
                 },
                 onDelete = { AiChatSession.delete(it) },

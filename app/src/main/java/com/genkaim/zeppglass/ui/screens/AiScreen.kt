@@ -1,6 +1,5 @@
 package com.genkaim.zeppglass.ui.screens
 
-import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -101,8 +100,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -111,9 +108,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import com.genkaim.zeppglass.data.AiChatSession
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
@@ -279,31 +273,21 @@ fun AiScreen(
     var covering by remember { mutableStateOf(false) }
     val coverAlpha by animateFloatAsState(
         targetValue = if (covering) 1f else 0f,
-        animationSpec = tween(if (covering) 160 else 220),
+        animationSpec = tween(if (covering) 200 else 240),
         label = "cover"
     )
-    val keyboard = LocalSoftwareKeyboardController.current
-    val view = LocalView.current
     val focusManager = LocalFocusManager.current
 
     /**
-     * The IME is drawn in its own window above everything the app paints: with
-     * it up, a sheet that opens behind it has its lower half covered and its
-     * taps eaten, and the sheet's dialog window never receives an IME inset, so
-     * padding cannot lift it clear. So the IME is asked down on the same frame
-     * the sheet starts up.
+     * The IME lives in its own window above everything the app paints, so a
+     * drawer opened behind it has its lower half covered and its taps eaten.
      *
-     * One request, not three: asking through the Compose controller, the focus
-     * manager and the window in turn restarted the IME's own animation, which is
-     * what made the keyboard flicker a few times on the way out.
+     * Exactly one request: the field lets go of focus, and the platform takes the
+     * IME down with it. Asking the Compose controller, the window insets
+     * controller and the focus manager in turn made the keyboard go, come back
+     * and go again — that was the flicker.
      */
     fun hideKeyboard() {
-        val window = findActivity(view.context)?.window ?: return
-        runCatching {
-            WindowCompat.getInsetsController(window, view)
-                .hide(WindowInsetsCompat.Type.ime())
-        }
-        // Dropped after the request is in, so the field cannot pull it back up.
         focusManager.clearFocus(force = true)
     }
 
@@ -641,14 +625,15 @@ fun AiScreen(
                 currentId = AiChatSession.currentId,
                 onOpen = { id ->
                     scope.launch {
-                        hideKeyboard()
+                        // The drawer goes first: a mask fading behind it would
+                        // have spent itself where nobody could see it.
+                        runCatching { sheetState.hide() }
+                        showHistory = false
                         try {
-                            // The mask closes while the drawer is still sliding
-                            // away, so the swap lands behind both of them.
+                            // Old words dissolve, the conversation changes on the
+                            // covered frame, new words come back.
                             covering = true
-                            runCatching { sheetState.hide() }
-                            showHistory = false
-                            kotlinx.coroutines.delay(60)
+                            kotlinx.coroutines.delay(210)
                             AiChatSession.open(id)
                         } finally {
                             covering = false
@@ -1379,12 +1364,3 @@ private fun HistorySheet(
     }
 }
 
-/** Walks out of any context wrappers to the activity that owns the window. */
-private fun findActivity(context: Context): Activity? {
-    var current: Context? = context
-    while (current != null) {
-        if (current is Activity) return current
-        current = (current as? android.content.ContextWrapper)?.baseContext
-    }
-    return null
-}

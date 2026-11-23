@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -82,6 +85,9 @@ import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.Meal
 import com.genkaim.zeppglass.data.MealItem
 import com.genkaim.zeppglass.data.WeightPoint
+import com.genkaim.zeppglass.ui.DetailActivity
+import com.genkaim.zeppglass.ui.DetailKind
+import com.genkaim.zeppglass.ui.DetailTarget
 import com.genkaim.zeppglass.ui.Fmt
 import com.genkaim.zeppglass.ui.SettingsActivity
 import com.genkaim.zeppglass.ui.components.CapsuleField
@@ -138,18 +144,11 @@ private data class MealDraft(
     val note: String?
 )
 
-/** The floating card that follows a photo: spinner, then success or failure. */
-private sealed interface PhotoFlow {
-    /** Null when the estimate came from a written description instead of a photo. */
-    data class Loading(val file: File?) : PhotoFlow
-    data class Failed(val file: File?, val message: String) : PhotoFlow
-}
-
 /**
  * Photo-based diet log. The photo goes to the user's own OpenAI-compatible
  * endpoint; the estimate and the photo stay on the phone afterwards. The AI
- * only proposes a list of foods — nothing is stored until the user confirms it
- * in the floating card, and every item stays editable.
+ * only proposes a list of foods — nothing is stored until the reader confirms
+ * it on the recognition page, and every stored meal stays editable.
  */
 @Composable
 fun DietDetail(
@@ -166,22 +165,29 @@ fun DietDetail(
 
     LaunchedEffect(Unit) { DietStore.attach(context) }
 
-    var flow by remember { mutableStateOf<PhotoFlow?>(null) }
     var cameraFile by remember { mutableStateOf<File?>(null) }
     var draft by remember { mutableStateOf<MealDraft?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var describeOpen by remember { mutableStateOf(false) }
-    // The model's own thinking while it looks at a photo, streamed as it comes
-    // in; and what the reader types back to correct or add to the estimate.
-    var thinking by remember { mutableStateOf("") }
-    var reply by remember { mutableStateOf("") }
-    var analysisNote by remember { mutableStateOf("") }
     // Tapping a capture button without an endpoint used to push an inline card
     // into the page, which shoved everything below it down. A dialog asks the
     // question without moving the page.
     var setupPrompt by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
     var goalOpen by remember { mutableStateOf(false) }
+
+    // Every capture and every written description ends on the same second page:
+    // it shows the model's thinking, then the estimate, and keeps a reply box at
+    // the bottom for corrections. Nothing pops up over this page any more.
+    fun openAiPage(file: File?, text: String? = null) {
+        context.startActivity(
+            DetailActivity.intent(
+                context,
+                DetailTarget(DetailKind.DIET_AI, text = text),
+                photoPath = file?.absolutePath
+            )
+        )
+    }
 
     // No saved goal yet (new install, or an upgrade from a build that had no
     // such setting): ask on today's page instead of quietly assuming 减脂.
@@ -190,129 +196,14 @@ fun DietDetail(
     }
     val goal = settings.dietGoalOrCut
 
-    fun analyze(file: File, auto: Boolean = false, note: String? = null) {
-        android.util.Log.i("YdooDiet", "analyze auto=$auto shoot=$shoot pending=$pendingPhoto file=${file.name}")
-        flow = PhotoFlow.Loading(file)
-        thinking = ""
-        error = null
-        // Everything the reader has typed about this photo travels with it, so a
-        // second correction does not overwrite the first.
-        val extra = buildList {
-            analysisNote.takeIf { it.isNotBlank() }?.let { add(it) }
-            note?.takeIf { it.isNotBlank() }?.let { add(it) }
-        }.joinToString("；")
-        if (!note.isNullOrBlank()) analysisNote = extra
-        scope.launch {
-            try {
-                val bytes = withContext(Dispatchers.IO) { shrinkForUpload(file.readBytes()) }
-                val prompt = if (extra.isBlank()) {
-                    FOOD_PROMPT
-                } else {
-                    "$FOOD_PROMPT\n\n用户的补充说明：$extra"
-                }
-                // Streamed instead of awaited in one piece: the thinking text and
-                // the answer arrive chunk by chunk, so the card can show both.
-                val answer = StringBuilder()
-                AiClient(settings).visionStream(bytes, prompt).collect { (chunk, thought) ->
-                    if (thought.isNotEmpty()) thinking += thought
-                    if (chunk.isNotEmpty()) answer.append(chunk)
-                }
-                val text = answer.toString()
-                val json = parseFoodJson(text)
-                    ?: error("AI 返回的内容不是可用的估算：${text.take(60)}")
-                val estimated = MealDraft(
-                    id = null,
-                    epochMs = System.currentTimeMillis(),
-                    photoPath = file.absolutePath,
-                    items = parseItems(json),
-                    proteinG = json.optDouble("protein_g", Double.NaN).takeUnless { it.isNaN() },
-                    carbsG = json.optDouble("carbs_g", Double.NaN).takeUnless { it.isNaN() },
-                    fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
-                    note = json.optString("note").takeIf { it.isNotBlank() }
-                )
-                // Every capture lands on the editable list before anything is
-                // written: the AI's estimate is a proposal, and the reader
-                // confirms (or fixes) the foods there.
-                android.util.Log.i("YdooDiet", "estimate done items=${estimated.items.size}")
-                reply = ""
-                analysisNote = ""
-                draft = estimated
-                flow = null
-            } catch (e: Exception) {
-                // The failure belongs to the photo card, not to the page.
-                flow = PhotoFlow.Failed(file, e.message ?: "估算失败")
-            }
-        }
-    }
-
-    /**
-     * The written-description path: same JSON contract as the photo, only the
-     * input differs. The result goes through the same editable card, so nothing
-     * is stored until the user confirms it.
-     */
-    fun analyzeText(described: String, note: String? = null) {
-        val text = described.trim()
-        if (text.isEmpty()) return
-        describeOpen = false
-        error = null
-        flow = PhotoFlow.Loading(null)
-        thinking = ""
-        val extra = buildList {
-            analysisNote.takeIf { it.isNotBlank() }?.let { add(it) }
-            note?.takeIf { it.isNotBlank() }?.let { add(it) }
-        }.joinToString("；")
-        if (!note.isNullOrBlank()) analysisNote = extra
-        scope.launch {
-            try {
-                val messages = listOf(
-                    ChatMessage("system", TEXT_FOOD_PROMPT),
-                    ChatMessage(
-                        "user",
-                        "这一餐：$text" + if (extra.isBlank()) "" else "\n补充说明：$extra"
-                    )
-                )
-                // Same streamed reasoning as the photo path: the card shows what
-                // the model is thinking while it turns words into a list.
-                val answer = StringBuilder()
-                AiClient(settings).streamReasoning(messages, maxTokens = 2048)
-                    .collect { (chunk, thought) ->
-                        if (thought.isNotEmpty()) thinking += thought
-                        if (chunk.isNotEmpty()) answer.append(chunk)
-                    }
-                val raw = answer.toString()
-                val json = parseFoodJson(raw)
-                    ?: error("AI 返回的内容不是可用的估算：${raw.take(60)}")
-                val items = parseItems(json)
-                // An empty list would open an editor with nothing in it.
-                if (items.isEmpty()) error("AI 没有给出具体的食物，换个说法再试")
-                draft = MealDraft(
-                    id = null,
-                    epochMs = System.currentTimeMillis(),
-                    photoPath = null,
-                    items = items,
-                    proteinG = json.optDouble("protein_g", Double.NaN).takeUnless { it.isNaN() },
-                    carbsG = json.optDouble("carbs_g", Double.NaN).takeUnless { it.isNaN() },
-                    fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
-                    note = json.optString("note").takeIf { it.isNotBlank() }
-                )
-                description = ""
-                reply = ""
-                analysisNote = ""
-                flow = null
-            } catch (e: Exception) {
-                flow = PhotoFlow.Failed(null, e.message ?: "估算失败")
-            }
-        }
-    }
-
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { saved ->
         val file = cameraFile
         cameraFile = null
-        // A camera capture is logged as soon as the estimate lands: the photo is
-        // already the confirmation, so no draft card is shown for it.
-        if (saved && file != null) analyze(file, auto = true) else file?.delete()
+        // The capture opens the recognition page: that page shows the thinking,
+        // the estimate and the reply box, and writes nothing until confirmed.
+        if (saved && file != null) openAiPage(file) else file?.delete()
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -322,9 +213,9 @@ fun DietDetail(
             scope.launch {
                 val file = withContext(Dispatchers.IO) { copyToDietFile(context, uri) }
                 if (file == null) {
-                    flow = PhotoFlow.Failed(null, "读不到这张图片")
+                    error = "读不到这张图片"
                 } else {
-                    analyze(file)
+                    openAiPage(file)
                 }
             }
         }
@@ -363,15 +254,14 @@ fun DietDetail(
     }
 
     // A photo taken through the widget's camera trampoline arrives as a path:
-    // it is analysed on arrival, so the page opens straight onto the estimate
-    // instead of making the user pick the picture again.
+    // the recognition page opens on it directly instead of asking for it again.
     var pendingAnalysed by remember { mutableStateOf(false) }
     LaunchedEffect(pendingPhoto) {
         val path = pendingPhoto ?: return@LaunchedEffect
         if (pendingAnalysed) return@LaunchedEffect
         pendingAnalysed = true
         val file = File(path)
-        if (file.exists()) analyze(file, auto = true)
+        if (file.exists()) openAiPage(file)
     }
 
     fun pickPhoto() {
@@ -767,173 +657,24 @@ fun DietDetail(
         }
     }
 
-    // Floating cards: the spinner / failure while the model looks at the photo,
-    // then the editable list the user confirms.
-    when (val state = flow) {
-        is PhotoFlow.Loading -> {
-            val thinkingScroll = rememberScrollState()
-            LaunchedEffect(thinking) {
-                // Keep the newest reasoning line in view: the text only grows.
-                thinkingScroll.scrollTo(thinkingScroll.maxValue)
-            }
-            FloatingCard(onDismiss = {}) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (state.file != null) {
-                        MealThumb(state.file.absolutePath, 54.dp)
-                    } else {
-                        Box(
-                            Modifier
-                                .size(54.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Rounded.EditNote,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("AI 正在估算这份食物", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            if (thinking.isBlank()) "识别食物、份量与热量，通常需要几秒"
-                            else "模型的思考过程",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (thinking.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 132.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .verticalScroll(thinkingScroll)
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            thinking,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                // A reply continues the same photo (or written description): the
-                // note is sent with it and the new answer replaces the draft.
-                if (state.file != null || description.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CapsuleField(
-                            value = reply,
-                            onValueChange = { reply = it },
-                            placeholder = "补充说明，例如：还有一碗米饭",
-                            modifier = Modifier.weight(1f)
-                        )
-                        RoundIconButton(
-                            icon = Icons.Rounded.Send,
-                            contentDescription = "补充后再估算",
-                            onClick = {
-                                if (reply.isNotBlank()) {
-                                    val file = state.file
-                                    if (file != null) {
-                                        analyze(file, auto = true, note = reply)
-                                    } else if (description.isNotBlank()) {
-                                        analyzeText(description, note = reply)
-                                    }
-                                }
-                            },
-                            enabled = reply.isNotBlank(),
-                            primary = reply.isNotBlank()
-                        )
-                    }
-                }
-            }
-        }
-        is PhotoFlow.Failed -> FloatingCard(onDismiss = {}) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                state.file?.let {
-                    MealThumb(it.absolutePath, 54.dp)
-                    Spacer(Modifier.width(12.dp))
-                }
-                Column {
-                    Text("这次没识别出来", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        state.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            FlatButton(
-                text = "知道了",
-                onClick = {
-                    state.file?.let { runCatching { it.delete() } }
-                    flow = null
-                    draft = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                primary = false
-            )
-        }
-        null -> Unit
-    }
-
     draft?.let { current ->
         MealEditorCard(
             initial = current.items,
-            isNew = current.id == null,
-            onDismiss = {
-                if (current.id == null) {
-                    // A cancelled photo leaves nothing behind.
-                    current.photoPath?.let { path -> runCatching { File(path).delete() } }
-                }
+            isNew = false,
+            onDismiss = { draft = null },
+            onDelete = {
+                DietStore.meals.firstOrNull { it.id == current.id }?.let { DietStore.remove(it) }
                 draft = null
             },
-            onDelete = if (current.id != null) {
-                {
-                    DietStore.meals.firstOrNull { it.id == current.id }?.let { DietStore.remove(it) }
-                    draft = null
-                }
-            } else null,
             onConfirm = { items ->
                 val total = items.sumOf { it.kcal ?: 0 }.takeIf { it > 0 }
-                if (current.id == null) {
-                    DietStore.add(
-                        Meal(
-                            id = UUID.randomUUID().toString(),
-                            epochMs = current.epochMs,
-                            photoPath = current.photoPath,
-                            calories = total ?: 0,
-                            proteinG = current.proteinG,
-                            carbsG = current.carbsG,
-                            fatG = current.fatG,
-                            items = items,
-                            note = current.note
+                DietStore.meals.firstOrNull { it.id == current.id }?.let { stored ->
+                    DietStore.update(
+                        stored.copy(
+                            calories = total ?: stored.calories,
+                            items = items
                         )
                     )
-                } else {
-                    DietStore.meals.firstOrNull { it.id == current.id }?.let { stored ->
-                        DietStore.update(
-                            stored.copy(
-                                calories = total ?: stored.calories,
-                                items = items
-                            )
-                        )
-                    }
                 }
                 draft = null
             }
@@ -964,7 +705,10 @@ fun DietDetail(
             text = description,
             onTextChange = { description = it },
             onDismiss = { describeOpen = false },
-            onSubmit = { analyzeText(it) }
+            onSubmit = { text ->
+                describeOpen = false
+                openAiPage(null, text)
+            }
         )
     }
 
@@ -1647,3 +1391,342 @@ private fun MealThumb(path: String?, size: Dp) {
     }
 }
 
+/**
+ * The meal-recognition page: every photo and every written description ends
+ * here, on its own screen with a reply box pinned to the bottom.
+ *
+ * Before an answer arrives it shows the model's streamed thinking; once an
+ * estimate lands it shows that estimate instead. A reply continues the same
+ * photo or description — the note is sent along and the estimate is rebuilt —
+ * and nothing is written to the log until 记录这一餐 is pressed.
+ */
+@Composable
+fun DietAiDetail(
+    settings: AppSettings,
+    photoPath: String?,
+    description: String,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { DietStore.attach(context) }
+
+    var thinking by remember { mutableStateOf("") }
+    var running by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var reply by remember { mutableStateOf("") }
+    // Everything the reader has typed about this input, kept so a second
+    // correction does not overwrite the first.
+    var notes by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<MealDraft?>(null) }
+    var previousJson by remember { mutableStateOf<String?>(null) }
+
+    fun run(note: String? = null) {
+        val extra = listOfNotNull(
+            notes.takeIf { it.isNotBlank() },
+            note?.takeIf { it.isNotBlank() }
+        ).joinToString("；")
+        if (!note.isNullOrBlank()) notes = extra
+        running = true
+        thinking = ""
+        error = null
+        scope.launch {
+            try {
+                val answer = StringBuilder()
+                if (photoPath != null) {
+                    val bytes = withContext(Dispatchers.IO) {
+                        runCatching { shrinkForUpload(File(photoPath).readBytes()) }.getOrNull()
+                    } ?: error("读不到这张照片")
+                    AiClient(settings)
+                        .visionStream(bytes, photoFollowUp(extra, previousJson))
+                        .collect { (chunk, thought) ->
+                            if (thought.isNotEmpty()) thinking += thought
+                            if (chunk.isNotEmpty()) answer.append(chunk)
+                        }
+                } else {
+                    val messages = buildList {
+                        add(ChatMessage("system", TEXT_FOOD_PROMPT))
+                        add(ChatMessage("user", "这一餐：$description"))
+                        previousJson?.let { add(ChatMessage("assistant", it)) }
+                        if (extra.isNotBlank()) {
+                            add(
+                                ChatMessage(
+                                    "user",
+                                    "补充/修改：$extra\n请在上一版基础上调整，重新输出完整 JSON，格式不变。"
+                                )
+                            )
+                        }
+                    }
+                    AiClient(settings).streamReasoning(messages, maxTokens = 2048)
+                        .collect { (chunk, thought) ->
+                            if (thought.isNotEmpty()) thinking += thought
+                            if (chunk.isNotEmpty()) answer.append(chunk)
+                        }
+                }
+                val raw = answer.toString()
+                val json = parseFoodJson(raw)
+                    ?: error("AI 返回的内容不是可用的估算：${raw.take(60)}")
+                val items = parseItems(json)
+                if (items.isEmpty()) error("AI 没有给出具体的食物，换个说法再试")
+                result = MealDraft(
+                    id = null,
+                    epochMs = System.currentTimeMillis(),
+                    photoPath = photoPath,
+                    items = items,
+                    proteinG = json.optDouble("protein_g", Double.NaN).takeUnless { it.isNaN() },
+                    carbsG = json.optDouble("carbs_g", Double.NaN).takeUnless { it.isNaN() },
+                    fatG = json.optDouble("fat_g", Double.NaN).takeUnless { it.isNaN() },
+                    note = json.optString("note").takeIf { it.isNotBlank() }
+                )
+                previousJson = json.toString()
+                reply = ""
+            } catch (e: Exception) {
+                error = e.message ?: "估算失败"
+            } finally {
+                running = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { run() }
+
+    fun save() {
+        val current = result ?: return
+        val total = current.items.sumOf { it.kcal ?: 0 }.takeIf { it > 0 } ?: 0
+        DietStore.add(
+            Meal(
+                id = UUID.randomUUID().toString(),
+                epochMs = current.epochMs,
+                photoPath = current.photoPath,
+                calories = total,
+                proteinG = current.proteinG,
+                carbsG = current.carbsG,
+                fatG = current.fatG,
+                items = current.items,
+                note = current.note
+            )
+        )
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .imePadding()
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, end = 18.dp, top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.Rounded.ArrowBack,
+                    contentDescription = "返回",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text("饮食识别", style = MaterialTheme.typography.titleLarge)
+        }
+
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (photoPath != null) {
+                MealThumb(photoPath, 88.dp)
+            }
+
+            if (thinking.isNotBlank()) {
+                val thinkingScroll = rememberScrollState()
+                LaunchedEffect(thinking) {
+                    thinkingScroll.scrollTo(thinkingScroll.maxValue)
+                }
+                FlatPanel {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "思考过程",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp)
+                                .verticalScroll(thinkingScroll)
+                        ) {
+                            Text(
+                                thinking,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            error?.let { message ->
+                FlatPanel {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("这次没识别出来", style = MaterialTheme.typography.titleSmall)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            result?.let { current ->
+                val total = current.items.sumOf { it.kcal ?: 0 }
+                FlatPanel {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Column(Modifier.weight(1f)) {
+                                Text("估算结果", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "${current.items.size} 样食物",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                total.toString(),
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                            Text(
+                                " kcal",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                        Rule()
+                        current.items.forEach { item ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    item.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                item.amount?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                }
+                                Text(
+                                    item.kcal?.let { "$it" } ?: "--",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    " kcal",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                            }
+                        }
+                        val macros = listOfNotNull(
+                            current.proteinG?.roundToInt()?.let { "蛋白 $it g" },
+                            current.carbsG?.roundToInt()?.let { "碳水 $it g" },
+                            current.fatG?.roundToInt()?.let { "脂肪 $it g" }
+                        )
+                        if (macros.isNotEmpty()) {
+                            Rule()
+                            Text(
+                                macros.joinToString(" · "),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        current.note?.let {
+                            Text(
+                                "估算依据：$it",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (running) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (result == null) "正在识别这份食物…" else "正在按补充说明重新估算…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (result != null) {
+                FlatButton(
+                    text = "记录这一餐",
+                    onClick = {
+                        save()
+                        onClose()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CapsuleField(
+                    value = reply,
+                    onValueChange = { reply = it },
+                    placeholder = "继续补充或修改，例如：米饭是两碗",
+                    modifier = Modifier.weight(1f)
+                )
+                RoundIconButton(
+                    icon = Icons.Rounded.Send,
+                    contentDescription = "按补充说明重新估算",
+                    onClick = {
+                        if (reply.isNotBlank() && !running) run(reply)
+                    },
+                    enabled = reply.isNotBlank() && !running,
+                    primary = reply.isNotBlank() && !running
+                )
+            }
+        }
+    }
+}
+
+/** The photo prompt, with the previous estimate and a correction folded in. */
+private fun photoFollowUp(extra: String, previous: String?): String {
+    if (extra.isBlank()) return FOOD_PROMPT
+    return buildString {
+        append(FOOD_PROMPT)
+        if (previous != null) {
+            append("\n\n上一版估算：").append(previous)
+        }
+        append("\n\n用户的补充/修改：").append(extra)
+        append("\n请在上一版基础上调整，重新输出完整 JSON（格式不变）。")
+    }
+}

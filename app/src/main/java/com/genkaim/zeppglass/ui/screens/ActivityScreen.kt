@@ -65,6 +65,7 @@ import com.genkaim.zeppglass.ui.components.FlatPanel
 import com.genkaim.zeppglass.ui.components.MetricTile
 import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
+import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.components.SignedBarChart
 import com.genkaim.zeppglass.ui.components.StatBlock
@@ -206,17 +207,15 @@ fun ActivityScreen(
                         activeMinutes = bandMinutes ?: activityMinutes,
                         activeGoal = planMinutes ?: activityGoal,
                         calories = day?.calories,
-                        bandBased = bandMinutes != null && planMinutes != null
+                        bandBased = bandMinutes != null && planMinutes != null,
+                        advice = advice
                     )
-                    advice?.let { ActivityAdviceStrip(it) }
                     LoadVo2Card(
                         load = load,
                         vo2 = vo2,
-                        onClick = { onOpenDetail(DetailTarget(DetailKind.LOAD, today)) }
-                    )
-                    TrainingStatusCard(
                         advice = advice,
-                        onClick = { onOpenDetail(DetailTarget(DetailKind.TRAINING_STATUS)) }
+                        onClick = { onOpenDetail(DetailTarget(DetailKind.LOAD, today)) },
+                        onStatusClick = { onOpenDetail(DetailTarget(DetailKind.TRAINING_STATUS)) }
                     )
 
                     if (hrToday.size > 10) {
@@ -329,45 +328,88 @@ private fun ActivityStatsCard(
     activeMinutes: Int?,
     activeGoal: Int?,
     calories: Double?,
-    bandBased: Boolean
+    bandBased: Boolean,
+    advice: ExertionDay?
 ) {
     val stepColor = MaterialTheme.colorScheme.primary
     val activeColor = LocalZgPalette.current.sleepRem
     val kcalColor = MaterialTheme.colorScheme.tertiary
     FlatPanel(Modifier.fillMaxWidth()) {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(vertical = 14.dp, horizontal = 16.dp)
         ) {
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.DirectionsWalk,
-                "步数",
-                steps?.toString() ?: "--",
-                stepColor
-            )
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.Timer,
-                if (bandBased) "区间时长" else "活动时长",
-                when {
-                    activeMinutes == null -> "--"
-                    activeGoal != null -> "$activeMinutes/$activeGoal"
-                    else -> activeMinutes.toString()
-                },
-                activeColor,
-                unit = "分"
-            )
-            StatBlock(
-                Modifier.weight(1f),
-                Icons.Rounded.LocalFireDepartment,
-                "千卡",
-                Fmt.int(calories),
-                kcalColor
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.DirectionsWalk,
+                    "步数",
+                    steps?.toString() ?: "--",
+                    stepColor
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Timer,
+                    if (bandBased) "区间时长" else "活动时长",
+                    when {
+                        activeMinutes == null -> "--"
+                        activeGoal != null -> "$activeMinutes/$activeGoal"
+                        else -> activeMinutes.toString()
+                    },
+                    activeColor,
+                    unit = "分"
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.LocalFireDepartment,
+                    "千卡",
+                    Fmt.int(calories),
+                    kcalColor
+                )
+            }
+            // The day's advice lives in the same card as the totals: it is the
+            // target those numbers are measured against, not a separate report.
+            if (advice != null) {
+                val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                val points = when {
+                    advice.totalScore == null && advice.targetScore == null -> null
+                    advice.targetScore != null && advice.targetScore > 0 ->
+                        "${advice.totalScore ?: 0}/${advice.targetScore}"
+                    else -> advice.totalScore?.toString()
+                }
+                val hr = if (advice.planHrLow != null && advice.planHrHigh != null) {
+                    "${advice.planHrLow}-${advice.planHrHigh}"
+                } else {
+                    null
+                }
+                Spacer(Modifier.height(12.dp))
+                Rule()
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AdviceCell(
+                        Modifier.weight(1f),
+                        "活动点数",
+                        points ?: "--",
+                        null,
+                        if (points == null) muted else MaterialTheme.colorScheme.primary
+                    )
+                    AdviceCell(
+                        Modifier.weight(1f),
+                        "建议心率",
+                        hr ?: "--",
+                        if (hr == null) null else "bpm",
+                        if (hr == null) muted else LocalZgPalette.current.sleepRem
+                    )
+                }
+            }
         }
     }
 }
@@ -390,12 +432,21 @@ private fun HeroStat(value: String, label: String, color: Color) {
 }
 
 /**
- * 运动负荷 and 最大摄氧量 in one card: the 7-day EPOC load with its band verdict and
- * the watch's VO2 max with its rating. Out-of-range numbers colour their value,
- * unit and verdict together, and the card opens the load history page.
+ * 运动状态 in one card with two tap zones: 运动负荷 + 最大摄氧量 on top opens the
+ * load history, 疲劳 / 体能 / 训练状态 below opens the training-status page.
+ *
+ * Out-of-range numbers colour their value, unit and verdict together; the
+ * neutral cases stay in ink, and only a genuinely tired day (TSB < -10) gets a
+ * sentence.
  */
 @Composable
-private fun LoadVo2Card(load: LoadDay?, vo2: Int?, onClick: () -> Unit) {
+private fun LoadVo2Card(
+    load: LoadDay?,
+    vo2: Int?,
+    advice: ExertionDay?,
+    onClick: () -> Unit,
+    onStatusClick: () -> Unit
+) {
     val warn = LocalZgPalette.current.warn
     val critical = LocalZgPalette.current.critical
     val ink = MaterialTheme.colorScheme.onSurface
@@ -417,113 +468,108 @@ private fun LoadVo2Card(load: LoadDay?, vo2: Int?, onClick: () -> Unit) {
         else -> ink
     }
     SectionTitle("运动状态")
-    FlatPanel(onClick = onClick) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("运动负荷", style = MaterialTheme.typography.labelSmall, color = muted)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        weekLoad?.roundToInt()?.toString() ?: "--",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = loadColor
-                    )
-                    Text(
-                        " EPOC",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = loadColor,
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        loadVerdict.first,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = loadColor,
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text("最大摄氧量", style = MaterialTheme.typography.labelSmall, color = muted)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        vo2?.toString() ?: "--",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = vo2Color
-                    )
-                    Text(
-                        " ml/kg",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = vo2Color,
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        rating,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = vo2Color,
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 疲劳 / 体能 / 训练状态 as their own card. TSB is CTL − ATL, so only a genuinely
- * tired day gets a sentence; the neutral cases stay silent.
- */
-@Composable
-private fun TrainingStatusCard(advice: ExertionDay?, onClick: () -> Unit) {
-    if (advice == null) return
-    val warn = LocalZgPalette.current.warn
-    val status = advice.status
-    FlatPanel(onClick = onClick) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
+    FlatPanel {
+        Column(Modifier.fillMaxWidth()) {
             Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.LocalFireDepartment,
-                    "疲劳",
-                    advice.fatigue?.roundToInt()?.toString() ?: "--",
-                    warn
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Favorite,
-                    "体能",
-                    advice.fitness?.roundToInt()?.toString() ?: "--",
-                    MaterialTheme.colorScheme.primary
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Timer,
-                    "训练状态",
-                    status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
-                    MaterialTheme.colorScheme.tertiary
-                )
+                Column(Modifier.weight(1f)) {
+                    Text("运动负荷", style = MaterialTheme.typography.labelSmall, color = muted)
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            weekLoad?.roundToInt()?.toString() ?: "--",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = loadColor
+                        )
+                        Text(
+                            " EPOC",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = loadColor,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            loadVerdict.first,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = loadColor,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("最大摄氧量", style = MaterialTheme.typography.labelSmall, color = muted)
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            vo2?.toString() ?: "--",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = vo2Color
+                        )
+                        Text(
+                            " ml/kg",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = vo2Color,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            rating,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = vo2Color,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
             }
-            if (status != null && status < -10) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "偏疲劳，建议降低强度",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = warn
-                )
+            if (advice != null) {
+                Rule()
+                val status = advice.status
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onStatusClick)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.LocalFireDepartment,
+                            "疲劳",
+                            advice.fatigue?.roundToInt()?.toString() ?: "--",
+                            warn
+                        )
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.Favorite,
+                            "体能",
+                            advice.fitness?.roundToInt()?.toString() ?: "--",
+                            MaterialTheme.colorScheme.primary
+                        )
+                        StatBlock(
+                            Modifier.weight(1f),
+                            Icons.Rounded.Timer,
+                            "训练状态",
+                            status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
+                            MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    if (status != null && status < -10) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "偏疲劳，建议降低强度",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = warn
+                        )
+                    }
+                }
             }
         }
     }

@@ -553,7 +553,7 @@ fun OverviewScreen(
                                 MetricTile(
                                     label = "血压",
                                     value = bp?.let { "${it.systolic}/${it.diastolic}" } ?: "--",
-                                    unit = if (bp != null) "mmHg" else null,
+                                    unit = null,
                                     icon = Icons.Rounded.MonitorHeart,
                                     tint = bpVerdict?.second ?: MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),

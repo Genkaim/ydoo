@@ -4115,15 +4115,17 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     fun previewReadings(day: LocalDate): List<BloodPressure> {
         val start = day.atStartOfDay(zone).toInstant().toEpochMilli()
         fun at(hour: Int, minute: Int) = start + (hour * 60L + minute) * 60_000L
-        return listOf(
-            BloodPressure(at(7, 10), systolic = 118, diastolic = 76),
-            BloodPressure(at(7, 40), systolic = 121, diastolic = 79),
-            BloodPressure(at(8, 15), systolic = 155, diastolic = 96),
-            BloodPressure(at(8, 45), systolic = 151, diastolic = 94),
-            BloodPressure(at(12, 20), systolic = 133, diastolic = 85),
-            BloodPressure(at(19, 5), systolic = 146, diastolic = 92),
-            BloodPressure(at(21, 30), systolic = 124, diastolic = 80)
-        )
+        // Twelve readings every hour, so the chart shows what a dense day looks
+        // like; the numbers wander in a realistic band instead of a flat line.
+        return buildList {
+            for (hour in 0 until 24) {
+                for (i in 0 until 12) {
+                    val systolic = 108 + ((hour * 7 + i * 3) % 44)
+                    val diastolic = 68 + ((hour * 5 + i * 2) % 26)
+                    add(BloodPressure(at(hour, i * 5), systolic, diastolic))
+                }
+            }
+        }
     }
 
     val readings = data?.bloodPressure.orEmpty().ifEmpty {
@@ -4178,7 +4180,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
                 Text(
                     " / ",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (abnormal) tone(latest!!.band) else ink,
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
                 Text(

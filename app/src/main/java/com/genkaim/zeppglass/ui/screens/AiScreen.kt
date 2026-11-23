@@ -126,6 +126,7 @@ import com.genkaim.zeppglass.ui.components.PageHeader
 import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.RoundIconButton
 import com.genkaim.zeppglass.ui.components.TypingDots
+import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import com.genkaim.zeppglass.ui.theme.popupCardColor
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -270,16 +271,16 @@ fun AiScreen(
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
-    // A switch takes the transcript to transparent, swaps the conversation
-    // behind that blank, then brings it back: the old words fade out and the new
-    // ones fade in. The value is held by the composition, not by a coroutine, and
-    // the session key below always returns it to 1 — a cancelled switch can never
-    // leave the page empty.
-    var hiding by remember { mutableStateOf(false) }
-    val contentAlpha by animateFloatAsState(
-        targetValue = if (hiding) 0f else 1f,
-        animationSpec = tween(180),
-        label = "transcript"
+    // A switch closes a sheet of page colour over the transcript, swaps the
+    // conversation behind it, then opens it again: the mask fades in, the page
+    // changes where nothing can be seen, and the mask fades out. The value comes
+    // from the composition rather than a coroutine, and the session key below
+    // always opens it again, so the page can never be left covered.
+    var covering by remember { mutableStateOf(false) }
+    val coverAlpha by animateFloatAsState(
+        targetValue = if (covering) 1f else 0f,
+        animationSpec = tween(if (covering) 160 else 220),
+        label = "cover"
     )
     val keyboard = LocalSoftwareKeyboardController.current
     val view = LocalView.current
@@ -289,19 +290,21 @@ fun AiScreen(
      * The IME is drawn in its own window above everything the app paints: with
      * it up, a sheet that opens behind it has its lower half covered and its
      * taps eaten, and the sheet's dialog window never receives an IME inset, so
-     * padding cannot lift it clear. The field therefore gives up focus and the
-     * window's inset controller sends the IME down before the sheet appears.
-     * The Compose controller alone is a no-op on some ROMs, and the view's
-     * context can be a wrapper, hence [findActivity].
+     * padding cannot lift it clear. So the IME is asked down on the same frame
+     * the sheet starts up.
+     *
+     * One request, not three: asking through the Compose controller, the focus
+     * manager and the window in turn restarted the IME's own animation, which is
+     * what made the keyboard flicker a few times on the way out.
      */
     fun hideKeyboard() {
-        focusManager.clearFocus(force = true)
-        keyboard?.hide()
         val window = findActivity(view.context)?.window ?: return
         runCatching {
             WindowCompat.getInsetsController(window, view)
                 .hide(WindowInsetsCompat.Type.ime())
         }
+        // Dropped after the request is in, so the field cannot pull it back up.
+        focusManager.clearFocus(force = true)
     }
 
     var followBottom by remember { mutableStateOf(true) }
@@ -315,8 +318,8 @@ fun AiScreen(
             }
     }
     LaunchedEffect(AiChatSession.currentId) { followBottom = true }
-    // Whatever becomes of a switch, the transcript has to come back.
-    LaunchedEffect(AiChatSession.sessionEpoch) { hiding = false }
+    // Whatever becomes of a switch, the page has to be uncovered again.
+    LaunchedEffect(AiChatSession.sessionEpoch) { covering = false }
 
     // A new message jumps to its top; the layout observer below then pins its
     // bottom edge. Doing both in one pass computed the overflow from the frame
@@ -456,10 +459,7 @@ fun AiScreen(
             // Greeting and transcript cross-fade instead of swapping in one
             // frame, so the first message lands while the empty state is still
             // leaving instead of cutting it off.
-            FadeLayer(
-                visible = messages.isEmpty(),
-                modifier = Modifier.alpha(contentAlpha)
-            ) {
+            FadeLayer(visible = messages.isEmpty()) {
                 EmptyTranscript(
                     configured = configured,
                     onOpenSettings = onOpenSettings,
@@ -469,10 +469,7 @@ fun AiScreen(
                 )
             }
 
-            FadeLayer(
-                visible = messages.isNotEmpty(),
-                modifier = Modifier.alpha(contentAlpha)
-            ) {
+            FadeLayer(visible = messages.isNotEmpty()) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -529,7 +526,6 @@ fun AiScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .alpha(contentAlpha)
                     .padding(bottom = deckSpace + 6.dp)
             )
 
@@ -581,6 +577,15 @@ fun AiScreen(
             }
         }
 
+        // The switch mask: page colour, so it reads as the transcript
+        // dissolving rather than as a grey veil.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .alpha(coverAlpha)
+        )
+
         PinnedPageHeader(
             modifier = Modifier.align(Alignment.TopCenter),
             onHeight = { headerHeight = it },
@@ -601,10 +606,10 @@ fun AiScreen(
                 }
                 IconButton(
                     onClick = {
-                        // State first: the drawer must open even if the keyboard
-                        // refuses to go away.
-                        showHistory = true
+                        // The keyboard starts leaving first, so it travels down
+                        // together with the sheet instead of ahead of it.
                         hideKeyboard()
+                        showHistory = true
                     }
                 ) {
                     Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
@@ -630,17 +635,16 @@ fun AiScreen(
                 onOpen = { id ->
                     scope.launch {
                         hideKeyboard()
-                        runCatching { sheetState.hide() }
-                        showHistory = false
                         try {
-                            // The sheet is out of the way before the reading
-                            // goes: old words fade out, the conversation is
-                            // swapped on the blank frame, new words fade in.
-                            hiding = true
-                            kotlinx.coroutines.delay(160)
+                            // The mask closes while the drawer is still sliding
+                            // away, so the swap lands behind both of them.
+                            covering = true
+                            runCatching { sheetState.hide() }
+                            showHistory = false
+                            kotlinx.coroutines.delay(60)
                             AiChatSession.open(id)
                         } finally {
-                            hiding = false
+                            covering = false
                         }
                     }
                 },
@@ -721,7 +725,13 @@ private fun Composer(
             .fillMaxWidth()
             .animateContentSize(animationSpec = tween(160)),
         shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.surface,
+        // Same block as the floating tab bar in dark mode, so the field and the
+        // bar read as one control layer over the page.
+        color = if (LocalZgPalette.current.isDark) {
+            MaterialTheme.colorScheme.surfaceVariant
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
@@ -1206,6 +1216,16 @@ private fun HistorySheet(
     onNew: () -> Unit
 ) {
     var confirmDeleteAll by remember { mutableStateOf(false) }
+    val dark = LocalZgPalette.current.isDark
+    // The drawer is a light card in dark mode and white paper in light mode, so
+    // its ink is pinned rather than inherited from the page.
+    val ink = if (dark) Color.White else Color.Black
+    val inkMuted = ink.copy(alpha = 0.62f)
+    // The open conversation: solid green with white words in light mode; in dark
+    // mode the same green laid over the drawer, so white still reads on it.
+    val currentFill = if (dark) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    else MaterialTheme.colorScheme.primary
+    val currentInk = Color.White
     Column(Modifier.fillMaxHeight(0.72f)) {
         Row(
             Modifier
@@ -1216,6 +1236,7 @@ private fun HistorySheet(
             Text(
                 "历史对话",
                 style = MaterialTheme.typography.titleMedium,
+                color = ink,
                 modifier = Modifier.weight(1f)
             )
             if (sessions.isNotEmpty()) {
@@ -1233,7 +1254,7 @@ private fun HistorySheet(
             Text(
                 "还没有历史对话。发出的第一条消息会自动存到这里。",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = inkMuted,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
             )
         } else {
@@ -1246,12 +1267,14 @@ private fun HistorySheet(
                     // One card per conversation: the whole card opens it, and the
                     // delete key is a circle of its own so a long press near the
                     // edge cannot remove a chat by accident.
+                    val selected = session.id == currentId
                     FlatPanel(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
                         // One step lighter than the drawer, so each conversation
-                        // still reads as a card on it.
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        // still reads as a card on it; the open one is green.
+                        color = if (selected) currentFill
+                        else MaterialTheme.colorScheme.surfaceVariant,
                         onClick = { onOpen(session.id) }
                     ) {
                         Row(
@@ -1268,7 +1291,8 @@ private fun HistorySheet(
                                 Text(
                                     session.title,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (session.id == currentId) FontWeight.SemiBold
+                                    color = if (selected) currentInk else ink,
+                                    fontWeight = if (selected) FontWeight.SemiBold
                                     else FontWeight.Normal,
                                     maxLines = 1
                                 )
@@ -1276,13 +1300,13 @@ private fun HistorySheet(
                                     "${Fmt.dayAndTime(session.updatedAt)} · ${session.count} 条" +
                                         if (session.id == currentId) " · 当前" else "",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (selected) currentInk.copy(alpha = 0.85f) else inkMuted
                                 )
                                 if (session.preview.isNotBlank()) {
                                     Text(
                                         session.preview,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (selected) currentInk.copy(alpha = 0.85f) else inkMuted,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -1294,8 +1318,9 @@ private fun HistorySheet(
                             Surface(
                                 onClick = { onDelete(session.id) },
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (selected) currentInk.copy(alpha = 0.18f)
+                                else ink.copy(alpha = 0.08f),
+                                contentColor = if (selected) currentInk else ink.copy(alpha = 0.8f),
                                 tonalElevation = 0.dp,
                                 shadowElevation = 0.dp,
                                 modifier = Modifier

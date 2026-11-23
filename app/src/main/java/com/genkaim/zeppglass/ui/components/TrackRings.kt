@@ -60,9 +60,10 @@ fun TrackRings(
     LaunchedEffect(values) {
         values.forEachIndexed { index, value ->
             launch {
-                // One lap of animation, whatever the overshoot: the extra lap
-                // is shown as a static head mark, not by spinning again.
-                val target = value.coerceIn(0f, 1f)
+                // One lap plus at most one over-lap: enough for the head mark to
+                // travel to its real position instead of jumping there, but never
+                // a third revolution.
+                val target = value.coerceIn(0f, 2f)
                 val distance = abs(target - animated[index].value)
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)
@@ -118,12 +119,13 @@ fun TrackRings(
                 // they do not merge into one fat ring. Drawn after the first lap
                 // (so it sits above it) and before the badge (so the logo stays
                 // on top).
-                val realValue = values.getOrElse(index) { 0f }
-                if (realValue > 1f && progress >= 1f) {
+                if (progress > 1f) {
                     // The extra lap shares the ring's track and width, so drawing
                     // it again would be invisible. What marks "past the goal" is
                     // a single hairline outline at the head.
-                    val over = (realValue - 1f).coerceAtMost(1f)
+                    // Follows the running animation, so the mark arrives at the
+                    // overshoot position with the arc instead of appearing there.
+                    val over = (progress - 1f).coerceAtMost(1f)
                     // A full extra lap lands back on the start point, which is
                     // where the badge is: wrap it to zero before the clearance
                     // check.
@@ -133,7 +135,7 @@ fun TrackRings(
                     // length that must be skipped is their sum, in fractions of
                     // the lap. Only when the real overshoot is smaller than that
                     // is the mark pushed forward to exactly this distance.
-                    val clearFrac = ((stroke * 1.14f) / rect.perimeter).coerceAtMost(0.5f)
+                    val clearFrac = ((stroke * 0.85f) / rect.perimeter).coerceAtMost(0.5f)
                     val markAt = if (wrapped < clearFrac) clearFrac else wrapped
                     val head = rect.pointAt(rect.perimeter * markAt)
                     val before = rect.pointAt(rect.perimeter * markAt - 0.5f)

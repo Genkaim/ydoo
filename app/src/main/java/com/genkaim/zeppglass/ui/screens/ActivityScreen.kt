@@ -307,8 +307,8 @@ private fun ActivityHero(
     // scale so the arc still moves, but no goal is ever printed as if official.
     val activeProgress = ((activeMinutes ?: 0).toFloat() /
         (activeGoal?.takeIf { it > 0 } ?: 60).toFloat())
-    val stepColor = MaterialTheme.colorScheme.primary
-    val kcalColor = MaterialTheme.colorScheme.tertiary
+    val pointColor = MaterialTheme.colorScheme.tertiary
+    val stepColor = palette.workout
     val activeColor = palette.sleepRem
     Column(
         Modifier
@@ -317,11 +317,11 @@ private fun ActivityHero(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         TrackRings(
-            values = listOf(stepsProgress, pointsProgress, activeProgress),
-            colors = listOf(stepColor, kcalColor, activeColor),
+            values = listOf(pointsProgress, stepsProgress, activeProgress),
+            colors = listOf(pointColor, stepColor, activeColor),
             icons = listOf(
-                Icons.Rounded.DirectionsWalk,
                 Icons.Rounded.Star,
+                Icons.Rounded.DirectionsWalk,
                 Icons.Rounded.Timer
             ),
             modifier = Modifier.size(240.dp),
@@ -340,9 +340,11 @@ private fun ActivityStatsCard(
     bandBased: Boolean,
     advice: ExertionDay?
 ) {
-    val stepColor = MaterialTheme.colorScheme.primary
-    val activeColor = LocalZgPalette.current.sleepRem
-    val kcalColor = MaterialTheme.colorScheme.tertiary
+    val palette = LocalZgPalette.current
+    val stepColor = palette.workout
+    val pointColor = MaterialTheme.colorScheme.tertiary
+    val activeColor = palette.sleepRem
+    val kcalColor = palette.warn
     FlatPanel(Modifier.fillMaxWidth()) {
         Column(
             Modifier
@@ -377,7 +379,7 @@ private fun ActivityStatsCard(
                     Icons.Rounded.Star,
                     "活动点数",
                     advice?.totalScore?.toString() ?: "--",
-                    MaterialTheme.colorScheme.primary,
+                    pointColor,
                     valueSuffix = advice?.targetScore?.takeIf { it > 0 }?.let { "/$it" }
                 )
             }

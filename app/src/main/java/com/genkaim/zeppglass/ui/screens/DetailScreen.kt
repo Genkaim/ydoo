@@ -3945,7 +3945,6 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
             // The night's samples as one bar per hour, the same time chart the
             // blood pressure page uses: from that hour's lowest to its highest
             // reading, coloured by the lowest (the hour is as good as its worst).
-            SectionTitle("各小时")
             FlatPanel {
                 HourlySpo2Chart(
                     points = points,
@@ -4396,14 +4395,19 @@ private fun HourlyBloodPressureChart(hours: List<BpHour>, modifier: Modifier = M
 }
 
 /**
- * Oxygen for the whole night, one bar per hour: the hour's lowest to highest
- * reading, coloured by that lowest sample, with a dot at the hour's midpoint.
- * Same shape as the blood pressure time chart so the two pages read alike.
+ * Oxygen for the whole night, one bar per hour: from that hour's lowest to its
+ * highest reading, coloured by the lowest. The value axis comes from the night
+ * itself instead of a fixed 85–100, so a steady night is not drawn against a lot
+ * of empty space.
+ *
+ * An hour with a single sample has no range to draw. It only gets a short stub,
+ * and only when it falls outside every range already on screen — inside one, the
+ * stub would be noise on top of an existing bar.
  */
 @Composable
 private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifier) {
     val zone = ZoneId.systemDefault()
-    val hours = (0 until 24).mapNotNull { hour ->
+    val bars = (0 until 24).mapNotNull { hour ->
         val bucket = points.filter {
             Instant.ofEpochMilli(it.epochMs).atZone(zone).hour == hour
         }
@@ -4413,13 +4417,20 @@ private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifi
             Triple(hour, bucket.minOf { it.value }, bucket.maxOf { it.value })
         }
     }
-    if (hours.isEmpty()) return
+    val ranged = bars.filter { it.second != it.third }
+    val shown = if (ranged.isEmpty()) {
+        bars
+    } else {
+        val lowBound = ranged.minOf { it.second }
+        val highBound = ranged.maxOf { it.third }
+        bars.filter { bar -> bar.second != bar.third || bar.second < lowBound || bar.second > highBound }
+    }
+    if (shown.isEmpty()) return
     val measurer = rememberTextMeasurer()
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
-    val ink = MaterialTheme.colorScheme.onSurface
-    val lo = 85f
-    val hi = 100f
+    val lo = kotlin.math.floor(shown.minOf { it.second }.toFloat() - 1f)
+    val hi = kotlin.math.ceil(shown.maxOf { it.third }.toFloat() + 1f)
 
     fun tone(value: Int): Color = when {
         value >= 95 -> palette.accent
@@ -4436,10 +4447,10 @@ private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifi
         val chartHeight = (size.height - axisHeight - topPad - bottomPad).coerceAtLeast(8f)
         fun yOf(value: Float): Float = topPad + chartHeight - ((value - lo) / (hi - lo)) * chartHeight
 
-        listOf(85, 90, 95, 100).forEach { tick ->
-            val y = yOf(tick.toFloat())
+        listOf(hi, (hi + lo) / 2f, lo).forEach { tick ->
+            val y = yOf(tick)
             drawLine(palette.grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
-            val layout = measurer.measure(tick.toString(), axisStyle)
+            val layout = measurer.measure(tick.roundToInt().toString(), axisStyle)
             drawText(
                 layout,
                 topLeft = Offset(0f, (y - layout.size.height / 2f).coerceAtLeast(0f))
@@ -4448,23 +4459,19 @@ private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifi
 
         val slot = chartWidth / 24f
         val barWidth = (slot * 0.46f).coerceAtLeast(2f)
-        hours.forEach { (hour, lowest, highest) ->
+        val stub = 3.dp.toPx()
+        shown.forEach { (hour, lowest, highest) ->
             val centerX = axisWidth + slot * hour + slot / 2f
             val top = yOf(highest.toFloat())
             val bottom = yOf(lowest.toFloat())
+            // A single sample has no span; it gets a short stub instead of a
+            // hairline that would read as a rendering artefact.
+            val height = if (lowest == highest) stub else (bottom - top).coerceAtLeast(1f)
             drawRoundRect(
-                color = tone(lowest).copy(alpha = 0.45f),
+                color = tone(lowest).copy(alpha = 0.55f),
                 topLeft = Offset(centerX - barWidth / 2f, top),
-                size = androidx.compose.ui.geometry.Size(
-                    barWidth,
-                    (bottom - top).coerceAtLeast(1f)
-                ),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
-            )
-            drawCircle(
-                ink.copy(alpha = 0.6f),
-                radius = 1.8.dp.toPx(),
-                center = Offset(centerX, yOf((lowest + highest) / 2f))
+                size = androidx.compose.ui.geometry.Size(barWidth, height),
+                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
             )
         }
 

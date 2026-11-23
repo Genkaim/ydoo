@@ -700,7 +700,9 @@ private fun RecentWorkoutList(data: HealthData?, onOpen: (String) -> Unit) {
     if (workouts.isEmpty()) return
     SectionTitle("最近运动")
     FlatPanel {
-        Column(Modifier.padding(vertical = 4.dp)) {
+        // No padding around the list: the first and last row carry the card's
+        // edge, so their pressed tint runs all the way to the rounded corners.
+        Column {
             workouts.forEach { workout ->
                 Row(
                     Modifier

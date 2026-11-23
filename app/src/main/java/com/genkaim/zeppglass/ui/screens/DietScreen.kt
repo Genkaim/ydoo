@@ -1563,10 +1563,10 @@ private fun DietAiDialog(
                 .fillMaxSize()
                 .imePadding()
                 .padding(horizontal = 18.dp, vertical = 24.dp),
-            // Anchored to the bottom: the card grows upwards when the estimate
-            // arrives and stays put when the keyboard opens, so it never bounces
-            // between two layout positions.
-            contentAlignment = Alignment.BottomCenter
+            // Centred like the other dialogs; the full-size box means the card
+            // keeps one anchor while it grows, instead of the window re-centring
+            // a wrap-content box on every change.
+            contentAlignment = Alignment.Center
         ) {
             FlatPanel(
                 Modifier.fillMaxWidth(),

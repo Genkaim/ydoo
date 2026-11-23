@@ -1684,7 +1684,9 @@ private fun RecentWorkouts(
     if (workouts.isEmpty()) return
     SectionTitle(if (date == today) "最近运动" else "${Fmt.date(date)} 运动")
     FlatPanel {
-        Column(Modifier.padding(vertical = 4.dp)) {
+        // Rows reach the card's top and bottom edges, so the pressed tint of the
+        // first and last row stops at the card outline instead of a strip inside.
+        Column {
             workouts.forEachIndexed { index, workout ->
                 Row(
                     Modifier

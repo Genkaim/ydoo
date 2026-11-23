@@ -124,10 +124,17 @@ fun TrackRings(
                     // it again would be invisible. What marks "past the goal" is
                     // a single hairline outline at the head.
                     val over = (realValue - 1f).coerceAtMost(1f)
-                    // The badge sits at the start and keeps its fill: push the
-                    // mark well past it, and never all the way round.
-                    val badgeClear = (stroke * 2.1f) / rect.perimeter
-                    val markAt = over.coerceAtLeast(badgeClear).coerceAtMost(0.90f)
+                    // A full extra lap lands back on the start point, which is
+                    // where the badge is: wrap it to zero before the clearance
+                    // check.
+                    val wrapped = if (over >= 1f) 0f else over
+                    // The badge (radius stroke/2) plus the outline itself (outer
+                    // radius 0.57 + 0.07 stroke) would cover the mark: the arc
+                    // length that must be skipped is their sum, in fractions of
+                    // the lap. Only when the real overshoot is smaller than that
+                    // is the mark pushed forward to exactly this distance.
+                    val clearFrac = ((stroke * 1.14f) / rect.perimeter).coerceAtMost(0.5f)
+                    val markAt = if (wrapped < clearFrac) clearFrac else wrapped
                     val head = rect.pointAt(rect.perimeter * markAt)
                     val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
                     val dir = Math.toDegrees(

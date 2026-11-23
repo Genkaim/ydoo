@@ -1,6 +1,6 @@
 package com.genkaim.zeppglass.ui.components
 
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -71,7 +71,7 @@ fun TrackRings(
                         targetValue = target,
                         animationSpec = tween(
                             durationMillis = (distance * LAP_MILLIS).toInt().coerceAtLeast(60),
-                            easing = LinearEasing
+                            easing = FastOutSlowInEasing
                         )
                     )
                 }
@@ -132,7 +132,10 @@ fun TrackRings(
                     // its fill, so a head mark that would land underneath it is
                     // pushed a little further along the arc instead.
                     val badgeClear = (stroke * 1.25f) / rect.perimeter
-                    val markAt = over.coerceAtLeast(badgeClear).coerceAtMost(1f)
+                    // Never all the way round: at exactly one full extra lap the
+                    // head would sit under the badge again, so it stops just
+                    // short and stays visible.
+                    val markAt = over.coerceAtLeast(badgeClear).coerceAtMost(0.96f)
                     val head = rect.pointAt(rect.perimeter * markAt)
                     val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
                     val dir = Math.toDegrees(

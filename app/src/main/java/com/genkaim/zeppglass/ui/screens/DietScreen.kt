@@ -1368,6 +1368,13 @@ private fun DietAiDialog(
     var saved by remember { mutableStateOf(false) }
 
     fun run(note: String? = null) {
+        // A correction replaces the estimate outright: the old list leaves the
+        // card the moment the instruction is sent, instead of sitting there
+        // with numbers the model is already reworking.
+        if (!note.isNullOrBlank()) {
+            result = null
+            saved = false
+        }
         val extra = listOfNotNull(
             notes.takeIf { it.isNotBlank() },
             note?.takeIf { it.isNotBlank() }

@@ -18,6 +18,10 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -52,12 +56,30 @@ import kotlin.math.roundToInt
  * by type, so the numbers and rings always match the app instead of trusting
  * text the model typed.
  */
+/**
+ * One Markdown block. While an answer streams, a block that has just appeared
+ * fades in over a quarter second, so the text arrives in readable pieces
+ * instead of snapping in character by character.
+ */
+@Composable
+private fun FadeInBlock(enabled: Boolean, content: @Composable () -> Unit) {
+    if (!enabled) {
+        content()
+        return
+    }
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { alpha.animateTo(1f, tween(240)) }
+    Box(Modifier.graphicsLayer { this.alpha = alpha.value }) { content() }
+}
+
 @Composable
 fun MarkdownView(
     text: String,
     data: HealthData? = null,
     modifier: Modifier = Modifier,
-    color: Color = LocalContentColor.current
+    color: Color = LocalContentColor.current,
+    /** Fade each block the first time it appears (used while an answer streams). */
+    animateNewBlocks: Boolean = false
 ) {
     val blocks = remember(text) { parseBlocks(text) }
     // A little more air between lines than Material's default: answers carry
@@ -68,6 +90,7 @@ fun MarkdownView(
     val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         blocks.forEach { block ->
+            FadeInBlock(animateNewBlocks) {
             when (block) {
                 is Block.Heading -> Text(
                     block.text,
@@ -144,6 +167,7 @@ fun MarkdownView(
                         }
                     }
                 }
+            }
             }
         }
     }

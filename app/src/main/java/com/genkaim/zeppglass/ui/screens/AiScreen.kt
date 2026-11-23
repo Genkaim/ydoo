@@ -688,6 +688,42 @@ private fun UserBubble(text: String) {
     }
 }
 
+/**
+ * A streamed answer, revealed in sentence-sized pieces.
+ *
+ * The model sends a few characters at a time; painting every chunk as it lands
+ * made the answer crawl in one character at a time. Here the text only moves on
+ * at a stop (a line end or a sentence mark, at most 90 characters), and each
+ * Markdown block that appears on the way fades in, so it reads as paragraphs
+ * arriving rather than as a spinner of letters.
+ */
+@Composable
+private fun StreamingAnswer(content: String, streaming: Boolean, data: HealthData?) {
+    var shown by remember { mutableStateOf("") }
+    LaunchedEffect(content, streaming) {
+        if (!streaming) return@LaunchedEffect
+        while (shown.length < content.length) {
+            shown = content.substring(0, revealUpTo(content, shown.length))
+            kotlinx.coroutines.delay(80)
+        }
+    }
+    // Once the request ends the full text is shown at once: the last few
+    // characters must not keep trickling in after the typing dots are gone.
+    val visible = if (streaming) shown else content
+    MarkdownView(visible, data = data, animateNewBlocks = streaming)
+}
+
+/** How much of [text] can be shown in one step, starting at [from]. */
+private fun revealUpTo(text: String, from: Int): Int {
+    if (from >= text.length) return text.length
+    val limit = minOf(text.length, from + 90)
+    for (i in from until limit) {
+        val c = text[i]
+        if (c == '\n' || c in "。！？!?；;") return i + 1
+    }
+    return limit
+}
+
 /** The three faces one answer can have; swapping them is animated. */
 private enum class AnswerMode { WAITING, ERROR, TEXT }
 
@@ -757,7 +793,7 @@ private fun AssistantMessage(
             }
 
             AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
-                MarkdownView(message.content, data = data)
+                StreamingAnswer(message.content, streaming, data)
                 AnimatedVisibility(
                     visible = streaming,
                     enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),

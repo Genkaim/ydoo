@@ -155,7 +155,11 @@ fun MarkdownView(
                         // instead of inheriting the finished alpha of the text
                         // that was there a moment ago.
                         key(block.code) {
-                            FadeInBlock(enabled = true) { AiDataCard(block.code, data) }
+                            // Fades while it arrives; a card restored from history
+                            // is simply there.
+                            FadeInBlock(enabled = animateNewBlocks) {
+                                AiDataCard(block.code, data)
+                            }
                         }
                     } else {
                         Box(

@@ -378,15 +378,10 @@ fun AiScreen(
             // starting at zero made the list sit lower for one frame, then jump
             // up when the composer was measured — that was the "messages fly and
             // come back" on entering a conversation.
-            // Only the composer itself is measured. The air under it is the very
-            // bottomSpace the composer sits on, added here in composition: both
-            // the field and the transcript's last line then move on the same
-            // frame, instead of the list following a height measured a frame late.
-            var composerPx by remember {
-                mutableIntStateOf(with(density) { 68.dp.roundToPx() })
+            var deckPx by remember {
+                mutableIntStateOf(with(density) { (bottomSpace + 68.dp).roundToPx() })
             }
-            val composerSpace = with(density) { composerPx.toDp() }
-            val deckSpace = composerSpace + bottomSpace
+            val deckSpace = with(density) { deckPx.toDp() }
 
             // Greeting and transcript cross-fade instead of swapping in one
             // frame, so the first message lands while the empty state is still
@@ -490,18 +485,20 @@ fun AiScreen(
                 // measured height would shrink the transcript's bottom padding
                 // frame by frame and drag the list down while the new bubble is
                 // still rising — the two animations fighting each other.
-                Column(Modifier.fillMaxWidth()) {
-                    Box(Modifier.onSizeChanged { composerPx = it.height }) {
-                        Composer(
-                            value = input,
-                            onValueChange = { AiChatSession.draft = it },
-                            sending = sending,
-                            enabled = configured,
-                            onSend = { send(input) },
-                            onStop = { AiChatSession.stop() },
-                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
-                        )
-                    }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { deckPx = it.height }
+                ) {
+                    Composer(
+                        value = input,
+                        onValueChange = { AiChatSession.draft = it },
+                        sending = sending,
+                        enabled = configured,
+                        onSend = { send(input) },
+                        onStop = { AiChatSession.stop() },
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
+                    )
                     Spacer(Modifier.height(bottomSpace))
                 }
             }

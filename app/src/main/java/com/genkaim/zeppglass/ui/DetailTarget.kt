@@ -24,13 +24,18 @@ enum class DetailKind {
     WORKOUT_MORE,
 
     /** 疲劳 / 体能 / 训练状态 (ATL / CTL / TSB) history. */
-    TRAINING_STATUS
+    TRAINING_STATUS,
+
+    /** One body-composition metric, with its month of readings. */
+    BODY_METRIC
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */
 data class DetailTarget(
     val kind: DetailKind,
     val date: LocalDate? = null,
-    val workoutId: String? = null
+    val workoutId: String? = null,
+    /** Which body metric a [DetailKind.BODY_METRIC] page shows. */
+    val metric: String? = null
 )
 

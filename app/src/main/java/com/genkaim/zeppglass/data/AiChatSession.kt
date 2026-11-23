@@ -455,7 +455,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                 // single question. It now runs only when the question points at
                 // a period the digest cannot cover.
                 if (asksForOlderData(question)) {
-                    phase = "正在读取本机数据…"
+                    phase = "正在读取本机数据"
                     val plan = withContext(Dispatchers.IO) {
                         client.complete(
                             listOf(
@@ -480,7 +480,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                     }
                 }
 
-                phase = "深度思考中…"
+                phase = "深度思考中"
                 conversation.add(
                     ChatMessage(
                         "user",
@@ -516,7 +516,7 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                     // answer instead of leaving JSON code in the bubble.
                     val pending = onlyQuery(messages.getOrNull(assistantIndex)?.content.orEmpty())
                     if (pending == null || round > 0) break
-                    phase = "正在读取本机数据…"
+                    phase = "正在读取本机数据"
                     val result = withContext(Dispatchers.IO) { AiTools.execute(pending, data, settings.dietGoalOrCut) }
                     conversation.add(ChatMessage("assistant", "（查询本机数据：$pending）"))
                     conversation.add(ChatMessage("user", "查询结果：\n$result\n请据此给出最终回答。"))

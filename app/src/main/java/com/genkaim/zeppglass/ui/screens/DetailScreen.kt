@@ -246,7 +246,8 @@ fun DetailScreen(
                 DetailKind.LOAD -> LoadDetail(data, target.date)
                 DetailKind.TRAINING_STATUS -> TrainingStatusDetail(data)
                 DetailKind.PAI -> PaiDetail(data, target.date)
-                DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
+                DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource, onOpen)
+                DetailKind.BODY_METRIC -> BodyMetricDetail(data, target.metric)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
                 DetailKind.WORKOUT -> WorkoutDetail(
                     workout = workout,
@@ -374,6 +375,17 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.NIGHT_SPO2 -> "夜间血氧"
     DetailKind.BLOOD_PRESSURE -> "血压"
     DetailKind.WORKOUT_MORE -> "其他数据"
+    DetailKind.BODY_METRIC -> when (target.metric) {
+        "bmi" -> "BMI"
+        "fat" -> "体脂率"
+        "muscle" -> "肌肉"
+        "skeletal" -> "骨骼肌"
+        "water" -> "体水分率"
+        "bone" -> "骨量"
+        "bmr" -> "基础代谢"
+        "protein" -> "蛋白质率"
+        else -> "体重"
+    }
 }
 
 private fun subtitle(target: DetailTarget, data: HealthData?): String = when (target.kind) {
@@ -401,6 +413,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
     DetailKind.BLOOD_PRESSURE -> target.date?.let(Fmt::date) ?: "收缩压 / 舒张压，mmHg"
     DetailKind.WORKOUT_MORE -> ""
+    DetailKind.BODY_METRIC -> "近 1 个月"
 }
 
 // ---------------- sleep ----------------
@@ -1844,10 +1857,84 @@ private fun PaiZoneColumn(
     }
 }
 
+// ---------------- one body metric ----------------
+
+/**
+ * One body-composition metric on its own page: the same month of readings the
+ * trend card draws, given a full-width card of its own.
+ */
+@Composable
+private fun BodyMetricDetail(data: HealthData?, metric: String?) {
+    val palette = LocalZgPalette.current
+    val title: String
+    val unit: String
+    val color: androidx.compose.ui.graphics.Color
+    val selector: (WeightPoint) -> Double?
+    when (metric) {
+        "bmi" -> {
+            title = "BMI"; unit = ""
+            color = MaterialTheme.colorScheme.tertiary; selector = { it.bmi }
+        }
+        "fat" -> {
+            title = "体脂率"; unit = "%"
+            color = palette.warn; selector = { it.bodyFatPct }
+        }
+        "muscle" -> {
+            title = "肌肉"; unit = "kg"
+            color = palette.sleepLight; selector = { it.muscleKg }
+        }
+        "skeletal" -> {
+            title = "骨骼肌"; unit = "kg"
+            color = palette.chargePhysical; selector = { it.skeletalMuscleKg }
+        }
+        "water" -> {
+            title = "体水分率"; unit = "%"
+            color = palette.chargeMental; selector = { it.bodyWaterPct }
+        }
+        "bone" -> {
+            title = "骨量"; unit = "kg"
+            color = palette.sleepRem; selector = { it.boneMassKg }
+        }
+        "bmr" -> {
+            title = "基础代谢"; unit = "kcal"
+            color = palette.critical; selector = { it.metabolismKcal }
+        }
+        "protein" -> {
+            title = "蛋白质率"; unit = "%"
+            color = palette.accent; selector = { it.proteinPct }
+        }
+        else -> {
+            title = "体重"; unit = "kg"
+            color = palette.accent; selector = { it.weightKg }
+        }
+    }
+    val points = data?.weights.orEmpty()
+    if (points.none { selector(it) != null }) {
+        Missing("还没有${title}的记录")
+        return
+    }
+    FlatPanel {
+        BodyTrendRow(
+            title = title,
+            unit = unit,
+            points = points,
+            color = color,
+            padFraction = 0.14,
+            selector = selector,
+            chartHeight = 200.dp
+        )
+    }
+}
+
 // ---------------- weight ----------------
 
 @Composable
-private fun WeightDetail(data: HealthData?, date: LocalDate?, source: String) {
+private fun WeightDetail(
+    data: HealthData?,
+    date: LocalDate?,
+    source: String,
+    onOpen: (DetailTarget) -> Unit
+) {
     // Switching source fades the cards; only the toggle's own pill slides.
     AnimatedContent(
         targetState = source,
@@ -1856,12 +1943,17 @@ private fun WeightDetail(data: HealthData?, date: LocalDate?, source: String) {
         },
         label = "body-source"
     ) { source ->
-        WeightBody(data, date, source)
+        WeightBody(data, date, source, onOpen)
     }
 }
 
 @Composable
-private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
+private fun WeightBody(
+    data: HealthData?,
+    date: LocalDate?,
+    source: String,
+    onOpen: (DetailTarget) -> Unit
+) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         val zone = ZoneId.systemDefault()
         val all = data?.weights.orEmpty()
@@ -2041,6 +2133,11 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         val fatTop = if (male) 27.0 else 32.0
         val muscleLow = heightM?.let { 16.5 * it * it } ?: 49.5
         val muscleHigh = heightM?.let { 19.8 * it * it } ?: 59.4
+        // Skeletal muscle is the part of total muscle the watch reports, about
+        // seven tenths of it: the same scale, scaled down.
+        val skeletalLow = muscleLow * 0.72
+        val skeletalHigh = muscleHigh * 0.72
+        val skeletalMax = maxOf(skeletalHigh * 1.3, (bodyWeight ?: 0.0) * 0.6, 45.0)
         val boneLow = if (male) 2.0 else 1.5
         val boneHigh = if (male) 4.0 else 3.5
         val weightMax = maxOf(150.0, (bodyWeight ?: 0.0) + 10.0)
@@ -2067,6 +2164,14 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             when {
                 it < muscleLow -> "偏低" to BodyTone.WARN
                 it < muscleHigh -> "标准" to BodyTone.NORMAL
+                else -> "优秀" to BodyTone.NORMAL
+            }
+        }
+        val skeletalValue = latest?.skeletalMuscleKg ?: comp?.skeletalMuscleKg
+        val skeletalRate = skeletalValue?.let {
+            when {
+                it < skeletalLow -> "偏低" to BodyTone.WARN
+                it < skeletalHigh -> "标准" to BodyTone.NORMAL
                 else -> "优秀" to BodyTone.NORMAL
             }
         }
@@ -2130,6 +2235,11 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             Triple(muscleLow, muscleHigh, BodyTone.NORMAL),
             Triple(muscleHigh, muscleMax, BodyTone.NORMAL)
         )
+        val skeletalBands = listOf(
+            Triple(10.0, skeletalLow, BodyTone.WARN),
+            Triple(skeletalLow, skeletalHigh, BodyTone.NORMAL),
+            Triple(skeletalHigh, skeletalMax, BodyTone.NORMAL)
+        )
         val waterBands = listOf(
             Triple(35.0, 55.0, BodyTone.WARN),
             Triple(55.0, 65.0, BodyTone.NORMAL),
@@ -2175,12 +2285,12 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         val metrics = listOf(
             BodyMetric(
                 "体重", Icons.Rounded.MonitorWeight, kg(latest?.weightKg), latest?.weightKg,
-                bmiRate, 30.0, weightMax, weightBands, weightTicks
+                bmiRate, 30.0, weightMax, weightBands, weightTicks, "weight"
             ),
             BodyMetric(
                 "BMI", Icons.Rounded.Straighten, Fmt.oneDecimal(bmi), bmi,
                 bmiRate, 15.0, 40.0, bmiBands,
-                listOf(18.5 to "18.5", 24.0 to "24", 28.0 to "28")
+                listOf(18.5 to "18.5", 24.0 to "24", 28.0 to "28"), "bmi"
             ),
             BodyMetric(
                 "体脂率", Icons.Rounded.Percent, pct(comp?.bodyFatPct), comp?.bodyFatPct,
@@ -2188,22 +2298,22 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
                 listOf(
                     fatLow to cut(fatLow), fatOk to cut(fatOk),
                     fatHigh to cut(fatHigh), fatTop to cut(fatTop)
-                )
+                ), "fat"
             ),
             BodyMetric(
                 "肌肉", Icons.Rounded.FitnessCenter, kg(comp?.muscleKg), comp?.muscleKg,
                 muscleRate, 20.0, muscleMax, muscleBands,
-                listOf(muscleLow to cut(muscleLow, 1), muscleHigh to cut(muscleHigh, 1))
+                listOf(muscleLow to cut(muscleLow, 1), muscleHigh to cut(muscleHigh, 1)), "muscle"
             ),
             BodyMetric(
                 "体水分率", Icons.Rounded.WaterDrop, pct(comp?.bodyWaterPct),
                 comp?.bodyWaterPct, waterRate, 35.0, 75.0, waterBands,
-                listOf(55.0 to "55", 65.0 to "65")
+                listOf(55.0 to "55", 65.0 to "65"), "water"
             ),
             BodyMetric(
                 "骨量", Icons.Rounded.Spa, kg(comp?.boneMassKg, 2), comp?.boneMassKg,
                 boneRate, 1.0, 5.0, boneBands,
-                listOf(boneLow to cut(boneLow), boneHigh to cut(boneHigh))
+                listOf(boneLow to cut(boneLow), boneHigh to cut(boneHigh)), "bone"
             ),
             // The watch reports skeletal muscle, not visceral fat: that row is
             // what the body-composition reading actually carries. It has no
@@ -2211,19 +2321,20 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
             // inventing a verdict.
             BodyMetric(
                 "骨骼肌", Icons.Rounded.Accessibility,
-                kg(latest?.skeletalMuscleKg ?: comp?.skeletalMuscleKg),
-                latest?.skeletalMuscleKg ?: comp?.skeletalMuscleKg,
-                null, 10.0, 60.0, emptyList(), emptyList()
+                kg(skeletalValue), skeletalValue,
+                skeletalRate, 10.0, skeletalMax, skeletalBands,
+                listOf(skeletalLow to cut(skeletalLow, 1), skeletalHigh to cut(skeletalHigh, 1)),
+                "skeletal"
             ),
             BodyMetric(
                 "基础代谢", Icons.Rounded.LocalFireDepartment,
                 comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
-                comp?.metabolismKcal, bmrRate, 800.0, 2600.0, bmrBands, bmrTicks
+                comp?.metabolismKcal, bmrRate, 800.0, 2600.0, bmrBands, bmrTicks, "bmr"
             ),
             BodyMetric(
                 "蛋白质率", Icons.Rounded.Restaurant, pct(comp?.proteinPct),
                 comp?.proteinPct, proteinRate, 10.0, 25.0, proteinBands,
-                listOf(16.0 to "16", 18.0 to "18")
+                listOf(16.0 to "16", 18.0 to "18"), "protein"
             )
         )
 
@@ -2236,7 +2347,12 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         FlatPanel {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 basicMetrics.forEachIndexed { index, metric ->
-                    BodyMetricRow(metric)
+                    BodyMetricRow(
+                        metric,
+                        onClick = metric.metricKey?.let { key ->
+                            { onOpen(DetailTarget(DetailKind.BODY_METRIC, date, metric = key)) }
+                        }
+                    )
                     if (index != basicMetrics.lastIndex) MetricDivider()
                 }
             }
@@ -2245,7 +2361,12 @@ private fun WeightBody(data: HealthData?, date: LocalDate?, source: String) {
         FlatPanel {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 bodyMetrics.forEachIndexed { index, metric ->
-                    BodyMetricRow(metric)
+                    BodyMetricRow(
+                        metric,
+                        onClick = metric.metricKey?.let { key ->
+                            { onOpen(DetailTarget(DetailKind.BODY_METRIC, date, metric = key)) }
+                        }
+                    )
                     if (index != bodyMetrics.lastIndex) MetricDivider()
                 }
             }
@@ -2301,12 +2422,14 @@ private class BodyMetric(
     val max: Double,
     val bands: List<Triple<Double, Double, BodyTone>>,
     /** Threshold numbers printed under the bar at the colour cuts. */
-    val ticks: List<Pair<Double, String>> = emptyList()
+    val ticks: List<Pair<Double, String>> = emptyList(),
+    /** Which trend page this row opens; null keeps the row inert. */
+    val metricKey: String? = null
 )
 
 /** One body metric: label, rating, value, and a band-split bar at its value. */
 @Composable
-private fun BodyMetricRow(metric: BodyMetric) {
+private fun BodyMetricRow(metric: BodyMetric, onClick: (() -> Unit)? = null) {
     val palette = LocalZgPalette.current
     val primary = MaterialTheme.colorScheme.primary
     val surface = MaterialTheme.colorScheme.surface
@@ -2321,6 +2444,10 @@ private fun BodyMetricRow(metric: BodyMetric) {
     Column(
         Modifier
             .fillMaxWidth()
+            .then(
+                if (onClick == null) Modifier
+                else Modifier.clickable(onClick = onClick)
+            )
             .padding(vertical = 15.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2415,6 +2542,7 @@ private fun BodyTrendRow(
     points: List<WeightPoint>,
     color: Color,
     padFraction: Double,
+    chartHeight: androidx.compose.ui.unit.Dp = 140.dp,
     selector: (WeightPoint) -> Double?
 ) {
     val zone = ZoneId.systemDefault()
@@ -2468,7 +2596,7 @@ private fun BodyTrendRow(
                 padFraction = padFraction,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    .height(chartHeight)
             )
         }
         Spacer(Modifier.height(10.dp))

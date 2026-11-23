@@ -35,8 +35,6 @@ import kotlinx.coroutines.launch
 /** Milliseconds one full lap takes, with every ring using the same speed. */
 private const val LAP_MILLIS = 700f
 
-/** How far past the lap an over-goal ring animates, to clear the badge. */
-private const val OVER_LAP_EXTRA = 0.06f
 
 /**
  * Activity rings drawn as a running track: a stadium (two straights and two
@@ -60,13 +58,13 @@ fun TrackRings(
     // and the speed on screen stays the same either way. Values past 1 are not
     // clamped, so the extra lap can be drawn.
     val animated = values.map { remember { Animatable(0f) } }
+    // How far the over-goal mark has travelled out of the start point: 0 = not
+    // shown, 1 = at its final position.
+    val markTravel = values.map { remember { Animatable(0f) } }
     LaunchedEffect(values) {
         values.forEachIndexed { index, value ->
             launch {
-                // Over the goal the head runs one lap and then a little past the
-                // start, ending just clear of the badge; the marker rides it the
-                // whole way.
-                val target = if (value > 1f) 1f + OVER_LAP_EXTRA else value.coerceIn(0f, 1f)
+                val target = value.coerceIn(0f, 1f)
                 val distance = abs(target - animated[index].value)
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)
@@ -78,6 +76,16 @@ fun TrackRings(
                             easing = FastOutSlowInEasing
                         )
                     )
+                }
+                // The mark only starts once the ring has finished: it fades in and
+                // walks out from the start point on its own.
+                if (value > 1f) {
+                    markTravel[index].animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(420, easing = FastOutSlowInEasing)
+                    )
+                } else {
+                    markTravel[index].snapTo(0f)
                 }
             }
         }
@@ -123,33 +131,40 @@ fun TrackRings(
                 // it reaches that position — so the animation ends where the mark
                 // already is, with no last-moment jump and no second lap.
                 val realValue = values.getOrElse(index) { 0f }
-                if (realValue > 1f) {
-                    // Same position as the arc's head: after the lap it carries on
-                    // from the start point, so the mark travels with the tip and
-                    // comes to rest a little past the badge.
-                    val headAt = if (progress <= 1f) progress else progress - 1f
-                    // Arc length the badge would hide, as a fraction of the lap.
+                val travel = markTravel.getOrNull(index)?.value ?: 0f
+                if (realValue > 1f && travel > 0f) {
+                    val over = (realValue - 1f).coerceAtMost(1f)
+                    // A whole extra lap ends on the start point, where the badge
+                    // is; wrap it to zero.
+                    val wrapped = if (over >= 1f) 0f else over
+                    // The badge disc (0.5 stroke) plus the mark's own outer radius
+                    // (0.57 + 0.07) is what the mark has to clear; a little margin
+                    // keeps the edge from touching.
                     val clearFrac = ((stroke * 1.3f) / rect.perimeter).coerceAtMost(0.45f)
-                    if (headAt >= clearFrac) {
-                        val head = rect.pointAt(rect.perimeter * headAt)
-                        val before = rect.pointAt(rect.perimeter * headAt - 0.5f)
-                        val dir = Math.toDegrees(
-                            kotlin.math.atan2(
-                                (head.y - before.y).toDouble(),
-                                (head.x - before.x).toDouble()
-                            )
-                        ).toFloat()
-                        val r = stroke * 0.57f
-                        drawArc(
-                            color = badgeColor,
-                            startAngle = dir - 90f,
-                            sweepAngle = 180f,
-                            useCenter = false,
-                            topLeft = Offset(head.x - r, head.y - r),
-                            size = Size(r * 2f, r * 2f),
-                            style = Stroke(stroke * 0.14f, cap = StrokeCap.Round)
-                        )
+                    val finalMark = when {
+                        wrapped < clearFrac -> clearFrac
+                        wrapped > 1f - clearFrac -> 1f - clearFrac
+                        else -> wrapped
                     }
+                    val markAt = finalMark * travel
+                    val head = rect.pointAt(rect.perimeter * markAt)
+                    val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
+                    val dir = Math.toDegrees(
+                        kotlin.math.atan2(
+                            (head.y - before.y).toDouble(),
+                            (head.x - before.x).toDouble()
+                        )
+                    ).toFloat()
+                    val r = stroke * 0.57f
+                    drawArc(
+                        color = badgeColor.copy(alpha = travel),
+                        startAngle = dir - 90f,
+                        sweepAngle = 180f,
+                        useCenter = false,
+                        topLeft = Offset(head.x - r, head.y - r),
+                        size = Size(r * 2f, r * 2f),
+                        style = Stroke(stroke * 0.14f, cap = StrokeCap.Round)
+                    )
                 }
 
                 // The logo is exactly as wide as the ring: a badge the width of

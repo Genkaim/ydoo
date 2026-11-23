@@ -1,5 +1,6 @@
 package com.genkaim.zeppglass.ui.screens
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -99,6 +100,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -108,6 +111,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.genkaim.zeppglass.data.AiChatSession
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
@@ -271,6 +276,23 @@ fun AiScreen(
     // ever looked like content changing.
     val curtain = remember { Animatable(0f) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val focusManager = LocalFocusManager.current
+
+    /**
+     * The IME is its own window, above everything the app draws, so a drawer
+     * opened while it is up has its lower half covered and its taps eaten. The
+     * field drops focus and the window's inset controller asks it down; the
+     * Compose controller alone can be a no-op on some ROMs.
+     */
+    fun hideKeyboard() {
+        focusManager.clearFocus(force = true)
+        keyboard?.hide()
+        val window = (view.context as? Activity)?.window ?: return
+        runCatching {
+            WindowInsetsControllerCompat(window, view).hide(WindowInsetsCompat.Type.ime())
+        }
+    }
 
     var followBottom by remember { mutableStateOf(true) }
     // The follow animation scrolls the list itself. Without this flag the
@@ -569,11 +591,10 @@ fun AiScreen(
                 }
                 IconButton(
                     onClick = {
-                        // The IME is its own window and would cover the sheet's
-                        // lower half (and keep the transcript squeezed), so it
-                        // goes away before the history list comes up.
-                        keyboard?.hide()
+                        // State first: the drawer must open even if the keyboard
+                        // refuses to go away.
                         showHistory = true
+                        hideKeyboard()
                     }
                 ) {
                     Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
@@ -589,18 +610,16 @@ fun AiScreen(
         ModalBottomSheet(
             onDismissRequest = { showHistory = false },
             sheetState = sheetState,
-            // The sheet is the page tint, so the conversation cards read as white
-            // (dark cards in dark mode) the same way they do on every other page.
-            containerColor = MaterialTheme.colorScheme.background
+            // The drawer is a raised panel, not a hole in the page: the same
+            // lighter card tone the app's popups use in dark mode.
+            containerColor = popupCardColor()
         ) {
             HistorySheet(
                 sessions = AiChatSession.sessions,
                 currentId = AiChatSession.currentId,
                 onOpen = { id ->
                     scope.launch {
-                        // The keyboard would sit above the sheet's lower half, so
-                        // it leaves before the list is shown.
-                        keyboard?.hide()
+                        hideKeyboard()
                         // Then the sheet folds away, the old words fade out under
                         // the curtain, the conversation is swapped while nothing
                         // is readable, and the new words fade back in.
@@ -1211,9 +1230,9 @@ private fun HistorySheet(
                     FlatPanel(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        // Same card as a popup in dark mode, so the list reads as
-                        // raised cards on the page, not as holes in it.
-                        color = popupCardColor(),
+                        // One step lighter than the drawer, so each conversation
+                        // still reads as a card on it.
+                        color = MaterialTheme.colorScheme.surfaceVariant,
                         onClick = { onOpen(session.id) }
                     ) {
                         Row(

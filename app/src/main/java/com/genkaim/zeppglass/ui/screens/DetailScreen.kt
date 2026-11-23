@@ -2449,13 +2449,6 @@ private fun WeightBody(
             }
         }
 
-        // Three trends in one card, over the last 170 days, each with the change
-        // against the previous weighing and against the reading 170 days ago.
-        // The two sources get their own breathing room: the scale's range is a
-        // few kilos, so 14% keeps its curve off the frame; the watch's history
-        // spans decades of kilos, where the same 14% would waste the height.
-        BodyTrendCard(points, padFraction = if (source == "watch") 0.05 else 0.14)
-
         SectionTitle("计算说明")
         FlatPanel {
             Column(
@@ -2598,22 +2591,6 @@ private fun MetricDivider(inset: androidx.compose.ui.unit.Dp = 0.dp) {
     )
 }
 
-/** One card with three small trends: weight, body fat and muscle. */
-@Composable
-private fun BodyTrendCard(points: List<WeightPoint>, padFraction: Double = 0.14) {
-    val palette = LocalZgPalette.current
-    SectionTitle("趋势", trailing = "近 1 个月")
-    FlatPanel {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            BodyTrendRow("体重", "kg", points, palette.accent, padFraction) { it.weightKg }
-            MetricDivider(16.dp)
-            BodyTrendRow("体脂", "%", points, palette.warn, padFraction) { it.bodyFatPct }
-            MetricDivider(16.dp)
-            BodyTrendRow("肌肉", "kg", points, palette.sleepLight, padFraction) { it.muscleKg }
-        }
-    }
-}
-
 @Composable
 private fun BodyTrendRow(
     title: String,
@@ -2719,6 +2696,7 @@ private fun MiniTrendChart(
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)
     val tickGrid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.16f)
     val currentGrid = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    val dotTrack = MaterialTheme.colorScheme.surface
 
     Canvas(modifier) {
         // X runs over the whole comparison window, so the curve shows the recent
@@ -2777,7 +2755,14 @@ private fun MiniTrendChart(
 
         current?.let { level ->
             val y = yOf(level)
-            drawLine(currentGrid, Offset(plotLeft, y), Offset(plotRight, y), 1.6.dp.toPx())
+            // The rule stops at the newest reading instead of running to the
+            // frame: it marks that point, it is not another axis level.
+            drawLine(
+                currentGrid,
+                Offset(plotLeft, y),
+                Offset(xOf(values.last().first), y),
+                1.6.dp.toPx()
+            )
         }
 
         val path = Path()
@@ -2794,8 +2779,12 @@ private fun MiniTrendChart(
                 join = StrokeJoin.Round
             )
         )
+        // The newest reading: a hollow ring like the seven-day trend charts,
+        // filled with the card tone so the curve shows through its middle.
         val last = values.last()
-        drawCircle(color, radius = 3.dp.toPx(), center = Offset(xOf(last.first), yOf(last.second)))
+        val lastPoint = Offset(xOf(last.first), yOf(last.second))
+        drawCircle(dotTrack, radius = 4.dp.toPx(), center = lastPoint)
+        drawCircle(color, radius = 4.dp.toPx(), center = lastPoint, style = Stroke(2.dp.toPx()))
     }
 }
 

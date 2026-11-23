@@ -1659,6 +1659,9 @@ private fun DietAiDialog(
                                             )
                                         }
                                     }
+                                    // A hairline between the food and its sum:
+                                    // without it the total read as one more row.
+                                    Rule()
                                     Row(
                                         Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
@@ -1680,7 +1683,9 @@ private fun DietAiDialog(
                                         current.fatG?.roundToInt()?.let { "脂肪 $it g" }
                                     )
                                     if (macros.isNotEmpty()) {
-                                        Rule()
+                                        // Right under the calorie figure and on the
+                                        // same right edge, so the four numbers read as
+                                        // one block.
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.End

@@ -1,5 +1,6 @@
 package com.genkaim.zeppglass.ui.screens
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -100,6 +101,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -108,6 +110,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.genkaim.zeppglass.data.AiChatSession
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthData
@@ -270,18 +274,46 @@ fun AiScreen(
     // or a fade in front of this only delayed the page the reader asked for.
 
     val focusManager = LocalFocusManager.current
+    val view = LocalView.current
 
     /**
-     * The IME lives in its own window above everything the app paints, so a
-     * drawer opened behind it has its lower half covered and its taps eaten.
+     * The IME lives in its own window, above every app window, and the drawer's
+     * dialog window never receives an IME inset — padding cannot lift it clear.
      *
-     * Exactly one request: the field lets go of focus, and the platform takes the
-     * IME down with it. Asking the Compose controller, the window insets
-     * controller and the focus manager in turn made the keyboard go, come back
-     * and go again — that was the flicker.
+     * One request only: the window's inset controller, which starts the system
+     * hide animation on this frame. Focus is left alone here so the platform has
+     * nothing to undo and the keyboard cannot come back mid-animation.
      */
     fun hideKeyboard() {
+        val window = findActivity(view.context)?.window ?: return
+        runCatching {
+            WindowCompat.getInsetsController(window, view)
+                .hide(WindowInsetsCompat.Type.ime())
+        }
+    }
+
+    // The drawer is painted in a dialog window, which the IME always covers, so a
+    // tap only asks the IME to leave and the sheet is shown once it is really
+    // gone. With the field unfocused that is the same frame, so history still
+    // opens on the tap.
+    var historyPending by remember { mutableStateOf(false) }
+    LaunchedEffect(historyPending, imeVisible) {
+        if (!historyPending || imeVisible) return@LaunchedEffect
+        // Nothing left to hide: the field may as well let go of focus too, so it
+        // does not pull the IME back when the drawer closes.
         focusManager.clearFocus(force = true)
+        showHistory = true
+        historyPending = false
+    }
+    LaunchedEffect(historyPending) {
+        if (!historyPending) return@LaunchedEffect
+        // A ROM that never reports the IME as gone must not eat the tap.
+        kotlinx.coroutines.delay(400)
+        if (historyPending) {
+            focusManager.clearFocus(force = true)
+            showHistory = true
+            historyPending = false
+        }
     }
 
     var followBottom by remember { mutableStateOf(true) }
@@ -572,10 +604,10 @@ fun AiScreen(
                 }
                 IconButton(
                     onClick = {
-                        // The keyboard starts leaving first, so it travels down
-                        // together with the sheet instead of ahead of it.
+                        // Ask the IME down now; the sheet follows once it is out
+                        // of the way (usually the next few frames).
                         hideKeyboard()
-                        showHistory = true
+                        historyPending = true
                     }
                 ) {
                     Icon(Icons.Rounded.History, contentDescription = "历史对话", modifier = Modifier.size(20.dp))
@@ -1230,7 +1262,7 @@ private fun HistorySheet(
                     val selected = session.id == currentId
                     FlatPanel(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(26.dp),
                         // One step lighter than the drawer, so each conversation
                         // still reads as a card on it; the open one is green.
                         color = if (selected) currentFill
@@ -1332,3 +1364,12 @@ private fun HistorySheet(
     }
 }
 
+/** Walks out of any context wrappers to the activity that owns the window. */
+private fun findActivity(context: Context): Activity? {
+    var current: Context? = context
+    while (current != null) {
+        if (current is Activity) return current
+        current = (current as? android.content.ContextWrapper)?.baseContext
+    }
+    return null
+}

@@ -71,7 +71,7 @@ fun TrackRings(
                 // The mark starts while the last part of the lap is still filling.
                 launch {
                     if (value > 1f) {
-                        delay((durationMs * 0.55f).toLong())
+                        delay(durationMs.toLong() + 60L)
                         markTravel[index].animateTo(
                             targetValue = 1f,
                             animationSpec = tween(420, easing = FastOutSlowInEasing)
@@ -125,14 +125,13 @@ fun TrackRings(
                 val realValue = values.getOrElse(index) { 0f }
                 // Arc length the badge covers, as a fraction of the lap.
                 val badgeFrac = ((stroke * 1.3f) / rect.perimeter).coerceAtMost(0.45f)
-                // Exactly at the goal the head would end under the badge, so the
-                // arc stops one clearance short. Below the goal it is fine as is,
-                // and above it the ring is full anyway.
-                val atGoal = realValue >= 0.9995f && realValue <= 1.0005f
-                val firstLap = if (atGoal) {
-                    progress.coerceAtMost(1f - badgeFrac)
-                } else {
+                // Under 100% the head is the only thing to place: close to the goal
+                // it would slide under the badge, so the arc stops one clearance
+                // short. At or past 100% the ring is simply full.
+                val firstLap = if (realValue >= 1f) {
                     progress.coerceAtMost(1f)
+                } else {
+                    progress.coerceAtMost(1f - badgeFrac)
                 }
                 if (firstLap > 0f) {
                     drawPath(
@@ -147,8 +146,8 @@ fun TrackRings(
                 // it reaches that position — so the animation ends where the mark
                 // already is, with no last-moment jump and no second lap.
                 val travel = markTravel.getOrNull(index)?.value ?: 0f
-                if (realValue > 1f && travel > 0f) {
-                    val over = (realValue - 1f).coerceAtMost(1f)
+                if (realValue >= 1f && travel > 0f) {
+                    val over = (realValue - 1f).coerceIn(0f, 1f)
                     // A whole extra lap ends on the start point, where the badge
                     // is; wrap it to zero.
                     val wrapped = if (over >= 1f) 0f else over

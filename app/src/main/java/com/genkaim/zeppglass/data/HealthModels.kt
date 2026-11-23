@@ -366,6 +366,32 @@ data class NightBreathing(
     val measuredMinutes: Int? = null
 )
 
+/**
+ * Zepp's own daily activity advice and training-status numbers, one record per
+ * day, from the `exertion` / `algo_result` event. The app shows the same figures
+ * on its activity page: a suggested score to collect, what has been collected so
+ * far (exercise plus everyday movement), the heart-rate band and minutes it
+ * suggests, and the load numbers behind 疲劳 / 体能 / 训练状态.
+ */
+data class ExertionDay(
+    val date: LocalDate,
+    val targetScore: Int? = null,
+    val totalScore: Int? = null,
+    val completionPercent: Int? = null,
+    val activityScore: Int? = null,
+    val exerciseScore: Int? = null,
+    /** 疲劳: acute load (ATL). */
+    val fatigue: Double? = null,
+    /** 体能: chronic load (CTL). */
+    val fitness: Double? = null,
+    /** 训练状态: TSB, positive means there is room to train. */
+    val status: Double? = null,
+    val planIntensity: Int? = null,
+    val planHrLow: Int? = null,
+    val planHrHigh: Int? = null,
+    val planMinutes: Int? = null
+)
+
 data class HealthData(
     val fetchedAt: Long,
     val nickname: String?,
@@ -391,6 +417,8 @@ data class HealthData(
     val vo2Max: Int? = null,
     /** Blood-pressure readings (mmHg), newest last. Usually empty. */
     val bloodPressure: List<BloodPressure> = emptyList(),
+    /** Zepp's daily activity advice and load status, newest last. */
+    val exertion: List<ExertionDay> = emptyList(),
     val body: BodyProfile = BodyProfile(),
     val warnings: List<String> = emptyList()
 ) {
@@ -403,6 +431,7 @@ data class HealthData(
     fun latestWeight(): WeightPoint? = weights.maxByOrNull { it.epochMs }
     fun latestStrain(): StrainDay? = strain.maxByOrNull { it.date }
     fun strainOn(date: LocalDate): StrainDay? = strain.lastOrNull { it.date == date }
+    fun exertionOn(date: LocalDate): ExertionDay? = exertion.lastOrNull { it.date == date }
 
     /**
      * The load day that is still accumulating. It only rolls over at the end of

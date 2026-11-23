@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.dp
 import com.genkaim.zeppglass.data.AppSettings
+import com.genkaim.zeppglass.data.ExertionDay
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.LoadDay
@@ -189,6 +191,18 @@ fun ActivityScreen(
                         activeGoal = activityGoal,
                         calories = day?.calories
                     )
+
+                    // Zepp's own advice for today: the points it suggests, what
+                    // has been collected (exercise + everyday movement), and the
+                    // heart-rate band and minutes it recommends. The load numbers
+                    // behind 疲劳 / 体能 / 训练状态 sit right under it.
+                    val advice = data.exertionOn(today) ?: data.exertion.lastOrNull()
+                    if (advice != null) {
+                        SectionTitle("今日活动")
+                        ActivityAdviceCard(advice)
+                        SectionTitle("训练状态")
+                        TrainingStatusCard(advice)
+                    }
                     LoadRecoveryCard(
                         load = load,
                         vo2 = vo2
@@ -620,3 +634,169 @@ private fun WeekStat(label: String, value: String, unit: String?, modifier: Modi
 
 
 
+
+/**
+ * Zepp's activity advice for the day: the score it suggests, what has been
+ * collected so far split into exercise and everyday movement, and the
+ * heart-rate band plus minutes it recommends.
+ */
+@Composable
+private fun ActivityAdviceCard(advice: ExertionDay) {
+    val palette = LocalZgPalette.current
+    val target = advice.targetScore
+    val total = advice.totalScore
+    val percent = advice.completionPercent?.coerceIn(0, 100)
+        ?: if (target != null && target > 0 && total != null) {
+            (total * 100 / target).coerceIn(0, 100)
+        } else {
+            null
+        }
+    val plan = buildList {
+        if (advice.planHrLow != null && advice.planHrHigh != null) {
+            add("心率 ${advice.planHrLow}-${advice.planHrHigh} bpm")
+        }
+        advice.planMinutes?.let { add("$it 分钟") }
+        advice.planIntensity?.let { add(planIntensityWord(it)) }
+    }.joinToString(" · ")
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) {
+                    Text("今日活动", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        target?.let { "建议 $it 分" } ?: "没有建议分",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    total?.toString() ?: "--",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                if (percent != null) {
+                    Text(
+                        "  $percent%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(palette.grid)
+            ) {
+                if (percent != null && percent > 0) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(percent / 100f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.DirectionsRun,
+                    "运动获得",
+                    advice.exerciseScore?.toString() ?: "--",
+                    MaterialTheme.colorScheme.primary
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.DirectionsWalk,
+                    "日常活动",
+                    advice.activityScore?.toString() ?: "--",
+                    MaterialTheme.colorScheme.tertiary
+                )
+            }
+            if (plan.isNotEmpty()) {
+                Text(
+                    "建议 $plan",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private fun planIntensityWord(intensity: Int): String = when (intensity) {
+    1 -> "轻度"
+    2 -> "中等"
+    3 -> "高强度"
+    else -> "强度 $intensity"
+}
+
+/**
+ * 疲劳 / 体能 / 训练状态, the same ATL/CTL/TSB Zepp prints. TSB is the difference,
+ * so a positive number means there is room to train today.
+ */
+@Composable
+private fun TrainingStatusCard(advice: ExertionDay) {
+    val warn = LocalZgPalette.current.warn
+    val status = advice.status
+    val note = status?.let {
+        when {
+            it > 5 -> "有余力，可以按计划训练" to MaterialTheme.colorScheme.onSurface
+            it > -5 -> "维持，正常练即可" to MaterialTheme.colorScheme.onSurface
+            else -> "偏疲劳，建议降低强度" to warn
+        }
+    }
+    FlatPanel {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.LocalFireDepartment,
+                    "疲劳",
+                    advice.fatigue?.roundToInt()?.toString() ?: "--",
+                    warn
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Favorite,
+                    "体能",
+                    advice.fitness?.roundToInt()?.toString() ?: "--",
+                    MaterialTheme.colorScheme.primary
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Timer,
+                    "训练状态",
+                    status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
+                    MaterialTheme.colorScheme.tertiary
+                )
+            }
+            if (note != null) {
+                Text(
+                    note.first,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = note.second
+                )
+            }
+        }
+    }
+}

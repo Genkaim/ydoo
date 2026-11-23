@@ -239,6 +239,7 @@ class HealthStore private constructor(
         var respiration: JSONObject? = null
         var nightBreathing: JSONObject? = null
         var bloodPressure: JSONObject? = null
+        var exertion: JSONObject? = null
 
         val today = LocalDate.now(zone)
         val start = today.minusDays(34)
@@ -374,10 +375,17 @@ class HealthStore private constructor(
                     )
                 }.onSuccess { bloodPressure = it }
             }
+            // Zepp's own activity advice and load status. Optional: a watch that
+            // never ran the algorithm answers with an empty list.
+            val exertionJob = async {
+                runCatching { api.exertion(fromMs, toMs, 60) }
+                    .onSuccess { exertion = it }
+                    .onFailure { warnings.add("活动建议：${it.friendly()}") }
+            }
             listOf(
                 profileJob, readinessJob, paiJob, stressJob, spO2Job, chargeJob, loadJob, vo2Job,
                 weightJob, workoutJob, hrvJob, dailyHealthJob, respirationJob,
-                nightBreathingJob, bloodPressureJob
+                nightBreathingJob, bloodPressureJob, exertionJob
             ).forEach { it.await() }
             bandJobs.forEach { it.await() }
         }
@@ -454,6 +462,8 @@ class HealthStore private constructor(
             vo2Max = vo2?.let { HealthParser.parseVo2Max(it) } ?: previous?.vo2Max,
             bloodPressure = bloodPressure?.let { HealthParser.parseBloodPressure(it) }
                 .orEmpty().ifEmpty { previous?.bloodPressure.orEmpty() },
+            exertion = exertion?.let { HealthParser.parseExertion(it, zone) }
+                .orEmpty().ifEmpty { previous?.exertion.orEmpty() },
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: previous?.body ?: BodyProfile(),
             warnings = warnings.distinct()
         ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, it.nights, zone)) }
@@ -511,6 +521,7 @@ class HealthStore private constructor(
         carrySection("respiration", respiration)
         carrySection("nightBreathing", nightBreathing)
         carrySection("bloodPressure", bloodPressure)
+        carrySection("exertion", exertion)
 
         withContext(Dispatchers.IO) {
             if (gen == generation) {
@@ -600,6 +611,8 @@ private fun readSnapshotFile(file: File, zone: ZoneId): HealthData? {
             vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
             bloodPressure = json.optJSONObject("bloodPressure")
                 ?.let { HealthParser.parseBloodPressure(it) }.orEmpty(),
+            exertion = json.optJSONObject("exertion")
+                ?.let { HealthParser.parseExertion(it, zone) }.orEmpty(),
             body = profile?.let { HealthParser.parseBodyProfile(it) } ?: BodyProfile(),
             heartRate = parsed.flatMap { it.heartRate }.distinctBy { it.first }.sortedBy { it.first }
         ).let { it.copy(strain = StrainCalculator.compute(it.days, it.heartRate, it.readiness, it.workouts, it.body, it.stress, it.chargeDays, it.nights, zone)) }

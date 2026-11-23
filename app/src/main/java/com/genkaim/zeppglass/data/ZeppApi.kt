@@ -204,6 +204,14 @@ class ZeppApi(
         v2Events("HRVRMSSD", "real_data", fromMs, toMs, limit)
 
     /**
+     * Zepp's own daily activity advice: suggested and collected points, the
+     * recommended heart-rate band, and the ATL/CTL/TSB it shows as
+     * 疲劳 / 体能 / 训练状态. One item per day.
+     */
+    fun exertion(fromMs: Long, toMs: Long, limit: Int = 30): JSONObject =
+        v2Events("exertion", "algo_result", fromMs, toMs, limit)
+
+    /**
      * Per-minute respiratory rate. One item per day, 1440 base64 bytes.
      */
     fun respiration(fromMs: Long, toMs: Long, limit: Int = 200): JSONObject =

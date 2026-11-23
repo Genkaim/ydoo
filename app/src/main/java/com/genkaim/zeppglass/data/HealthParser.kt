@@ -624,6 +624,43 @@ object HealthParser {
         return out.sortedBy { it.epochMs }
     }
 
+    // ---------- daily activity advice ----------
+
+    /**
+     * `exertion` / `algo_result`: one item per day. The score block is Zepp's own
+     * activity advice; `atl` / `ctl` / `tsb` are the numbers behind 疲劳 / 体能 /
+     * 训练状态. Every field stays null when the day's algorithm did not run, so
+     * the page shows `--` rather than a made-up zero.
+     */
+    fun parseExertion(json: JSONObject, zone: ZoneId): List<ExertionDay> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<ExertionDay>()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val value = item.optJSONObject("value") ?: continue
+            val stamp = item.anyNumber("timestamp")?.toLong() ?: continue
+            val plan = value.optJSONObject("exercisePlan")
+            out.add(
+                ExertionDay(
+                    date = Instant.ofEpochMilli(stamp).atZone(zone).toLocalDate(),
+                    targetScore = value.anyNumber("targetScore")?.roundToInt(),
+                    totalScore = value.anyNumber("totalScore")?.roundToInt(),
+                    completionPercent = value.anyNumber("completionPercent")?.roundToInt(),
+                    activityScore = value.anyNumber("activityScore")?.roundToInt(),
+                    exerciseScore = value.anyNumber("exerciseScore")?.roundToInt(),
+                    fatigue = value.anyNumber("atl"),
+                    fitness = value.anyNumber("ctl"),
+                    status = value.anyNumber("tsb"),
+                    planIntensity = plan?.anyNumber("intensity")?.roundToInt(),
+                    planHrLow = plan?.anyNumber("heartRateLower")?.roundToInt(),
+                    planHrHigh = plan?.anyNumber("heartRateUpper")?.roundToInt(),
+                    planMinutes = plan?.anyNumber("duration")?.roundToInt()
+                )
+            )
+        }
+        return out.distinctBy { it.date }.sortedBy { it.date }
+    }
+
     // ---------- workouts ----------
 
     fun parseWorkouts(json: JSONObject): List<Workout> {

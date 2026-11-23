@@ -95,6 +95,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.genkaim.zeppglass.BuildConfig
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.ChargeDay
 import com.genkaim.zeppglass.data.DietStore
@@ -4108,19 +4109,37 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     val palette = LocalZgPalette.current
     val ink = MaterialTheme.colorScheme.onSurface
     val zone = java.time.ZoneId.systemDefault()
-    val readings = data?.bloodPressure.orEmpty()
+    // TEMP: a few made-up readings so the chart can be eyeballed while the
+    // account has no blood pressure at all. Debug builds only; the real data
+    // always wins once the account has any.
+    fun previewReadings(day: LocalDate): List<BloodPressure> {
+        val start = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        fun at(hour: Int, minute: Int) = start + (hour * 60L + minute) * 60_000L
+        return listOf(
+            BloodPressure(at(7, 10), systolic = 118, diastolic = 76),
+            BloodPressure(at(7, 40), systolic = 121, diastolic = 79),
+            BloodPressure(at(8, 15), systolic = 155, diastolic = 96),
+            BloodPressure(at(8, 45), systolic = 151, diastolic = 94),
+            BloodPressure(at(12, 20), systolic = 133, diastolic = 85),
+            BloodPressure(at(19, 5), systolic = 146, diastolic = 92),
+            BloodPressure(at(21, 30), systolic = 124, diastolic = 80)
+        )
+    }
+
+    val readings = data?.bloodPressure.orEmpty().ifEmpty {
+        if (BuildConfig.DEBUG) previewReadings(date ?: LocalDate.now()) else emptyList()
+    }
+    fun readingsOn(day: LocalDate): List<BloodPressure> = readings.filter {
+        java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() == day
+    }
     val chosenDay = date ?: LocalDate.now()
-    val dayReadings = data?.bloodPressureOn(chosenDay, zone).orEmpty()
+    val dayReadings = readingsOn(chosenDay)
     // An empty today is the normal case: a cuff reading happens now and then,
     // not every day, so the page falls back to the newest day that has one.
     val newestDay = readings.maxByOrNull { it.epochMs }
         ?.let { java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).toLocalDate() }
     val shownDay = if (dayReadings.isEmpty()) newestDay ?: chosenDay else chosenDay
-    val shownReadings = if (dayReadings.isEmpty()) {
-        data?.bloodPressureOn(shownDay, zone).orEmpty()
-    } else {
-        dayReadings
-    }
+    val shownReadings = if (dayReadings.isEmpty()) readingsOn(shownDay) else dayReadings
     val latest = shownReadings.maxByOrNull { it.epochMs }
 
     fun tone(band: BloodPressureBand): Color = when (band) {
@@ -4248,7 +4267,7 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
     // Bottom: a week of both numbers, one line each.
     val weekDays = (0..6).map { shownDay.minusDays(6L - it) }
     fun dayMean(day: LocalDate, pick: (BloodPressure) -> Int): Float? =
-        data?.bloodPressureOn(day, zone)?.takeIf { it.isNotEmpty() }
+        readingsOn(day).takeIf { it.isNotEmpty() }
             ?.map(pick)?.average()?.toFloat()
 
     val systolicWeek = weekDays.map { dayMean(it) { p -> p.systolic } }

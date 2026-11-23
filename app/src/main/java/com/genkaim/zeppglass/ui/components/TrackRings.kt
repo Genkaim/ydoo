@@ -122,14 +122,17 @@ fun TrackRings(
                     style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
                 val progress = animated.getOrNull(index)?.value ?: 0f
+                val realValue = values.getOrElse(index) { 0f }
                 // Arc length the badge covers, as a fraction of the lap.
                 val badgeFrac = ((stroke * 1.3f) / rect.perimeter).coerceAtMost(0.45f)
-                // Very close to the goal the head would slide under the badge:
-                // stop the arc just short of it, except on a completed lap.
-                val firstLap = if (progress >= 1f) {
-                    1f
-                } else {
+                // Exactly at the goal the head would end under the badge, so the
+                // arc stops one clearance short. Below the goal it is fine as is,
+                // and above it the ring is full anyway.
+                val atGoal = realValue >= 0.9995f && realValue <= 1.0005f
+                val firstLap = if (atGoal) {
                     progress.coerceAtMost(1f - badgeFrac)
+                } else {
+                    progress.coerceAtMost(1f)
                 }
                 if (firstLap > 0f) {
                     drawPath(
@@ -143,7 +146,6 @@ fun TrackRings(
                 // before the animation runs, and the mark rides the arc head until
                 // it reaches that position — so the animation ends where the mark
                 // already is, with no last-moment jump and no second lap.
-                val realValue = values.getOrElse(index) { 0f }
                 val travel = markTravel.getOrNull(index)?.value ?: 0f
                 if (realValue > 1f && travel > 0f) {
                     val over = (realValue - 1f).coerceAtMost(1f)

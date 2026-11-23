@@ -11,6 +11,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,7 +21,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -168,10 +169,13 @@ fun AiScreen(
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
     var followBottom by remember { mutableStateOf(true) }
+    // The follow animation scrolls the list itself. Without this flag the
+    // gesture observer below would read that as a drag and stop following.
+    var autoScroll by remember { mutableStateOf(false) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
             .collect { (scrolling, canScrollForward) ->
-                if (scrolling) followBottom = !canScrollForward
+                if (scrolling && !autoScroll) followBottom = !canScrollForward
             }
     }
     LaunchedEffect(AiChatSession.currentId) { followBottom = true }
@@ -197,7 +201,20 @@ fun AiScreen(
             if (!followBottom) return@collect
             if (index != messages.lastIndex) return@collect
             val overflow = bottom - viewportEnd
-            if (overflow > 0) listState.scrollBy(overflow.toFloat())
+            // A streamed answer grows in blocks every few tens of milliseconds.
+            // Jumping the list by the overflow lifted the page in a single
+            // frame; animating it keeps the text rising instead of snapping up.
+            if (overflow > 1) {
+                autoScroll = true
+                try {
+                    listState.animateScrollBy(
+                        overflow.toFloat(),
+                        tween(durationMillis = 160, easing = LinearEasing)
+                    )
+                } finally {
+                    autoScroll = false
+                }
+            }
         }
     }
 

@@ -123,11 +123,19 @@ fun TrackRings(
                     // A whole extra lap ends on the start point, where the badge
                     // is; wrap it to zero before the clearance check.
                     val wrapped = if (over >= 1f) 0f else over
-                    // Arc length the badge would hide: its radius plus a hair, as
-                    // a fraction of the lap. Only a smaller overshoot is pushed
-                    // forward to that distance.
-                    val clearFrac = ((stroke * 0.85f) / rect.perimeter).coerceAtMost(0.5f)
-                    val finalMark = if (wrapped < clearFrac) clearFrac else wrapped
+                    // Clearance around the badge, as a fraction of the lap: the
+                    // badge's radius (0.5 stroke) plus the mark's own outer radius
+                    // (0.57 + 0.07 stroke) is the centre-to-centre distance that
+                    // keeps the two from touching.
+                    val clearFrac = ((stroke * 1.14f) / rect.perimeter).coerceAtMost(0.4f)
+                    // The badge hides an arc on both sides of the start point: the
+                    // one just after it (a value past one lap wraps back to 0) and
+                    // the one just before it (a value just under one lap).
+                    val finalMark = when {
+                        wrapped < clearFrac -> clearFrac
+                        wrapped > 1f - clearFrac -> 1f - clearFrac
+                        else -> wrapped
+                    }
                     val markAt = minOf(progress, finalMark)
                     // Below the clearance it would be under the badge anyway.
                     if (markAt > clearFrac) {

@@ -234,7 +234,7 @@ fun ChargeDayChart(
                     // stamped in the card colour just outside every edge first,
                     // then the tinted one is drawn on top. A circle around it
                     // would read as a badge, not an outline.
-                    val outline = 1.2.dp.toPx()
+                    val outline = 0.6.dp.toPx()
                     listOf(-outline, 0f, outline).forEach { dx ->
                         listOf(-outline, 0f, outline).forEach { dy ->
                             if (dx != 0f || dy != 0f) {

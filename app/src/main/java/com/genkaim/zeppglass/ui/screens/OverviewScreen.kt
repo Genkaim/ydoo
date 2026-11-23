@@ -15,6 +15,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1576,12 +1577,20 @@ private fun LastNightCard(night: SleepNight?, onClick: () -> Unit) {
     FlatPanel(onClick = onClick) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.Bedtime,
-                    contentDescription = null,
-                    tint = LocalZgPalette.current.sleepLight,
-                    modifier = Modifier.size(16.dp)
-                )
+                Box(
+                    Modifier
+                        .size(24.dp)
+                        .background(LocalZgPalette.current.sleepLight.copy(alpha = 0.14f), CircleShape)
+                        .border(1.dp, MaterialTheme.colorScheme.background, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.Bedtime,
+                        contentDescription = null,
+                        tint = LocalZgPalette.current.sleepLight,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
                 Spacer(Modifier.size(6.dp))
                 Text("这一晚睡眠", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(

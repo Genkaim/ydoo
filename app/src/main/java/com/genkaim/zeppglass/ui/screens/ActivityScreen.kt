@@ -196,22 +196,22 @@ fun ActivityScreen(
                         }
                     }
                     val planMinutes = advice?.planMinutes
-                    // 临时测试数据：步数目标 4220、心率区间时长 17 分钟、活动点数 60。
-                    val testAdvice = advice?.copy(totalScore = 60)
+                    // 临时测试目标：步数 4220、心率区间时长 17 分钟、活动点数 60。
+                    val testAdvice = advice?.copy(targetScore = 60)
                     ActivityHero(
                         steps = day?.steps,
                         goal = 4220,
                         points = testAdvice?.totalScore,
                         pointsTarget = testAdvice?.targetScore,
-                        activeMinutes = 17,
-                        activeGoal = planMinutes ?: activityGoal
+                        activeMinutes = bandMinutes ?: activityMinutes,
+                        activeGoal = 17
                     )
                     ActivityStatsCard(
                         steps = day?.steps,
-                        activeMinutes = 17,
-                        activeGoal = planMinutes ?: activityGoal,
+                        activeMinutes = bandMinutes ?: activityMinutes,
+                        activeGoal = 17,
                         calories = day?.calories,
-                        bandBased = true,
+                        bandBased = bandMinutes != null,
                         advice = testAdvice
                     )
                     LoadVo2Card(
@@ -241,7 +241,7 @@ fun ActivityScreen(
                                     Modifier.weight(1f),
                                     Icons.Rounded.DirectionsWalk,
                                     "平均步数",
-                                    weekSteps.average().roundToInt().toString(),
+                                    weekSteps.average().toInt().toString(),
                                     MaterialTheme.colorScheme.primary
                                 )
                                 StatBlock(
@@ -496,7 +496,7 @@ private fun LoadVo2Card(
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                weekLoad?.roundToInt()?.toString() ?: "--",
+                                weekLoad?.toInt()?.toString() ?: "--",
                                 style = MaterialTheme.typography.titleLarge,
                                 color = loadColor
                             )
@@ -568,21 +568,21 @@ private fun LoadVo2Card(
                                 Modifier.weight(1f),
                                 Icons.Rounded.LocalFireDepartment,
                                 "疲劳",
-                                advice.fatigue?.roundToInt()?.toString() ?: "--",
+                                advice.fatigue?.toInt()?.toString() ?: "--",
                                 warn
                             )
                             StatBlock(
                                 Modifier.weight(1f),
                                 Icons.Rounded.Favorite,
                                 "体能",
-                                advice.fitness?.roundToInt()?.toString() ?: "--",
+                                advice.fitness?.toInt()?.toString() ?: "--",
                                 MaterialTheme.colorScheme.primary
                             )
                             StatBlock(
                                 Modifier.weight(1f),
                                 Icons.Rounded.Timer,
                                 "训练状态",
-                                status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
+                                status?.let { (if (it > 0) "+" else "") + it.toInt() } ?: "--",
                                 MaterialTheme.colorScheme.tertiary
                             )
                         }

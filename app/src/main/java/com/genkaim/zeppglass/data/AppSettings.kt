@@ -341,7 +341,13 @@ class AppSettings private constructor(context: Context) {
                 "手表没给晨起就说没有，不要用当前值或前一天的末尾值代替。" +
                 "准备度只在数据里确实出现「准备度」评分时才算存在；只有 HRV 分、静息心率分这类分项时，" +
                 "不要说成准备度。" +
-                "睡眠阶段用占比描述（深睡、浅睡、REM 各占多少），清醒说次数，不只报时长。"
+                "睡眠阶段用占比描述（深睡、浅睡、REM 各占多少），清醒说次数，不只报时长。" +
+                // Two different "loads" that the model kept mixing up.
+                "数据里有两套容易混淆的负荷，必须分开说：①运动负荷是 EPOC 口径" +
+                "（当天负荷 0–9，7 天滚动累计几十到一百多，带个人合适区间）；" +
+                "②疲劳 ATL、体能 CTL、训练状态 TSB 是 Zepp 运动算法按日累积的另一套数。" +
+                "两者不能互相替代、不能直接比较，引用时要写清是哪一套（如「疲劳 ATL 23」" +
+                "「7 天运动负荷 96」），不要笼统说成「负荷」。"
 
         /** Built-in only: the prompt is not user-editable by design. */
         const val DEFAULT_AI_PROMPT = SYSTEM_PROMPT

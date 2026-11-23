@@ -198,7 +198,8 @@ fun ActivityScreen(
                     ActivityHero(
                         steps = day?.steps,
                         goal = day?.stepGoal ?: 7000,
-                        calories = day?.calories,
+                        points = advice?.totalScore,
+                        pointsTarget = advice?.targetScore,
                         activeMinutes = bandMinutes ?: activityMinutes,
                         activeGoal = planMinutes ?: activityGoal
                     )
@@ -287,13 +288,21 @@ fun ActivityScreen(
 private fun ActivityHero(
     steps: Int?,
     goal: Int,
-    calories: Double?,
+    points: Int?,
+    pointsTarget: Int?,
     activeMinutes: Int?,
     activeGoal: Int?
 ) {
     val palette = LocalZgPalette.current
     val stepsProgress = if (goal > 0) (steps ?: 0).toFloat() / goal else 0f
-    val kcalProgress = ((calories ?: 0.0) / 500.0).toFloat()
+    // The suggested score is the denominator; without one the arc stays at zero
+    // rather than inventing a target.
+    val pointTarget = pointsTarget?.takeIf { it > 0 }
+    val pointsProgress = if (pointTarget != null) {
+        ((points ?: 0).toFloat() / pointTarget).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
     // The official goal is the denominator; without one fall back to a 60-minute
     // scale so the arc still moves, but no goal is ever printed as if official.
     val activeProgress = ((activeMinutes ?: 0).toFloat() /
@@ -308,11 +317,11 @@ private fun ActivityHero(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         TrackRings(
-            values = listOf(stepsProgress, kcalProgress, activeProgress),
+            values = listOf(stepsProgress, pointsProgress, activeProgress),
             colors = listOf(stepColor, kcalColor, activeColor),
             icons = listOf(
                 Icons.Rounded.DirectionsWalk,
-                Icons.Rounded.LocalFireDepartment,
+                Icons.Rounded.Star,
                 Icons.Rounded.Timer
             ),
             modifier = Modifier.size(240.dp),
@@ -365,50 +374,40 @@ private fun ActivityStatsCard(
                 )
                 StatBlock(
                     Modifier.weight(1f),
+                    Icons.Rounded.Star,
+                    "活动点数",
+                    advice?.totalScore?.toString() ?: "--",
+                    MaterialTheme.colorScheme.primary,
+                    valueSuffix = advice?.targetScore?.takeIf { it > 0 }?.let { "/$it" }
+                )
+            }
+            // 活动消耗 and 活动点数 swapped places: the score sits with the totals
+            // it is measured against, the burn pairs with the suggested band.
+            MetricsDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 15.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
                     Icons.Rounded.LocalFireDepartment,
                     "活动消耗",
                     Fmt.int(calories),
                     kcalColor,
                     unit = "千卡"
                 )
-            }
-            // The day's advice lives in the same card as the totals: it is the
-            // target those numbers are measured against, not a separate report.
-            if (advice != null) {
-                val points = advice.totalScore
-                // The goal half of "12/30" is printed smaller, in the same ink.
-                val pointGoal = advice.targetScore
-                    ?.takeIf { it > 0 }
-                    ?.let { "/$it" }
-                val hr = if (advice.planHrLow != null && advice.planHrHigh != null) {
-                    "${advice.planHrLow}-${advice.planHrHigh}"
-                } else {
-                    null
-                }
-                MetricsDivider()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp, bottom = 15.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatBlock(
-                        Modifier.weight(1f),
-                        Icons.Rounded.Star,
-                        "活动点数",
-                        points?.toString() ?: "--",
-                        MaterialTheme.colorScheme.primary,
-                        valueSuffix = if (points == null) null else pointGoal
-                    )
-                    StatBlock(
-                        Modifier.weight(1f),
-                        Icons.Rounded.Favorite,
-                        "建议心率",
-                        hr ?: "--",
-                        LocalZgPalette.current.sleepRem,
-                        unit = if (hr == null) null else "bpm"
-                    )
-                }
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Favorite,
+                    "建议心率",
+                    advice?.planHrLow?.let { low ->
+                        advice.planHrHigh?.let { high -> "$low-$high" }
+                    } ?: "--",
+                    LocalZgPalette.current.sleepRem,
+                    unit = advice?.planHrHigh?.let { "bpm" }
+                )
             }
         }
     }

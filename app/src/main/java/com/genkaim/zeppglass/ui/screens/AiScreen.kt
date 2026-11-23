@@ -629,7 +629,8 @@ fun AiScreen(
             containerColor = popupCardColor()
         ) {
             HistorySheet(
-                sessions = AiChatSession.sessions,
+                // Newest first, whatever order the archive happens to keep.
+                sessions = AiChatSession.sessions.sortedByDescending { it.updatedAt },
                 currentId = drawerSelection,
                 onOpen = { id ->
                     // Straight away: the conversation the reader asked for is on
@@ -1290,8 +1291,7 @@ private fun HistorySheet(
                                     maxLines = 1
                                 )
                                 Text(
-                                    "${Fmt.dayAndTime(session.updatedAt)} · ${session.count} 条" +
-                                        if (session.id == currentId) " · 当前" else "",
+                                    Fmt.dayAndTime(session.updatedAt),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (selected) currentInk.copy(alpha = 0.85f) else inkMuted
                                 )

@@ -236,14 +236,27 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         sessions.addAll(list)
     }
 
-    /** Copies the live conversation into the archive and rewrites the file. */
+    /**
+     * Copies the live conversation into the archive and rewrites the file.
+     *
+     * The time only moves when the conversation itself changed. Stamping "now"
+     * on every snapshot meant that merely opening another chat pushed the one
+     * just left to the top of the list — the history reshuffled itself while the
+     * reader was only looking.
+     */
     private fun snapshot() {
         val id = currentId
         if (id != null) {
             if (messages.isEmpty()) {
                 stored.remove(id)
             } else {
-                stored[id] = Stored(id, System.currentTimeMillis(), messages.toList())
+                val previous = stored[id]
+                val changed = previous == null || previous.messages != messages
+                stored[id] = Stored(
+                    id,
+                    if (changed) System.currentTimeMillis() else previous!!.updatedAt,
+                    messages.toList()
+                )
             }
         }
         rebuildList()

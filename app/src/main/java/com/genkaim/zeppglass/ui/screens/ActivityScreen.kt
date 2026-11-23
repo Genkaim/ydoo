@@ -71,7 +71,6 @@ import com.genkaim.zeppglass.ui.components.SignedBarChart
 import com.genkaim.zeppglass.ui.components.StatBlock
 import com.genkaim.zeppglass.ui.components.TrackRings
 import com.genkaim.zeppglass.ui.components.workoutSportIcon
-import com.genkaim.zeppglass.ui.components.TrendLineChart
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -112,12 +111,6 @@ fun ActivityScreen(
     }
     val weekDays = remember(data) {
         (6 downTo 0).mapNotNull { offset -> data?.day(today.minusDays(offset.toLong())) }
-    }
-    val weekSlots = remember(data) {
-        (6 downTo 0).map { offset -> data?.day(today.minusDays(offset.toLong())) }
-    }
-    val labels7 = remember(today) {
-        (6 downTo 0).map { offset -> Fmt.weekdayShort(today.minusDays(offset.toLong())) }
     }
     val load = data?.latestLoad()
     val vo2 = data?.vo2Max
@@ -202,7 +195,8 @@ fun ActivityScreen(
                         activeGoal = planMinutes ?: activityGoal,
                         calories = day?.calories,
                         bandBased = bandMinutes != null && planMinutes != null,
-                        advice = advice
+                        advice = advice,
+                        onClick = { onOpenDetail(DetailTarget(DetailKind.ACTIVITY, today)) }
                     )
                     LoadVo2Card(
                         load = load,
@@ -214,53 +208,6 @@ fun ActivityScreen(
 
                     if (hrToday.size > 10) {
                         HeartRateCard(hrToday, restingHr)
-                    }
-
-                    SectionTitle("近 7 天步数")
-                    val weekSteps = weekSlots.mapNotNull { it?.steps }.takeIf { it.isNotEmpty() }
-                    if (weekSteps != null) {
-                        FlatPanel {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 14.dp, horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                StatBlock(
-                                    Modifier.weight(1f),
-                                    Icons.Rounded.DirectionsWalk,
-                                    "平均步数",
-                                    weekSteps.average().toInt().toString(),
-                                    MaterialTheme.colorScheme.primary
-                                )
-                                StatBlock(
-                                    Modifier.weight(1f),
-                                    Icons.Rounded.ArrowUpward,
-                                    "最高",
-                                    weekSteps.max().toString(),
-                                    MaterialTheme.colorScheme.tertiary
-                                )
-                                StatBlock(
-                                    Modifier.weight(1f),
-                                    Icons.Rounded.ArrowDownward,
-                                    "最低",
-                                    weekSteps.min().toString(),
-                                    LocalZgPalette.current.sleepRem
-                                )
-                            }
-                        }
-                    }
-                    FlatPanel {
-                        TrendLineChart(
-                            values = weekSlots.map { it?.steps?.toFloat() },
-                            labels = labels7,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 12.dp)
-                                .height(150.dp),
-                            color = MaterialTheme.colorScheme.primary
-                        )
                     }
 
                     RecentWorkoutList(data, ::openWorkout)
@@ -336,14 +283,17 @@ private fun ActivityStatsCard(
     activeGoal: Int?,
     calories: Double?,
     bandBased: Boolean,
-    advice: ExertionDay?
+    advice: ExertionDay?,
+    onClick: () -> Unit
 ) {
     val palette = LocalZgPalette.current
     val stepColor = Color(0xFFB4E05C)
     val pointColor = Color(0xFFF2682A)
     val activeColor = Color(0xFF4FA8E8)
     val kcalColor = palette.critical
-    FlatPanel(Modifier.fillMaxWidth()) {
+    // The whole card is the way into the day's detail page: the week steps that
+    // used to sit further down now live there.
+    FlatPanel(Modifier.fillMaxWidth(), onClick = onClick) {
         Column(
             Modifier
                 .fillMaxWidth()

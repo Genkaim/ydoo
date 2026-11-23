@@ -68,6 +68,7 @@ import androidx.compose.material.icons.rounded.TrendingFlat
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
@@ -1287,25 +1288,94 @@ private fun ActivityDetail(data: HealthData?, date: LocalDate) {
         MetricTile("活动时长", activityText, "分", Modifier.weight(1f))
         MetricTile("静息心率", day?.restingHr?.toString() ?: "--", "bpm", Modifier.weight(1f))
     }
+
+    // 近 7 天步数 used to sit on the activity page; it moved here, behind that
+    // page's stats card. The three numbers and the line are the same ones.
+    val weekSlots = (6 downTo 0).map { data?.day(date.minusDays(it.toLong())) }
+    val weekLabels = (6 downTo 0).map { Fmt.weekdayShort(date.minusDays(it.toLong())) }
+    val weekSteps = weekSlots.mapNotNull { it?.steps }
+    if (weekSteps.isNotEmpty()) {
+        SectionTitle("近 7 天步数")
+        FlatPanel {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.DirectionsWalk,
+                    "平均步数",
+                    weekSteps.average().toInt().toString(),
+                    MaterialTheme.colorScheme.primary
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowUpward,
+                    "最高",
+                    weekSteps.max().toString(),
+                    MaterialTheme.colorScheme.tertiary
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowDownward,
+                    "最低",
+                    weekSteps.min().toString(),
+                    LocalZgPalette.current.sleepRem
+                )
+            }
+        }
+        FlatPanel {
+            TrendLineChart(
+                values = weekSlots.map { it?.steps?.toFloat() },
+                labels = weekLabels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(150.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+
+    // The week's own totals: the score Zepp asked for and collected, the burn,
+    // and the minutes actually spent inside the suggested band. Each total only
+    // counts days that carried a reading.
+    val weekPoints = (6 downTo 0)
+        .mapNotNull { data?.exertionOn(date.minusDays(it.toLong()))?.totalScore }
+        .takeIf { it.isNotEmpty() }?.sum()
+    val weekCalories = weekSlots.mapNotNull { it?.calories }.takeIf { it.isNotEmpty() }?.sum()
+    val weekBandMinutes = (6 downTo 0)
+        .mapNotNull { offset ->
+            val d = date.minusDays(offset.toLong())
+            data?.bandMinutesOn(d, data.exertionOn(d))
+        }
+        .takeIf { it.isNotEmpty() }?.sum()
+    SectionTitle("近 7 天合计")
+    FlatPanel {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricTile(
+                    "步数",
+                    weekSteps.takeIf { it.isNotEmpty() }?.sum()?.let { Fmt.int(it.toDouble()) } ?: "--",
+                    null,
+                    Modifier.weight(1f)
+                )
+                MetricTile("活动点数", weekPoints?.toString() ?: "--", null, Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricTile("活动消耗", weekCalories?.let { Fmt.int(it) } ?: "--", "kcal", Modifier.weight(1f))
+                MetricTile("区间时长", weekBandMinutes?.toString() ?: "--", "分", Modifier.weight(1f))
+            }
+        }
+    }
     val days = (13 downTo 0).map { data?.day(date.minusDays(it.toLong())) }
     val labels = (13 downTo 0).map { Fmt.weekdayShort(date.minusDays(it.toLong())) }
     if (days.any { it != null }) {
-        SectionTitle("近 14 天步数")
-        FlatPanel {
-            AxisBarChart(
-                values = days.map { it?.steps?.toFloat() },
-                labels = labels,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp)
-                    .height(140.dp),
-                color = MaterialTheme.colorScheme.primary,
-                goal = day?.stepGoal?.toFloat(),
-                valueLabel = { value ->
-                    if (value >= 1000) "${(value / 1000).roundToInt()}k" else value.roundToInt().toString()
-                }
-            )
-        }
+        // The steps chart moved up to the 7-day block; keeping the 14-day bars
+        // here too would draw the same metric twice on one page.
         SectionTitle("距离与消耗")
         FlatPanel {
             Column(Modifier.padding(14.dp)) {

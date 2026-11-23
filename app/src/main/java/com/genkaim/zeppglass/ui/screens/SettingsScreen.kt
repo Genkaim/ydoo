@@ -137,7 +137,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 // Extra room under the last card so it does not sit against the
                 // edge of the screen.
-                .padding(start = 18.dp, end = 18.dp, bottom = 56.dp),
+                .padding(start = 18.dp, end = 18.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(Modifier.height(headerHeight + 4.dp))
@@ -350,7 +350,7 @@ fun SettingsScreen(
                             .padding(horizontal = 18.dp, vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
+                        FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp)) {
                             // Scrolls when the keyboard leaves too little room,
                             // so no field is ever unreachable.
                             Column(

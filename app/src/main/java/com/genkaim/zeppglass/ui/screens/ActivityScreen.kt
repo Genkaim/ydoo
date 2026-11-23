@@ -178,35 +178,41 @@ fun ActivityScreen(
                         onAction = { store.refresh() }
                     )
                 } else {
+                    val advice = data.exertionOn(today) ?: data.exertion.lastOrNull()
+                    // Minutes actually spent inside the heart-rate band Zepp
+                    // suggests for today. The band data is one sample per minute,
+                    // so counting samples is counting minutes.
+                    val bandMinutes = remember(data, today, advice?.planHrLow, advice?.planHrHigh) {
+                        val low = advice?.planHrLow
+                        val high = advice?.planHrHigh
+                        if (data == null || low == null || high == null) {
+                            null
+                        } else {
+                            val start = today.atStartOfDay(zone).toInstant().toEpochMilli() / 1000
+                            val end = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() / 1000
+                            data.heartRate.count { it.first in start until end && it.second in low..high }
+                        }
+                    }
+                    val planMinutes = advice?.planMinutes
                     ActivityHero(
                         steps = day?.steps,
                         goal = day?.stepGoal ?: 7000,
                         calories = day?.calories,
-                        activeMinutes = activityMinutes,
-                        activeGoal = activityGoal
+                        activeMinutes = bandMinutes ?: activityMinutes,
+                        activeGoal = planMinutes ?: activityGoal
                     )
                     ActivityStatsCard(
                         steps = day?.steps,
-                        activeMinutes = activityMinutes,
-                        activeGoal = activityGoal,
-                        calories = day?.calories
+                        activeMinutes = bandMinutes ?: activityMinutes,
+                        activeGoal = planMinutes ?: activityGoal,
+                        calories = day?.calories,
+                        bandBased = bandMinutes != null && planMinutes != null
                     )
-
-                    // Zepp's own advice for today: the points it suggests, what
-                    // has been collected (exercise + everyday movement), and the
-                    // heart-rate band and minutes it recommends. The load numbers
-                    // behind 疲劳 / 体能 / 训练状态 sit right under it.
-                    val advice = data.exertionOn(today) ?: data.exertion.lastOrNull()
                     if (advice != null) {
                         SectionTitle("今日活动")
                         ActivityAdviceCard(advice)
-                        SectionTitle("训练状态")
-                        TrainingStatusCard(advice)
                     }
-                    LoadRecoveryCard(
-                        load = load,
-                        vo2 = vo2
-                    )
+                    LoadRecoveryCard(load = load, vo2 = vo2, advice = advice)
 
                     if (hrToday.size > 10) {
                         HeartRateCard(hrToday, restingHr)
@@ -317,7 +323,8 @@ private fun ActivityStatsCard(
     steps: Int?,
     activeMinutes: Int?,
     activeGoal: Int?,
-    calories: Double?
+    calories: Double?,
+    bandBased: Boolean
 ) {
     val stepColor = MaterialTheme.colorScheme.primary
     val activeColor = LocalZgPalette.current.sleepRem
@@ -340,7 +347,7 @@ private fun ActivityStatsCard(
             StatBlock(
                 Modifier.weight(1f),
                 Icons.Rounded.Timer,
-                "活动时长",
+                if (bandBased) "区间时长" else "活动时长",
                 when {
                     activeMinutes == null -> "--"
                     activeGoal != null -> "$activeMinutes/$activeGoal"
@@ -379,13 +386,14 @@ private fun HeroStat(value: String, label: String, color: Color) {
 
 /**
  * The official 运动状态 block: 7-day EPOC load and VO2 max, with the official
- * load band as the status. Fatigue / fitness / training status are not fields
- * the Zepp cloud returns, so they are not shown here.
+ * load band as the status. The same card carries today's 疲劳 / 体能 / 训练状态
+ * (ATL / CTL / TSB) from Zepp's own activity algorithm.
  */
 @Composable
 private fun LoadRecoveryCard(
     load: LoadDay?,
-    vo2: Int?
+    vo2: Int?,
+    advice: ExertionDay?
 ) {
     SectionTitle("运动状态")
     FlatPanel {
@@ -450,6 +458,12 @@ private fun LoadRecoveryCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            if (advice != null &&
+                (advice.fatigue != null || advice.fitness != null || advice.status != null)
+            ) {
+                Spacer(Modifier.height(14.dp))
+                TrainingStatusRow(advice)
             }
         }
     }
@@ -743,60 +757,53 @@ private fun planIntensityWord(intensity: Int): String = when (intensity) {
 }
 
 /**
- * 疲劳 / 体能 / 训练状态, the same ATL/CTL/TSB Zepp prints. TSB is the difference,
- * so a positive number means there is room to train today.
+ * 疲劳 / 体能 / 训练状态, the same ATL/CTL/TSB Zepp prints, as one row inside the
+ * 运动状态 card. TSB is CTL − ATL, so a positive number means there is room to
+ * train today; below −10 the body is carrying more load than it has built up.
  */
 @Composable
-private fun TrainingStatusCard(advice: ExertionDay) {
+private fun TrainingStatusRow(advice: ExertionDay) {
     val warn = LocalZgPalette.current.warn
     val status = advice.status
     val note = status?.let {
         when {
             it > 5 -> "有余力，可以按计划训练" to MaterialTheme.colorScheme.onSurface
-            it > -5 -> "维持，正常练即可" to MaterialTheme.colorScheme.onSurface
+            it > -10 -> "维持，正常练即可" to MaterialTheme.colorScheme.onSurface
             else -> "偏疲劳，建议降低强度" to warn
         }
     }
-    FlatPanel {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.LocalFireDepartment,
-                    "疲劳",
-                    advice.fatigue?.roundToInt()?.toString() ?: "--",
-                    warn
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Favorite,
-                    "体能",
-                    advice.fitness?.roundToInt()?.toString() ?: "--",
-                    MaterialTheme.colorScheme.primary
-                )
-                StatBlock(
-                    Modifier.weight(1f),
-                    Icons.Rounded.Timer,
-                    "训练状态",
-                    status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
-                    MaterialTheme.colorScheme.tertiary
-                )
-            }
-            if (note != null) {
-                Text(
-                    note.first,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = note.second
-                )
-            }
-        }
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        StatBlock(
+            Modifier.weight(1f),
+            Icons.Rounded.LocalFireDepartment,
+            "疲劳",
+            advice.fatigue?.roundToInt()?.toString() ?: "--",
+            warn
+        )
+        StatBlock(
+            Modifier.weight(1f),
+            Icons.Rounded.Favorite,
+            "体能",
+            advice.fitness?.roundToInt()?.toString() ?: "--",
+            MaterialTheme.colorScheme.primary
+        )
+        StatBlock(
+            Modifier.weight(1f),
+            Icons.Rounded.Timer,
+            "训练状态",
+            status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
+            MaterialTheme.colorScheme.tertiary
+        )
+    }
+    if (note != null) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            note.first,
+            style = MaterialTheme.typography.labelSmall,
+            color = note.second
+        )
     }
 }

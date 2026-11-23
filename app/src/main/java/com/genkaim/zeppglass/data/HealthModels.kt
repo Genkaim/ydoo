@@ -380,9 +380,9 @@ data class ExertionDay(
     val completionPercent: Int? = null,
     val activityScore: Int? = null,
     val exerciseScore: Int? = null,
-    /** 疲劳: acute load (ATL). */
+    /** 疲劳: acute load (ATL), all sports. */
     val fatigue: Double? = null,
-    /** 体能: chronic load (CTL). */
+    /** 体能: chronic load (CTL), all sports. */
     val fitness: Double? = null,
     /** 训练状态: TSB, positive means there is room to train. */
     val status: Double? = null,

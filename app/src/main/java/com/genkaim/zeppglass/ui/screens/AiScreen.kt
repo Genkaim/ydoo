@@ -529,6 +529,22 @@ fun AiScreen(
                     .padding(bottom = deckSpace + 6.dp)
             )
 
+            // The switch mask: page colour, so it reads as the transcript
+            // dissolving rather than as a grey veil. It sits over the transcript
+            // but under the deck, so the input field stays where it is while the
+            // words behind it change.
+            //
+            // The colour carries the alpha itself: an alpha modifier outside the
+            // background would fade the content and leave the fill opaque, which
+            // is why the mask used to be painted over the page at rest.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.background.copy(alpha = coverAlpha)
+                    )
+            )
+
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -576,15 +592,6 @@ fun AiScreen(
                 }
             }
         }
-
-        // The switch mask: page colour, so it reads as the transcript
-        // dissolving rather than as a grey veil.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .alpha(coverAlpha)
-        )
 
         PinnedPageHeader(
             modifier = Modifier.align(Alignment.TopCenter),

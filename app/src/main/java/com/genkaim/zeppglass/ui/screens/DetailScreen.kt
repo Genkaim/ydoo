@@ -1940,8 +1940,9 @@ private fun BodyMetricDetail(data: HealthData?, metric: String?, source: String?
                 points = points,
                 color = spec.color,
                 padFraction = 0.14,
-                selector = spec.selector,
-                chartHeight = 200.dp
+                chartHeight = 200.dp,
+                formatValue = { number(it) },
+                selector = spec.selector
             )
         }
     }
@@ -2657,10 +2658,13 @@ private fun BodyTrendRow(
     color: Color,
     padFraction: Double,
     chartHeight: androidx.compose.ui.unit.Dp = 140.dp,
+    /** How a value is printed; the card and its labels share this. */
+    formatValue: (Double) -> String = { Fmt.oneDecimal(it) },
     selector: (WeightPoint) -> Double?
 ) {
     val zone = ZoneId.systemDefault()
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val unitText = if (unit.isBlank()) "" else " $unit"
     val series = points
         .mapNotNull { point ->
             val value = selector(point) ?: return@mapNotNull null
@@ -2694,7 +2698,7 @@ private fun BodyTrendRow(
                 modifier = Modifier.weight(1f)
             )
             Text(
-                current?.let { Fmt.oneDecimal(it) + " $unit" } ?: "--",
+                current?.let { formatValue(it) + unitText } ?: "--",
                 style = MaterialTheme.typography.titleSmall
             )
         }
@@ -2705,7 +2709,7 @@ private fun BodyTrendRow(
                 start = rangeStart,
                 end = lastDate,
                 color = color,
-                valueLabel = { Fmt.oneDecimal(it) + unit },
+                valueLabel = { formatValue(it) + unitText },
                 current = current,
                 padFraction = padFraction,
                 modifier = Modifier

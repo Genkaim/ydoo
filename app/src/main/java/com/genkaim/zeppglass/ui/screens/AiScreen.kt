@@ -119,6 +119,7 @@ import com.genkaim.zeppglass.ui.components.PinnedPageHeader
 import com.genkaim.zeppglass.ui.components.RoundIconButton
 import com.genkaim.zeppglass.ui.components.TypingDots
 import com.genkaim.zeppglass.ui.theme.popupCardColor
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 /**
@@ -253,6 +254,11 @@ fun AiScreen(
         fraction = typing
     )
 
+    // True while the deck (composer + the air under it) is changing size; those
+    // frames keep the list attached instead of animating it.
+    var trackingDeck by remember { mutableStateOf(false) }
+    val trackingNow = rememberUpdatedState(trackingDeck)
+
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
@@ -320,7 +326,7 @@ fun AiScreen(
                     // While the keyboard is on its way the field itself is moving;
                     // animating the list as well made it arrive in two or three
                     // separate steps. Those frames just keep the list attached.
-                    if (followAnimated && !keyboardMoving.value) {
+                    if (followAnimated && !keyboardMoving.value && !trackingNow.value) {
                         listState.animateScrollBy(
                             overflow.toFloat(),
                             // Eased at both ends: the text rises, settles, and
@@ -394,6 +400,19 @@ fun AiScreen(
                 mutableIntStateOf(with(density) { (bottomSpace + 68.dp).roundToPx() })
             }
             val deckSpace = with(density) { deckPx.toDp() }
+            // A deck jump — the keyboard rising, the suggestion strip folding
+            // away — is followed by layout, not by a tween. Animating those
+            // frames on top of each other is what made the page climb in several
+            // separate pieces; only the quiet growth of a reply animates.
+            var lastDeckDp by remember { mutableStateOf(deckSpace) }
+            LaunchedEffect(deckSpace) {
+                if (abs((deckSpace - lastDeckDp).value) > 6f) {
+                    trackingDeck = true
+                    kotlinx.coroutines.delay(280)
+                    trackingDeck = false
+                }
+                lastDeckDp = deckSpace
+            }
 
             // Greeting and transcript cross-fade instead of swapping in one
             // frame, so the first message lands while the empty state is still
@@ -556,12 +575,16 @@ fun AiScreen(
                 sessions = AiChatSession.sessions,
                 currentId = AiChatSession.currentId,
                 onOpen = { id ->
-                    showHistory = false
                     scope.launch {
-                        contentAlpha.animateTo(0f, tween(120))
+                        // The sheet is folded away first: fading the page to zero
+                        // behind it only produced a long blank, because the sheet's
+                        // own slide took longer than the fade. Swapped while it is
+                        // still up, the new conversation is then what fades in.
+                        runCatching { sheetState.hide() }
+                        showHistory = false
                         AiChatSession.open(id)
                         contentAlpha.snapTo(0f)
-                        contentAlpha.animateTo(1f, tween(200))
+                        contentAlpha.animateTo(1f, tween(240))
                     }
                 },
                 onDelete = { AiChatSession.delete(it) },

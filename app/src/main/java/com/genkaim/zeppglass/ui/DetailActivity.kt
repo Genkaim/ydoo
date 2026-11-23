@@ -65,7 +65,8 @@ class DetailActivity : ComponentActivity() {
         return DetailTarget(
             kind, date,
             getStringExtra(EXTRA_WORKOUT),
-            getStringExtra(EXTRA_METRIC)
+            getStringExtra(EXTRA_METRIC),
+            getStringExtra(EXTRA_SOURCE)
         )
     }
 
@@ -74,6 +75,7 @@ class DetailActivity : ComponentActivity() {
         private const val EXTRA_DATE = "detail_date"
         private const val EXTRA_WORKOUT = "detail_workout"
         private const val EXTRA_METRIC = "detail_metric"
+        private const val EXTRA_SOURCE = "detail_source"
         private const val EXTRA_SHOOT = "detail_shoot"
         private const val EXTRA_PHOTO = "detail_photo"
 
@@ -88,6 +90,7 @@ class DetailActivity : ComponentActivity() {
                 target.date?.let { putExtra(EXTRA_DATE, it.toString()) }
                 target.workoutId?.let { putExtra(EXTRA_WORKOUT, it) }
                 target.metric?.let { putExtra(EXTRA_METRIC, it) }
+                target.source?.let { putExtra(EXTRA_SOURCE, it) }
                 if (shoot) putExtra(EXTRA_SHOOT, true)
                 photoPath?.let { putExtra(EXTRA_PHOTO, it) }
             }

@@ -36,6 +36,8 @@ data class DetailTarget(
     val date: LocalDate? = null,
     val workoutId: String? = null,
     /** Which body metric a [DetailKind.BODY_METRIC] page shows. */
-    val metric: String? = null
+    val metric: String? = null,
+    /** Which body source the card was showing: "watch" or "scale". */
+    val source: String? = null
 )
 

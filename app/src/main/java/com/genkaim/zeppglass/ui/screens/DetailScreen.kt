@@ -167,6 +167,7 @@ import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -247,7 +248,8 @@ fun DetailScreen(
                 DetailKind.TRAINING_STATUS -> TrainingStatusDetail(data)
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource, onOpen)
-                DetailKind.BODY_METRIC -> BodyMetricDetail(data, target.metric)
+                DetailKind.BODY_METRIC ->
+                    BodyMetricDetail(data, target.metric, target.source)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
                 DetailKind.WORKOUT -> WorkoutDetail(
                     workout = workout,
@@ -414,7 +416,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
     DetailKind.BLOOD_PRESSURE -> target.date?.let(Fmt::date) ?: "收缩压 / 舒张压，mmHg"
     DetailKind.WORKOUT_MORE -> ""
-    DetailKind.BODY_METRIC -> "近 1 个月"
+    DetailKind.BODY_METRIC -> if (target.source == "watch") "手表 · 近 1 个月" else "体脂秤 · 近 1 个月"
 }
 
 // ---------------- sleep ----------------
@@ -1861,75 +1863,152 @@ private fun PaiZoneColumn(
 // ---------------- one body metric ----------------
 
 /**
- * One body-composition metric on its own page: the same month of readings the
- * trend card draws, given a full-width card of its own.
+ * What one metric's page needs: how the card names it and prints it, and which
+ * field of a weighing it reads. Keeping the decimals here means the page shows
+ * "1450 kcal" where the card shows "1450 kcal", not "1450.0".
  */
-@Composable
-private fun BodyMetricDetail(data: HealthData?, metric: String?) {
-    val palette = LocalZgPalette.current
-    val title: String
-    val unit: String
-    val color: androidx.compose.ui.graphics.Color
+private class BodyMetricSpec(
+    val title: String,
+    val unit: String,
+    val decimals: Int,
+    val color: Color,
     val selector: (WeightPoint) -> Double?
-    when (metric) {
-        "bmi" -> {
-            title = "BMI"; unit = ""
-            color = MaterialTheme.colorScheme.tertiary; selector = { it.bmi }
-        }
-        "fat" -> {
-            title = "体脂率"; unit = "%"
-            color = palette.warn; selector = { it.bodyFatPct }
-        }
-        "muscle" -> {
-            title = "肌肉"; unit = "kg"
-            color = palette.sleepLight; selector = { it.muscleKg }
-        }
-        "skeletal" -> {
-            title = "骨骼肌"; unit = "kg"
-            color = palette.chargePhysical; selector = { it.skeletalMuscleKg }
-        }
-        "water" -> {
-            title = "体水分率"; unit = "%"
-            color = palette.chargeMental; selector = { it.bodyWaterPct }
-        }
-        "bone" -> {
-            title = "骨量"; unit = "kg"
-            color = palette.sleepRem; selector = { it.boneMassKg }
-        }
-        "bmr" -> {
-            title = "基础代谢"; unit = "kcal"
-            color = palette.critical; selector = { it.metabolismKcal }
-        }
-        "protein" -> {
-            title = "蛋白质率"; unit = "%"
-            color = palette.accent; selector = { it.proteinPct }
-        }
-        "visceral" -> {
-            title = "内脏脂肪"; unit = ""
-            color = palette.critical; selector = { it.visceralFat }
-        }
-        else -> {
-            title = "体重"; unit = "kg"
-            color = palette.accent; selector = { it.weightKg }
-        }
+)
+
+@Composable
+private fun BodyMetricDetail(data: HealthData?, metric: String?, source: String?) {
+    val palette = LocalZgPalette.current
+    val spec = when (metric) {
+        "bmi" -> BodyMetricSpec("BMI", "", 1, MaterialTheme.colorScheme.tertiary) { it.bmi }
+        "fat" -> BodyMetricSpec("体脂率", "%", 1, palette.warn) { it.bodyFatPct }
+        "muscle" -> BodyMetricSpec("肌肉", "kg", 1, palette.sleepLight) { it.muscleKg }
+        "skeletal" -> BodyMetricSpec("骨骼肌", "kg", 1, palette.chargePhysical) { it.skeletalMuscleKg }
+        "water" -> BodyMetricSpec("体水分率", "%", 1, palette.chargeMental) { it.bodyWaterPct }
+        "bone" -> BodyMetricSpec("骨量", "kg", 2, palette.sleepRem) { it.boneMassKg }
+        "bmr" -> BodyMetricSpec("基础代谢", "kcal", 0, palette.critical) { it.metabolismKcal }
+        "protein" -> BodyMetricSpec("蛋白质率", "%", 1, palette.accent) { it.proteinPct }
+        "visceral" -> BodyMetricSpec("内脏脂肪", "", 0, palette.critical) { it.visceralFat }
+        else -> BodyMetricSpec("体重", "kg", 1, palette.accent) { it.weightKg }
     }
-    val points = data?.weights.orEmpty()
-    if (points.none { selector(it) != null }) {
-        Missing("还没有${title}的记录")
+    val all = data?.weights.orEmpty()
+    // The source the card was showing decides which history this page draws: the
+    // scale and the watch keep separate series, and mixing them would print a
+    // reading the card never showed.
+    val points =
+        if (source == "watch") all.filter { it.weightType != 0 }
+        else all.filter { it.weightType == 0 }
+    val series = points
+        .mapNotNull { point -> spec.selector(point)?.let { point.epochMs to it } }
+        .sortedBy { it.first }
+    if (series.isEmpty()) {
+        Missing("还没有${spec.title}的记录")
         return
     }
+    val zone = ZoneId.systemDefault()
+    fun dayOf(epochMs: Long): LocalDate =
+        Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+    // One month back from the newest reading of this metric: exactly the window
+    // the trend card draws, so the numbers below and the curve agree.
+    val newest = series.last()
+    val windowStart = dayOf(newest.first).minusMonths(1)
+    val window = series.filter { dayOf(it.first) in windowStart..dayOf(newest.first) }
+    val values = window.map { it.second }
+    val previous = window.dropLast(1).lastOrNull()?.second
+    val suffix = if (spec.unit.isBlank()) "" else " ${spec.unit}"
+    fun number(value: Double): String = when (spec.decimals) {
+        0 -> value.roundToInt().toString()
+        1 -> Fmt.oneDecimal(value)
+        else -> String.format(Locale.CHINA, "%.2f", value)
+    }
+    fun text(value: Double?): String = value?.let { number(it) + suffix } ?: "--"
+    val deltaText = previous?.let {
+        val diff = newest.second - it
+        val sign = if (diff > 0) "+" else if (diff < 0) "−" else ""
+        sign + number(abs(diff)) + suffix
+    } ?: "--"
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+
     FlatPanel {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
             BodyTrendRow(
-                title = title,
-                unit = unit,
+                title = spec.title,
+                unit = spec.unit,
                 points = points,
-                color = color,
+                color = spec.color,
                 padFraction = 0.14,
-                selector = selector,
+                selector = spec.selector,
                 chartHeight = 200.dp
             )
         }
+    }
+
+    SectionTitle("近 1 个月")
+    FlatPanel {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                BodyDetailStat("较上次", deltaText, Modifier.weight(1f))
+                BodyDetailStat("最高", text(values.maxOrNull()), Modifier.weight(1f))
+                BodyDetailStat("最低", text(values.minOrNull()), Modifier.weight(1f))
+            }
+            MetricDivider(16.dp)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                BodyDetailStat("平均", text(values.average()), Modifier.weight(1f))
+                BodyDetailStat("最新", text(newest.second), Modifier.weight(1f))
+                BodyDetailStat("读数", "${window.size} 次", Modifier.weight(1f))
+            }
+        }
+    }
+
+    // Every reading in the window, newest first: the curve shows the shape, this
+    // shows the numbers behind it.
+    SectionTitle("全部读数", trailing = "${window.size} 次")
+    FlatPanel {
+        Column(Modifier.fillMaxWidth()) {
+            window.asReversed().forEachIndexed { index, entry ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        Fmt.date(dayOf(entry.first)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = muted,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(text(entry.second), style = MaterialTheme.typography.titleSmall)
+                }
+                if (index != window.lastIndex) MetricDivider(16.dp)
+            }
+        }
+    }
+}
+
+/** One number under the trend on a metric's own page. */
+@Composable
+private fun BodyDetailStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(value, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -2369,10 +2448,17 @@ private fun WeightBody(
                     BodyMetricRow(
                         metric,
                         onClick = metric.metricKey?.let { key ->
-                            { onOpen(DetailTarget(DetailKind.BODY_METRIC, date, metric = key)) }
+                            {
+                                onOpen(
+                                    DetailTarget(
+                                        DetailKind.BODY_METRIC, date,
+                                        metric = key, source = source
+                                    )
+                                )
+                            }
                         }
                     )
-                    if (index != basicMetrics.lastIndex) MetricDivider()
+                    if (index != basicMetrics.lastIndex) MetricDivider(16.dp)
                 }
             }
         }
@@ -2383,10 +2469,17 @@ private fun WeightBody(
                     BodyMetricRow(
                         metric,
                         onClick = metric.metricKey?.let { key ->
-                            { onOpen(DetailTarget(DetailKind.BODY_METRIC, date, metric = key)) }
+                            {
+                                onOpen(
+                                    DetailTarget(
+                                        DetailKind.BODY_METRIC, date,
+                                        metric = key, source = source
+                                    )
+                                )
+                            }
                         }
                     )
-                    if (index != bodyMetrics.lastIndex) MetricDivider()
+                    if (index != bodyMetrics.lastIndex) MetricDivider(16.dp)
                 }
             }
         }
@@ -2526,12 +2619,14 @@ private fun BodyMetricRow(metric: BodyMetric, onClick: (() -> Unit)? = null) {
     }
 }
 
-/** Thin rule between two metric rows; runs nearly the full card width. */
+/** Thin rule between two metric rows; the caller decides how far it is inset. */
 @Composable
-private fun MetricDivider() {
+private fun MetricDivider(inset: androidx.compose.ui.unit.Dp = 0.dp) {
+    // The rule can be inset like the text; on the clickable body cards the row
+    // itself runs the full card width and ends right on the rule.
     Box(
         Modifier
-            .padding(vertical = 2.dp)
+            .padding(horizontal = inset)
             .fillMaxWidth()
             .height(1.dp)
             .background(MaterialTheme.colorScheme.outlineVariant)
@@ -2546,9 +2641,9 @@ private fun BodyTrendCard(points: List<WeightPoint>, padFraction: Double = 0.14)
     FlatPanel {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             BodyTrendRow("体重", "kg", points, palette.accent, padFraction) { it.weightKg }
-            MetricDivider()
+            MetricDivider(16.dp)
             BodyTrendRow("体脂", "%", points, palette.warn, padFraction) { it.bodyFatPct }
-            MetricDivider()
+            MetricDivider(16.dp)
             BodyTrendRow("肌肉", "kg", points, palette.sleepLight, padFraction) { it.muscleKg }
         }
     }

@@ -2924,22 +2924,21 @@ private data class TeZone(val from: Double, val to: Double, val label: String, v
 /**
  * The 0–5 training-effect scale, with each band's interval expressed the way the
  * gauge selects it: `[from, to)` for every band, the top one closed at 5
- * (`[4, 5]`). A reading of exactly 1.0 therefore belongs to 恢复, not 无效果.
+ * (`[4, 5]`). A reading of exactly 2.0 therefore belongs to 适中, not the band
+ * below it.
  *
  * ZeppBridge carries the same two figures (`training_effect`,
  * `anaerobic_training_effect`, 0.0–5.0, shown with one decimal) and does not
- * band them at all; the wording here follows the scale itself.
+ * band them at all.
  */
 @Composable
 private fun teZones(): List<TeZone> {
-    val palette = LocalZgPalette.current
-    val grey = MaterialTheme.colorScheme.onSurfaceVariant
     return listOf(
-        TeZone(0.0, 1.0, "无效果", grey),
-        TeZone(1.0, 2.0, "轻松", palette.sleepLight),
-        TeZone(2.0, 3.0, "维持体能", palette.accent),
-        TeZone(3.0, 4.0, "改善体能", palette.warn),
-        TeZone(4.0, 5.0, "大幅提升", palette.critical)
+        TeZone(0.0, 1.0, "无效果", Color(0xFF7FB2E5)),
+        TeZone(1.0, 2.0, "无效果", Color(0xFF8CCB9B)),
+        TeZone(2.0, 3.0, "适中", Color(0xFFE6C766)),
+        TeZone(3.0, 4.0, "良好", Color(0xFFE8A05C)),
+        TeZone(4.0, 5.0, "过量", Color(0xFFE08080))
     )
 }
 

@@ -196,22 +196,23 @@ fun ActivityScreen(
                         }
                     }
                     val planMinutes = advice?.planMinutes
+                    // 临时测试数据：步数目标 4220、心率区间时长 17 分钟、活动点数 60。
+                    val testAdvice = advice?.copy(totalScore = 60)
                     ActivityHero(
                         steps = day?.steps,
-                        // 临时：目标写死 2000，用来查看超过目标时圆环的画法。
-                        goal = 2000,
-                        points = advice?.totalScore,
-                        pointsTarget = advice?.targetScore,
-                        activeMinutes = bandMinutes ?: activityMinutes,
+                        goal = 4220,
+                        points = testAdvice?.totalScore,
+                        pointsTarget = testAdvice?.targetScore,
+                        activeMinutes = 17,
                         activeGoal = planMinutes ?: activityGoal
                     )
                     ActivityStatsCard(
                         steps = day?.steps,
-                        activeMinutes = bandMinutes ?: activityMinutes,
+                        activeMinutes = 17,
                         activeGoal = planMinutes ?: activityGoal,
                         calories = day?.calories,
-                        bandBased = bandMinutes != null && planMinutes != null,
-                        advice = advice
+                        bandBased = true,
+                        advice = testAdvice
                     )
                     LoadVo2Card(
                         load = load,

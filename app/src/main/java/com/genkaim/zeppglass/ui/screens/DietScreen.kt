@@ -250,25 +250,38 @@ fun DietDetail(
      * input differs. The result goes through the same editable card, so nothing
      * is stored until the user confirms it.
      */
-    fun analyzeText(described: String) {
+    fun analyzeText(described: String, note: String? = null) {
         val text = described.trim()
         if (text.isEmpty()) return
         describeOpen = false
         error = null
         flow = PhotoFlow.Loading(null)
+        thinking = ""
+        val extra = buildList {
+            analysisNote.takeIf { it.isNotBlank() }?.let { add(it) }
+            note?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }.joinToString("；")
+        if (!note.isNullOrBlank()) analysisNote = extra
         scope.launch {
             try {
-                val reply = withContext(Dispatchers.IO) {
-                    AiClient(settings).complete(
-                        listOf(
-                            ChatMessage("system", TEXT_FOOD_PROMPT),
-                            ChatMessage("user", "这一餐：$text")
-                        ),
-                        maxTokens = 1024
+                val messages = listOf(
+                    ChatMessage("system", TEXT_FOOD_PROMPT),
+                    ChatMessage(
+                        "user",
+                        "这一餐：$text" + if (extra.isBlank()) "" else "\n补充说明：$extra"
                     )
-                }
-                val json = parseFoodJson(reply)
-                    ?: error("AI 返回的内容不是可用的估算：${reply.take(60)}")
+                )
+                // Same streamed reasoning as the photo path: the card shows what
+                // the model is thinking while it turns words into a list.
+                val answer = StringBuilder()
+                AiClient(settings).streamReasoning(messages, maxTokens = 2048)
+                    .collect { (chunk, thought) ->
+                        if (thought.isNotEmpty()) thinking += thought
+                        if (chunk.isNotEmpty()) answer.append(chunk)
+                    }
+                val raw = answer.toString()
+                val json = parseFoodJson(raw)
+                    ?: error("AI 返回的内容不是可用的估算：${raw.take(60)}")
                 val items = parseItems(json)
                 // An empty list would open an editor with nothing in it.
                 if (items.isEmpty()) error("AI 没有给出具体的食物，换个说法再试")
@@ -283,6 +296,8 @@ fun DietDetail(
                     note = json.optString("note").takeIf { it.isNotBlank() }
                 )
                 description = ""
+                reply = ""
+                analysisNote = ""
                 flow = null
             } catch (e: Exception) {
                 flow = PhotoFlow.Failed(null, e.message ?: "估算失败")
@@ -812,9 +827,9 @@ fun DietDetail(
                         )
                     }
                 }
-                // A reply continues the same photo: the note is sent with the
-                // image and the answer replaces the draft that would have opened.
-                if (state.file != null) {
+                // A reply continues the same photo (or written description): the
+                // note is sent with it and the new answer replaces the draft.
+                if (state.file != null || description.isNotBlank()) {
                     Spacer(Modifier.height(10.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -830,9 +845,13 @@ fun DietDetail(
                             icon = Icons.Rounded.Send,
                             contentDescription = "补充后再估算",
                             onClick = {
-                                val file = state.file
-                                if (file != null && reply.isNotBlank()) {
-                                    analyze(file, auto = true, note = reply)
+                                if (reply.isNotBlank()) {
+                                    val file = state.file
+                                    if (file != null) {
+                                        analyze(file, auto = true, note = reply)
+                                    } else if (description.isNotBlank()) {
+                                        analyzeText(description, note = reply)
+                                    }
                                 }
                             },
                             enabled = reply.isNotBlank(),

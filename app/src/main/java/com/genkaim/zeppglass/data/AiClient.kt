@@ -348,6 +348,79 @@ class AiClient(private val settings: AppSettings) {
     }
 
     /**
+     * Same request as [stream], but every chunk is emitted as
+     * (answer, thinking): the diet page shows the second half as the model's
+     * reasoning while a written meal description is being turned into a list.
+     */
+    fun streamReasoning(
+        messages: List<ChatMessage>,
+        maxTokens: Int = 8192
+    ): Flow<Pair<String, String>> = flow {
+        val payload = JSONObject().apply {
+            put("model", settings.aiModel.ifBlank { DEFAULT_MODEL })
+            put("stream", true)
+            put("max_tokens", maxTokens)
+            put("temperature", 0.4)
+            put("messages", JSONArray().apply {
+                messages.forEach { m ->
+                    put(JSONObject().put("role", m.role).put("content", m.content))
+                }
+            })
+        }
+        val request = applyHeaders(
+            Request.Builder()
+                .url(endpoint())
+                .header("Accept", "text/event-stream")
+                .post(payload.toString().toRequestBody(jsonType))
+        ).build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body
+            if (!response.isSuccessful) {
+                val errorText = body?.string().orEmpty()
+                val hint = when {
+                    errorText.contains("MissingSessionID", ignoreCase = true) ->
+                        "接入点要求会话头 x-opencode-session，可在设置里补一行；应用已会自动添加"
+                    response.code == 401 || response.code == 403 -> "密钥被拒绝"
+                    response.code == 404 -> "接入点或模型不存在"
+                    response.code == 429 -> "请求太频繁或额度不足"
+                    else -> "服务返回 HTTP ${response.code}"
+                }
+                throw AiException(response.code, "$hint：${errorText.take(180)}")
+            }
+            if (body == null) throw AiException(0, "服务没有返回内容")
+
+            val contentType = response.header("Content-Type").orEmpty()
+            if (contentType.contains("application/json", ignoreCase = true)) {
+                val text = body.string()
+                val message = runCatching {
+                    JSONObject(text).getJSONArray("choices").getJSONObject(0)
+                        .getJSONObject("message")
+                }.getOrNull() ?: throw AiException(0, "无法解析返回内容")
+                val content = message.text("content").trim()
+                val thinking = message.text("reasoning_content").trim()
+                if (content.isEmpty() && thinking.isEmpty()) {
+                    throw AiException(0, "模型没有返回内容")
+                }
+                emit(content to thinking)
+                return@use
+            }
+
+            val source = body.source()
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: break
+                if (line.isBlank() || line.startsWith(":")) continue
+                if (!line.startsWith("data:")) continue
+                val data = line.removePrefix("data:").trim()
+                if (data == "[DONE]") break
+                val (chunk, thinking) = runCatching { JSONObject(data).sseDelta() }
+                    .getOrDefault("" to "")
+                if (chunk.isNotEmpty() || thinking.isNotEmpty()) emit(chunk to thinking)
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
      * Streaming version of [vision]: every SSE chunk is emitted as
      * (answer, thinking) as it arrives, so the diet card can show what the model
      * is doing while it looks at the photo instead of a bare spinner.

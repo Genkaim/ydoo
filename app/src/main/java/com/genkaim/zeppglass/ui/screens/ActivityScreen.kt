@@ -196,8 +196,8 @@ fun ActivityScreen(
                         }
                     }
                     val planMinutes = advice?.planMinutes
-                    // 临时测试目标：步数 4100、心率区间时长 5 分钟、活动点数 60。
-                    val testAdvice = advice?.copy(targetScore = 60)
+                    // 临时测试目标：步数 4100、心率区间时长 5 分钟、活动点数 45。
+                    val testAdvice = advice?.copy(targetScore = 45)
                     ActivityHero(
                         steps = day?.steps,
                         goal = 4100,

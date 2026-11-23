@@ -71,7 +71,9 @@ fun TrackRings(
                 // The mark starts while the last part of the lap is still filling.
                 launch {
                     if (value > 1f) {
-                        delay(durationMs.toLong() + 60L)
+                        // Halfway between starting mid-lap and starting after it: the mark begins
+                    // while the last quarter of the lap is still filling.
+                    delay((durationMs * 0.78f).toLong())
                         markTravel[index].animateTo(
                             targetValue = 1f,
                             animationSpec = tween(420, easing = FastOutSlowInEasing)

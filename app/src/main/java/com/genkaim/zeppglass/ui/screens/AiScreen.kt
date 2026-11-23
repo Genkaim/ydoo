@@ -81,6 +81,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -204,9 +205,61 @@ fun AiScreen(
         AiChatSession.loadSuggestions(settings, data)
     }
 
+    // ---- bottom spacing ---------------------------------------------------
+    // The composer has to clear two different things: the floating tab bar
+    // while the keyboard is down, and the keyboard itself while it is up.
+    // Its position follows the live IME inset, not a "keyboard is open" flag:
+    // the flag only flips when the keyboard has finished moving, so the field
+    // used to stand still until the keyboard was gone and then jump home.
+    // Reading the inset means it travels with the keyboard, both ways.
+    val density = LocalDensity.current
+    val imePx = with(density) { WindowInsets.ime.getBottom(this) }
+    val navBarPx = with(density) { WindowInsets.navigationBars.getBottom(this) }
+    val imeVisible = WindowInsets.isImeVisible
+    // The keyboard keeps its height for the whole session; remembering the
+    // tallest value keeps the travel distance stable once the inset is back at
+    // zero.
+    var tallestImePx by remember { mutableIntStateOf(0) }
+    // A few builds never move the IME inset (older ROMs, and AVDs without a
+    // SystemUI): there the flag drives the animation instead.
+    var insetTravels by remember { mutableStateOf(false) }
+    SideEffect {
+        if (imePx > tallestImePx) tallestImePx = imePx
+        if (imePx > navBarPx + 1) insetTravels = true
+    }
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    // A few builds report no IME inset at all (the window resizes instead).
+    // A rough keyboard height beats hiding the field behind the keyboard.
+    val keyboardPx = tallestImePx.takeIf { it > 0 }
+        ?: with(density) { (screenHeightDp * 0.40f).dp.roundToPx() }
+    val keyboardUp = imeVisible || imePx > navBarPx
+    // Fallback for the builds that never animate the inset.
+    val fallbackTyping by animateFloatAsState(
+        targetValue = if (keyboardUp) 1f else 0f,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "typing"
+    )
+    val travelPx = (keyboardPx - navBarPx).coerceAtLeast(1)
+    val insetTyping = ((imePx - navBarPx).toFloat() / travelPx).coerceIn(0f, 1f)
+    val typing = if (insetTravels) insetTyping else fallbackTyping
+    // True only while the keyboard is between the two ends.
+    val keyboardMoving = rememberUpdatedState(typing > 0.01f && typing < 0.99f)
+    // Measured by the shell, so the field clears the bar on every device no
+    // matter which system-bar insets it reports.
+    val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace
+    val bottomSpace = lerp(
+        start = barSpace + ComposerAir,
+        stop = with(density) { keyboardPx.toDp() } + ComposerAir,
+        fraction = typing
+    )
+
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
+    // Opening another conversation fades the transcript out and back in, so the
+    // words are swapped behind the fade instead of in front of the reader.
+    val contentAlpha = remember { Animatable(1f) }
+
     var followBottom by remember { mutableStateOf(true) }
     // The follow animation scrolls the list itself. Without this flag the
     // gesture observer below would read that as a drag and stop following.
@@ -264,7 +317,10 @@ fun AiScreen(
             if (overflow > 1) {
                 autoScroll = true
                 try {
-                    if (followAnimated) {
+                    // While the keyboard is on its way the field itself is moving;
+                    // animating the list as well made it arrive in two or three
+                    // separate steps. Those frames just keep the list attached.
+                    if (followAnimated && !keyboardMoving.value) {
                         listState.animateScrollBy(
                             overflow.toFloat(),
                             // Eased at both ends: the text rises, settles, and
@@ -298,51 +354,6 @@ fun AiScreen(
         Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
     }
 
-    // ---- bottom spacing ---------------------------------------------------
-    // The composer has to clear two different things: the floating tab bar
-    // while the keyboard is down, and the keyboard itself while it is up.
-    // Its position follows the live IME inset, not a "keyboard is open" flag:
-    // the flag only flips when the keyboard has finished moving, so the field
-    // used to stand still until the keyboard was gone and then jump home.
-    // Reading the inset means it travels with the keyboard, both ways.
-    val density = LocalDensity.current
-    val imePx = with(density) { WindowInsets.ime.getBottom(this) }
-    val navBarPx = with(density) { WindowInsets.navigationBars.getBottom(this) }
-    val imeVisible = WindowInsets.isImeVisible
-    // The keyboard keeps its height for the whole session; remembering the
-    // tallest value keeps the travel distance stable once the inset is back at
-    // zero.
-    var tallestImePx by remember { mutableIntStateOf(0) }
-    // A few builds never move the IME inset (older ROMs, and AVDs without a
-    // SystemUI): there the flag drives the animation instead.
-    var insetTravels by remember { mutableStateOf(false) }
-    SideEffect {
-        if (imePx > tallestImePx) tallestImePx = imePx
-        if (imePx > navBarPx + 1) insetTravels = true
-    }
-    val screenHeightDp = LocalConfiguration.current.screenHeightDp
-    // A few builds report no IME inset at all (the window resizes instead).
-    // A rough keyboard height beats hiding the field behind the keyboard.
-    val keyboardPx = tallestImePx.takeIf { it > 0 }
-        ?: with(density) { (screenHeightDp * 0.40f).dp.roundToPx() }
-    val keyboardUp = imeVisible || imePx > navBarPx
-    // Fallback for the builds that never animate the inset.
-    val fallbackTyping by animateFloatAsState(
-        targetValue = if (keyboardUp) 1f else 0f,
-        animationSpec = tween(200, easing = FastOutSlowInEasing),
-        label = "typing"
-    )
-    val travelPx = (keyboardPx - navBarPx).coerceAtLeast(1)
-    val insetTyping = ((imePx - navBarPx).toFloat() / travelPx).coerceIn(0f, 1f)
-    val typing = if (insetTravels) insetTyping else fallbackTyping
-    // Measured by the shell, so the field clears the bar on every device no
-    // matter which system-bar insets it reports.
-    val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace
-    val bottomSpace = lerp(
-        start = barSpace + ComposerAir,
-        stop = with(density) { keyboardPx.toDp() } + ComposerAir,
-        fraction = typing
-    )
 
     // Everything already on screen when the page opens is simply there; only
     // messages that arrive while it is open slide up into place. The baseline
@@ -373,6 +384,7 @@ fun AiScreen(
         Box(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = contentAlpha.value }
         ) {
             // Seeded with an estimate of the deck (composer + the bar's space):
             // starting at zero made the list sit lower for one frame, then jump
@@ -543,9 +555,14 @@ fun AiScreen(
             HistorySheet(
                 sessions = AiChatSession.sessions,
                 currentId = AiChatSession.currentId,
-                onOpen = {
-                    AiChatSession.open(it)
+                onOpen = { id ->
                     showHistory = false
+                    scope.launch {
+                        contentAlpha.animateTo(0f, tween(120))
+                        AiChatSession.open(id)
+                        contentAlpha.snapTo(0f)
+                        contentAlpha.animateTo(1f, tween(200))
+                    }
                 },
                 onDelete = { AiChatSession.delete(it) },
                 onDeleteAll = { AiChatSession.deleteAll() },

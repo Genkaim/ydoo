@@ -384,6 +384,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
         "bone" -> "骨量"
         "bmr" -> "基础代谢"
         "protein" -> "蛋白质率"
+        "visceral" -> "内脏脂肪"
         else -> "体重"
     }
 }
@@ -1903,6 +1904,10 @@ private fun BodyMetricDetail(data: HealthData?, metric: String?) {
             title = "蛋白质率"; unit = "%"
             color = palette.accent; selector = { it.proteinPct }
         }
+        "visceral" -> {
+            title = "内脏脂肪"; unit = ""
+            color = palette.critical; selector = { it.visceralFat }
+        }
         else -> {
             title = "体重"; unit = "kg"
             color = palette.accent; selector = { it.weightKg }
@@ -1914,15 +1919,17 @@ private fun BodyMetricDetail(data: HealthData?, metric: String?) {
         return
     }
     FlatPanel {
-        BodyTrendRow(
-            title = title,
-            unit = unit,
-            points = points,
-            color = color,
-            padFraction = 0.14,
-            selector = selector,
-            chartHeight = 200.dp
-        )
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            BodyTrendRow(
+                title = title,
+                unit = unit,
+                points = points,
+                color = color,
+                padFraction = 0.14,
+                selector = selector,
+                chartHeight = 200.dp
+            )
+        }
     }
 }
 
@@ -2319,13 +2326,25 @@ private fun WeightBody(
             // what the body-composition reading actually carries. It has no
             // official normal band here, so the bar stays neutral instead of
             // inventing a verdict.
-            BodyMetric(
-                "骨骼肌", Icons.Rounded.Accessibility,
-                kg(skeletalValue), skeletalValue,
-                skeletalRate, 10.0, skeletalMax, skeletalBands,
-                listOf(skeletalLow to cut(skeletalLow, 1), skeletalHigh to cut(skeletalHigh, 1)),
-                "skeletal"
-            ),
+            // The watch reports skeletal muscle, the scale reports visceral fat:
+            // each source keeps the row it actually measures.
+            if (source == "watch") {
+                BodyMetric(
+                    "骨骼肌", Icons.Rounded.Accessibility,
+                    kg(skeletalValue), skeletalValue,
+                    skeletalRate, 10.0, skeletalMax, skeletalBands,
+                    listOf(skeletalLow to cut(skeletalLow, 1), skeletalHigh to cut(skeletalHigh, 1)),
+                    "skeletal"
+                )
+            } else {
+                BodyMetric(
+                    "内脏脂肪", Icons.Rounded.Favorite,
+                    comp?.visceralFat?.roundToInt()?.toString() ?: "--", comp?.visceralFat,
+                    visceralRate, 1.0, 20.0, visceralBands,
+                    listOf(10.0 to "10", 15.0 to "15"),
+                    "visceral"
+                )
+            },
             BodyMetric(
                 "基础代谢", Icons.Rounded.LocalFireDepartment,
                 comp?.metabolismKcal?.roundToInt()?.let { "$it kcal" } ?: "--",
@@ -2345,7 +2364,7 @@ private fun WeightBody(
         val bodyMetrics = metrics.drop(2)
         SectionTitle("体重与 BMI", trailing = latest?.let { Fmt.date(dayOf(it)) })
         FlatPanel {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Column(Modifier.fillMaxWidth()) {
                 basicMetrics.forEachIndexed { index, metric ->
                     BodyMetricRow(
                         metric,
@@ -2359,7 +2378,7 @@ private fun WeightBody(
         }
         SectionTitle("其他指标", trailing = comp?.let { Fmt.date(dayOf(it)) })
         FlatPanel {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Column(Modifier.fillMaxWidth()) {
                 bodyMetrics.forEachIndexed { index, metric ->
                     BodyMetricRow(
                         metric,
@@ -2448,7 +2467,7 @@ private fun BodyMetricRow(metric: BodyMetric, onClick: (() -> Unit)? = null) {
                 if (onClick == null) Modifier
                 else Modifier.clickable(onClick = onClick)
             )
-            .padding(vertical = 15.dp)
+            .padding(horizontal = 16.dp, vertical = 15.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(

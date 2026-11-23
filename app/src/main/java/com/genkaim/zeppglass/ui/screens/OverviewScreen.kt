@@ -123,6 +123,7 @@ import com.genkaim.zeppglass.ui.components.SleepStageBar
 import com.genkaim.zeppglass.ui.components.TypingDots
 import com.genkaim.zeppglass.ui.tabs.AppTab
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
+import com.genkaim.zeppglass.ui.theme.popupCardColor
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -654,7 +655,7 @@ fun OverviewScreen(
                         ambientColor = Color.Black.copy(alpha = 0.13f),
                         spotColor = Color.Black.copy(alpha = 0.18f)
                     )
-                    .background(MaterialTheme.colorScheme.surface, sheetShape)
+                    .background(popupCardColor(), sheetShape)
                     // The height animation comes last, inside the card: it clips
                     // to its own size, so wrapping the shadow in it cut the shadow
                     // off at the card's edges. A month with six weeks is taller

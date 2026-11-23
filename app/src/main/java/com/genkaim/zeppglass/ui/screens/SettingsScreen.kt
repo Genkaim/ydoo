@@ -75,6 +75,7 @@ import com.genkaim.zeppglass.data.AiClient
 import com.genkaim.zeppglass.data.AppSettings
 import com.genkaim.zeppglass.data.HealthStore
 import com.genkaim.zeppglass.data.SignOut
+import com.genkaim.zeppglass.ui.theme.popupCardColor
 import com.genkaim.zeppglass.ui.components.CapsuleField
 import com.genkaim.zeppglass.ui.components.FlatButton
 import com.genkaim.zeppglass.ui.components.FlatPanel
@@ -358,6 +359,7 @@ fun SettingsScreen(
                                 // dialog is open: grow and shrink the card instead
                                 // of letting it jump to its new height.
                                 .animateContentSize(tween(200)),
+                            color = popupCardColor(),
                             shape = RoundedCornerShape(30.dp)
                         ) {
                             // Scrolls when the keyboard leaves too little room,
@@ -544,7 +546,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             shape = RoundedCornerShape(24.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = popupCardColor(),
             title = { Text("退出登录？") },
             confirmButton = {
                 TextButton(onClick = {

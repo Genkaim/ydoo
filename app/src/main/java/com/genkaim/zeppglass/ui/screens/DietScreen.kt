@@ -100,6 +100,7 @@ import com.genkaim.zeppglass.ui.components.Rule
 import com.genkaim.zeppglass.ui.components.SectionTitle
 import com.genkaim.zeppglass.ui.sheets.DietGoalSheet
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
+import com.genkaim.zeppglass.ui.theme.popupCardColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -689,6 +690,7 @@ fun DietDetail(
     if (setupPrompt) {
         AlertDialog(
             onDismissRequest = { setupPrompt = false },
+            containerColor = popupCardColor(),
             title = { Text("还没有配置 AI 接入点") },
             text = {
                 Text("拍照、相册和文字描述都要走你自己填的 AI 接入点，先在设置里填好地址、密钥和模型。")
@@ -912,7 +914,11 @@ private fun FloatingCard(onDismiss: () -> Unit, content: @Composable () -> Unit)
                 .padding(horizontal = 18.dp),
             contentAlignment = Alignment.Center
         ) {
-            FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+            FlatPanel(
+                Modifier.fillMaxWidth(),
+                color = popupCardColor(),
+                shape = RoundedCornerShape(24.dp)
+            ) {
                 Column(Modifier.padding(18.dp)) { content() }
             }
         }
@@ -965,7 +971,11 @@ private fun MealEditorCard(
                 .padding(horizontal = 18.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+            FlatPanel(
+                Modifier.fillMaxWidth(),
+                color = popupCardColor(),
+                shape = RoundedCornerShape(24.dp)
+            ) {
                 Column(
                     Modifier
                         .heightIn(max = 620.dp)
@@ -1148,7 +1158,11 @@ private fun FoodEditor(
                 .padding(horizontal = 32.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
+            FlatPanel(
+                Modifier.fillMaxWidth(),
+                color = popupCardColor(),
+                shape = RoundedCornerShape(22.dp)
+            ) {
                 Column(
                     Modifier
                         .heightIn(max = 520.dp)
@@ -1494,7 +1508,7 @@ private fun DietAiDialog(
         ) {
             FlatPanel(
                 Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.background,
+                color = popupCardColor(),
                 shape = RoundedCornerShape(24.dp)
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -1617,9 +1631,12 @@ private fun DietAiDialog(
                                     // the left, "份量 · 热量" in small muted text.
                                     current.items.forEach { item ->
                                         Row(
+                                            // No side padding: the name starts on
+                                            // the same edge as 合计, and the amount
+                                            // ends where the total ends.
                                             Modifier
                                                 .fillMaxWidth()
-                                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                                .padding(vertical = 6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(

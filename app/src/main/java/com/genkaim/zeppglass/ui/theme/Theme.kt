@@ -56,6 +56,16 @@ private val LightScheme = lightColorScheme(
     onErrorContainer = Color(0xFF5C1414)
 )
 
+/**
+ * Card colour for pop-up surfaces: dialogs, menus, the calendar. Light mode
+ * keeps white paper; dark mode lifts the card one step above the near-black
+ * page so it reads as a sheet laid on top instead of a hole in the page.
+ */
+@Composable
+fun popupCardColor(): Color =
+    if (LocalZgPalette.current.isDark) MaterialTheme.colorScheme.surfaceVariant
+    else MaterialTheme.colorScheme.surface
+
 private val DarkScheme = darkColorScheme(
     primary = Color(0xFF48D69B),
     onPrimary = Color(0xFF04231A),

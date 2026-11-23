@@ -2249,15 +2249,15 @@ private fun MiniTrendChart(
         val xSpan = (endMs - startMs).coerceAtLeast(1f)
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }
-        val pad = ((maxV - minV) * 0.18).coerceAtLeast(0.4)
-        // One grid step, chosen so three to five lines fit the fixed height: a
+        val pad = ((maxV - minV) * 0.06).coerceAtLeast(0.12)
+        // One grid step, chosen so three to four lines fit the fixed height: a
         // 0.6 kg swing gets 0.2 steps, a 5 kg swing gets 1 kg steps. Only the
         // value per step changes with the data; the chart keeps its height.
         val rawLow = minV - pad
         val rawHigh = maxV + pad
         val rawSpan = (rawHigh - rawLow).coerceAtLeast(0.1)
         val niceSteps = listOf(0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0)
-        val step = niceSteps.firstOrNull { rawSpan / it <= 4.5 } ?: (rawSpan / 4.0)
+        val step = niceSteps.firstOrNull { rawSpan / it <= 4.0 } ?: (rawSpan / 4.0)
         val lowD = kotlin.math.floor(rawLow / step) * step
         val highD = kotlin.math.ceil(rawHigh / step) * step
         val low = lowD.toFloat()

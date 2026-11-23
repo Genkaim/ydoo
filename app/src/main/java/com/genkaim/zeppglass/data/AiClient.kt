@@ -758,7 +758,71 @@ object AiContext {
             }
         }
 
+        // 运动状态: the same ATL / CTL / TSB the activity page shows, plus
+        // today's recommendation and the minutes actually spent in its band.
+        data.exertion.lastOrNull()?.let { day ->
+            builder.appendLine("\n运动状态（Zepp 的运动算法；缺的项就是没有采样）：")
+            val statusBits = buildList {
+                day.fatigue?.let { add("疲劳 ATL ${it.toInt()}") }
+                day.fitness?.let { add("体能 CTL ${it.toInt()}") }
+                day.status?.let {
+                    add("训练状态 TSB ${if (it > 0) "+" else ""}${it.toInt()}（体能−疲劳）")
+                }
+            }
+            if (statusBits.isNotEmpty()) builder.appendLine("- 日期 ${day.date}：" + statusBits.joinToString("，"))
+
+            val planBits = mutableListOf<String>().apply {
+                day.planHrLow?.let { low ->
+                    day.planHrHigh?.let { high -> add("建议心率 $low-$high bpm") }
+                }
+                day.planMinutes?.let { add("建议时长 $it 分钟") }
+                day.planIntensity?.let {
+                    add(
+                        "建议强度 " + when (it) {
+                            1 -> "轻度"
+                            2 -> "中等"
+                            3 -> "高强度"
+                            else -> "$it"
+                        }
+                    )
+                }
+                day.targetScore?.let { add("建议活动点数 $it 分") }
+                day.totalScore?.let { add("已得活动点数 $it 分") }
+            }
+            val low = day.planHrLow
+            val high = day.planHrHigh
+            if (low != null && high != null) {
+                // One sample per minute: counting samples inside the band is
+                // counting minutes, and minutes without a reading stay uncounted.
+                val zone = ZoneId.systemDefault()
+                val start = day.date.atStartOfDay(zone).toEpochSecond()
+                val end = day.date.plusDays(1).atStartOfDay(zone).toEpochSecond()
+                val minutes = data.heartRate.count { it.first in start until end && it.second in low..high }
+                planBits.add("今天已在建议心率区间内 $minutes 分钟")
+            }
+            if (planBits.isNotEmpty()) builder.appendLine("- 今日建议：" + planBits.joinToString("，"))
+        }
+
+        data.load.lastOrNull()?.let { l ->
+            val bits = buildList {
+                l.weekLoad?.let { add("7 天运动负荷 ${it.toInt()}") }
+                l.load?.let { add("当天负荷 ${it.toInt()}") }
+                if (l.optimalMin != null && l.optimalMax != null) {
+                    add("个人合适区间 ${l.optimalMin.toInt()}-${l.optimalMax.toInt()}")
+                }
+                l.overreaching?.let { add("过量线 ${it.toInt()}") }
+            }
+            if (bits.isNotEmpty()) builder.appendLine("- 负荷口径：" + bits.joinToString("，"))
+        }
+
         data.vo2Max?.let { builder.appendLine("\n最大摄氧量：$it ml/kg/min") }
+        val vo2History = data.vo2History.takeLast(6)
+        if (vo2History.size > 1) {
+            builder.appendLine(
+                "最近几次测算：" + vo2History.joinToString("，") { (d, v) -> "$d ${v.toInt()}" } +
+                    "（结果算的是估算值的变化，不是测量仪器的读数）"
+            )
+        }
 
         val workouts = data.workouts.take(5)
         if (workouts.isNotEmpty()) {

@@ -277,7 +277,7 @@ fun ActivityScreen(
         PinnedPageHeader(onHeight = { headerHeight = it }) {
             PageHeader(
                 title = "活动",
-                subtitle = "${Fmt.date(today)} · ${Fmt.weekday(today)}"
+                subtitle = "今日活动量"
             )
         }
     }

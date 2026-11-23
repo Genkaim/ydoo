@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -857,7 +858,11 @@ private fun EmptyTranscript(
         } else {
             Text(
                 "今天想聊点什么？",
-                modifier = Modifier.padding(horizontal = 28.dp),
+                // Lifted off the dead centre: with the composer and the starter
+                // chips below, the middle of the free space is about 48 dp too low.
+                modifier = Modifier
+                    .offset(y = (-48).dp)
+                    .padding(horizontal = 28.dp),
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center
             )

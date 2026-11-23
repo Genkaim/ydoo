@@ -35,6 +35,9 @@ import kotlinx.coroutines.launch
 /** Milliseconds one full lap takes, with every ring using the same speed. */
 private const val LAP_MILLIS = 700f
 
+/** How far past the lap an over-goal ring animates, to clear the badge. */
+private const val OVER_LAP_EXTRA = 0.06f
+
 /**
  * Activity rings drawn as a running track: a stadium (two straights and two
  * semicircular ends) instead of a circle, tilted a little so it reads like the
@@ -60,8 +63,10 @@ fun TrackRings(
     LaunchedEffect(values) {
         values.forEachIndexed { index, value ->
             launch {
-                // Exactly one lap of animation, whatever the overshoot.
-                val target = value.coerceIn(0f, 1f)
+                // Over the goal the head runs one lap and then a little past the
+                // start, ending just clear of the badge; the marker rides it the
+                // whole way.
+                val target = if (value > 1f) 1f + OVER_LAP_EXTRA else value.coerceIn(0f, 1f)
                 val distance = abs(target - animated[index].value)
                 if (distance <= 0.001f) {
                     animated[index].snapTo(target)
@@ -119,32 +124,15 @@ fun TrackRings(
                 // already is, with no last-moment jump and no second lap.
                 val realValue = values.getOrElse(index) { 0f }
                 if (realValue > 1f) {
-                    val over = (realValue - 1f).coerceAtMost(1f)
-                    // A whole extra lap ends on the start point, where the badge
-                    // is; wrap it to zero before the clearance check.
-                    val wrapped = if (over >= 1f) 0f else over
-                    // Clearance around the badge, as a fraction of the lap. The
-                    // badge disc is 0.5 stroke in radius and the mark's outline
-                    // reaches 0.57 + 0.07 stroke from its centre, so 1.14 stroke is
-                    // where they touch; the extra margin absorbs antialiasing and
-                    // the badge's own edge.
+                    // Same position as the arc's head: after the lap it carries on
+                    // from the start point, so the mark travels with the tip and
+                    // comes to rest a little past the badge.
+                    val headAt = if (progress <= 1f) progress else progress - 1f
+                    // Arc length the badge would hide, as a fraction of the lap.
                     val clearFrac = ((stroke * 1.3f) / rect.perimeter).coerceAtMost(0.45f)
-                    // The badge hides an arc on both sides of the start point: the
-                    // one just after it (a value past one lap wraps back to 0) and
-                    // the one just before it (a value just under one lap).
-                    val finalMark = when {
-                        wrapped < clearFrac -> clearFrac
-                        wrapped > 1f - clearFrac -> 1f - clearFrac
-                        else -> wrapped
-                    }
-                    val markAt = minOf(progress, finalMark)
-                    // Drawn once it has left the badge on the way out. The
-                    // tolerance matters: when the overshoot is small the final
-                    // position IS the clearance, and a strict '>' would hide the
-                    // mark exactly at the end of the animation.
-                    if (markAt >= clearFrac - 0.0001f) {
-                        val head = rect.pointAt(rect.perimeter * markAt)
-                        val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
+                    if (headAt >= clearFrac) {
+                        val head = rect.pointAt(rect.perimeter * headAt)
+                        val before = rect.pointAt(rect.perimeter * headAt - 0.5f)
                         val dir = Math.toDegrees(
                             kotlin.math.atan2(
                                 (head.y - before.y).toDouble(),

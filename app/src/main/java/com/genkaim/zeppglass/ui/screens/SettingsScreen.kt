@@ -1,6 +1,7 @@
 package com.genkaim.zeppglass.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.widget.Toast
@@ -350,7 +351,15 @@ fun SettingsScreen(
                             .padding(horizontal = 18.dp, vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        FlatPanel(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp)) {
+                        FlatPanel(
+                            Modifier
+                                .fillMaxWidth()
+                                // The test result appears and disappears while the
+                                // dialog is open: grow and shrink the card instead
+                                // of letting it jump to its new height.
+                                .animateContentSize(tween(200)),
+                            shape = RoundedCornerShape(30.dp)
+                        ) {
                             // Scrolls when the keyboard leaves too little room,
                             // so no field is ever unreachable.
                             Column(
@@ -439,9 +448,18 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
-                                testResult?.let {
+                                // Uncovered from the top like the rest of the
+                                // card, so the result slides into the space it
+                                // adds rather than popping in at full height.
+                                AnimatedVisibility(
+                                    visible = testResult != null,
+                                    enter = fadeIn(tween(160)) +
+                                        expandVertically(tween(200), expandFrom = Alignment.Top),
+                                    exit = fadeOut(tween(120)) +
+                                        shrinkVertically(tween(180), shrinkTowards = Alignment.Top)
+                                ) {
                                     Text(
-                                        it,
+                                        testResult.orEmpty(),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (testOk) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.error

@@ -4373,38 +4373,24 @@ private fun BloodPressureDetail(data: HealthData?, date: LocalDate?) {
 private fun BloodPressureStatRow(name: String, values: List<Int>, color: Color) {
     if (values.isEmpty()) return
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.width(52.dp)) {
-            Box(
-                Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(color)
-            )
-            Spacer(Modifier.height(5.dp))
-            Text(
-                name,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
         StatBlock(
             Modifier.weight(1f),
             Icons.Rounded.ArrowUpward,
-            "最高",
+            "最高$name",
             values.max().toString(),
             color
         )
         StatBlock(
             Modifier.weight(1f),
             Icons.Rounded.ArrowDownward,
-            "最低",
+            "最低$name",
             values.min().toString(),
             color
         )
         StatBlock(
             Modifier.weight(1f),
             Icons.Rounded.TrendingFlat,
-            "平均",
+            "平均$name",
             values.average().roundToInt().toString(),
             color
         )

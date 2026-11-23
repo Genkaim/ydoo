@@ -272,15 +272,19 @@ fun OverviewScreen(
     Box(modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
         val haptics = LocalHapticFeedback.current
+        // Buzz at the moment the pull passes the threshold and the gesture is
+        // armed: that is when the user needs to know "release now refreshes",
+        // not when the request actually starts.
+        val armed = pullState.distanceFraction >= 1f
+        LaunchedEffect(armed) {
+            if (armed) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
         // The buzz belongs to a manual pull: the indicator fires onRefresh only
         // after a real pull-and-release, while a background refresh (widget,
         // opening the app) never comes through here.
         PullToRefreshBox(
             isRefreshing = state.refreshing,
-            onRefresh = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                store.refresh()
-            },
+            onRefresh = { store.refresh() },
             state = pullState,
             modifier = Modifier.fillMaxSize(),
             // The page never moves with the finger. Pulling only reveals this

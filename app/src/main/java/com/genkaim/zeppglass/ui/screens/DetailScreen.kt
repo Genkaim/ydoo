@@ -3487,12 +3487,17 @@ private fun HrvDetail(data: HealthData?, date: LocalDate?) {
                     )
                 }
             } else {
-                Text(
-                    "这一晚没有连续 HRV 采样",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
-                )
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        "这一晚没有连续 HRV 采样",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -3937,6 +3942,19 @@ private fun NightSpo2Detail(data: HealthData?, date: LocalDate?, withDayStats: B
                     )
                 }
             }
+            // The night's samples as one bar per hour, the same time chart the
+            // blood pressure page uses: from that hour's lowest to its highest
+            // reading, coloured by the lowest (the hour is as good as its worst).
+            SectionTitle("各小时")
+            FlatPanel {
+                HourlySpo2Chart(
+                    points = points,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                        .height(170.dp)
+                )
+            }
         }
     }
 
@@ -4377,8 +4395,98 @@ private fun HourlyBloodPressureChart(hours: List<BpHour>, modifier: Modifier = M
     }
 }
 
-// ---------------- sleep vitals with a 7-day trend ----------------
+/**
+ * Oxygen for the whole night, one bar per hour: the hour's lowest to highest
+ * reading, coloured by that lowest sample, with a dot at the hour's midpoint.
+ * Same shape as the blood pressure time chart so the two pages read alike.
+ */
+@Composable
+private fun HourlySpo2Chart(points: List<Spo2Point>, modifier: Modifier = Modifier) {
+    val zone = ZoneId.systemDefault()
+    val hours = (0 until 24).mapNotNull { hour ->
+        val bucket = points.filter {
+            Instant.ofEpochMilli(it.epochMs).atZone(zone).hour == hour
+        }
+        if (bucket.isEmpty()) {
+            null
+        } else {
+            Triple(hour, bucket.minOf { it.value }, bucket.maxOf { it.value })
+        }
+    }
+    if (hours.isEmpty()) return
+    val measurer = rememberTextMeasurer()
+    val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val palette = LocalZgPalette.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val lo = 85f
+    val hi = 100f
 
+    fun tone(value: Int): Color = when {
+        value >= 95 -> palette.accent
+        value >= 90 -> palette.warn
+        else -> palette.critical
+    }
+
+    Canvas(modifier) {
+        val axisWidth = 30.dp.toPx()
+        val axisHeight = 16.dp.toPx()
+        val topPad = 10.dp.toPx()
+        val bottomPad = 6.dp.toPx()
+        val chartWidth = (size.width - axisWidth).coerceAtLeast(1f)
+        val chartHeight = (size.height - axisHeight - topPad - bottomPad).coerceAtLeast(8f)
+        fun yOf(value: Float): Float = topPad + chartHeight - ((value - lo) / (hi - lo)) * chartHeight
+
+        listOf(85, 90, 95, 100).forEach { tick ->
+            val y = yOf(tick.toFloat())
+            drawLine(palette.grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
+            val layout = measurer.measure(tick.toString(), axisStyle)
+            drawText(
+                layout,
+                topLeft = Offset(0f, (y - layout.size.height / 2f).coerceAtLeast(0f))
+            )
+        }
+
+        val slot = chartWidth / 24f
+        val barWidth = (slot * 0.46f).coerceAtLeast(2f)
+        hours.forEach { (hour, lowest, highest) ->
+            val centerX = axisWidth + slot * hour + slot / 2f
+            val top = yOf(highest.toFloat())
+            val bottom = yOf(lowest.toFloat())
+            drawRoundRect(
+                color = tone(lowest).copy(alpha = 0.45f),
+                topLeft = Offset(centerX - barWidth / 2f, top),
+                size = androidx.compose.ui.geometry.Size(
+                    barWidth,
+                    (bottom - top).coerceAtLeast(1f)
+                ),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+            )
+            drawCircle(
+                ink.copy(alpha = 0.6f),
+                radius = 1.8.dp.toPx(),
+                center = Offset(centerX, yOf((lowest + highest) / 2f))
+            )
+        }
+
+        listOf(0, 6, 12, 18, 23).forEach { hour ->
+            val layout = measurer.measure(
+                if (hour == 23) "24" else hour.toString(),
+                axisStyle
+            )
+            val centerX = axisWidth + slot * hour + slot / 2f
+            drawText(
+                layout,
+                topLeft = Offset(
+                    (centerX - layout.size.width / 2f)
+                        .coerceIn(axisWidth, size.width - layout.size.width),
+                    size.height - axisHeight / 2f - layout.size.height / 2f
+                )
+            )
+        }
+    }
+}
+
+// ---------------- sleep vitals with a 7-day trend ----------------
 private enum class SleepMetric(val unit: String) {
     HEART_RATE("bpm"),
     RESPIRATION("次/分"),

@@ -101,6 +101,7 @@ import com.genkaim.zeppglass.data.DietStore
 import com.genkaim.zeppglass.data.GeoPoint
 import com.genkaim.zeppglass.data.HealthData
 import com.genkaim.zeppglass.data.HealthStore
+import com.genkaim.zeppglass.data.LoadDay
 import com.genkaim.zeppglass.data.bodyCompositionScore
 import com.genkaim.zeppglass.data.deurenbergAge
 import com.genkaim.zeppglass.data.mifflinBmr
@@ -241,6 +242,7 @@ fun DetailScreen(
                 DetailKind.READINESS -> ReadinessDetail(data, target.date)
                 DetailKind.ACTIVITY -> ActivityDetail(data, target.date ?: LocalDate.now())
                 DetailKind.LOAD -> LoadDetail(data, target.date)
+                DetailKind.TRAINING_STATUS -> TrainingStatusDetail(data)
                 DetailKind.PAI -> PaiDetail(data, target.date)
                 DetailKind.WEIGHT -> WeightDetail(data, target.date, bodySource)
                 DetailKind.SPO2 -> NightSpo2Detail(data, target.date, withDayStats = true)
@@ -355,6 +357,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.READINESS -> "准备度"
     DetailKind.ACTIVITY -> "活动"
     DetailKind.LOAD -> "训练负荷"
+    DetailKind.TRAINING_STATUS -> "训练状态"
     DetailKind.PAI -> "PAI"
     DetailKind.WEIGHT -> "身体成分"
     DetailKind.SPO2 -> "血氧"
@@ -381,6 +384,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.READINESS -> target.date?.let(Fmt::date) ?: "手表评分，满分 100"
     DetailKind.ACTIVITY -> target.date?.let(Fmt::date) ?: "今天"
     DetailKind.LOAD -> target.date?.let(Fmt::date) ?: "7 天累计负荷与个人合适区间"
+    DetailKind.TRAINING_STATUS -> "疲劳、体能与训练状态，来自 Zepp 的算法"
     DetailKind.PAI -> target.date?.let(Fmt::date) ?: "个人活动强度积分"
     DetailKind.WEIGHT -> target.date?.let(Fmt::date) ?: "来自体脂秤与手动记录"
     DetailKind.SPO2 -> target.date?.let(Fmt::date) ?: "最近读数"
@@ -1374,41 +1378,247 @@ private fun ActivityDetail(data: HealthData?, date: LocalDate) {
 
 // ---------------- training load ----------------
 
+/**
+ * 训练负荷 page: the last week of daily load as a line, with each day's personal
+ * band (optimal minimum..maximum) behind it as a light bar, then the VO2 max
+ * history the watch re-estimated.
+ */
 @Composable
 private fun LoadDetail(data: HealthData?, date: LocalDate?) {
-    val load = if (date != null) data?.load?.lastOrNull { it.date == date } else data?.latestLoad()
-    if (load == null) {
+    val source = data ?: run {
         Missing("还没有训练负荷记录")
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetricTile("7 天负荷", load.weekLoad?.roundToInt()?.toString() ?: "--", "WTL", Modifier.weight(1f))
-        MetricTile("当天", load.load?.roundToInt()?.toString() ?: "--", "WTL", Modifier.weight(1f))
+    val days = source.load.takeLast(7)
+    if (days.isEmpty()) {
+        Missing("还没有训练负荷记录")
+        return
     }
-    val min = load.optimalMin?.roundToInt()
-    val max = load.optimalMax?.roundToInt()
-    Text(
-        if (min != null && max != null) "个人合适区间 $min – $max；超过 ${load.overreaching?.roundToInt() ?: "--"} 属于过量。" else "这次没有取到合适区间。",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    val days = data?.load?.takeLast(14).orEmpty()
-    if (days.size > 1) {
-        SectionTitle("近 14 天")
-        FlatPanel {
-            Column(Modifier.padding(16.dp)) {
-                BarChart(
-                    days.map { it.weekLoad?.toFloat() },
-                    Modifier
-                        .fillMaxWidth()
-                        .height(130.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    goal = load.optimalMax?.toFloat()
+    val latest = (date?.let { d -> days.lastOrNull { it.date == d } }) ?: days.last()
+    FlatPanel {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) {
+                    Text("每日负荷", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "浅色是同一天的个人合适区间",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    latest.load?.roundToInt()?.toString() ?: "--",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Text(
+                    " WTL",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
                 )
             }
+            Spacer(Modifier.height(12.dp))
+            LoadBandChart(
+                days = days,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+            )
+        }
+    }
+
+    val vo2 = source.vo2History.takeLast(14)
+    if (vo2.size > 1) {
+        SectionTitle("最大摄氧量")
+        FlatPanel {
+            AxisLineChart(
+                values = vo2.map { it.second },
+                labels = vo2.map { Fmt.weekdayShort(it.first) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(160.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
+
+/**
+ * Daily load with that day's recommended band: a light bar from the band's
+ * lowest to highest, and the day's own load as a line with dots on top.
+ */
+@Composable
+private fun LoadBandChart(days: List<LoadDay>, modifier: Modifier = Modifier) {
+    val measurer = rememberTextMeasurer()
+    val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val palette = LocalZgPalette.current
+    val line = MaterialTheme.colorScheme.primary
+
+    val values = buildList {
+        days.forEach { day ->
+            day.load?.let { add(it.toFloat()) }
+            day.optimalMin?.let { add(it.toFloat()) }
+            day.optimalMax?.let { add(it.toFloat()) }
+        }
+    }
+    if (values.isEmpty()) return
+    val rawLo = values.min()
+    val rawHi = values.max()
+    val pad = ((rawHi - rawLo) * 0.12f).coerceAtLeast(1f)
+    val lo = (rawLo - pad).coerceAtLeast(0f)
+    val hi = rawHi + pad
+
+    Canvas(modifier) {
+        val axisWidth = 30.dp.toPx()
+        val axisHeight = 16.dp.toPx()
+        val topPad = 10.dp.toPx()
+        val bottomPad = 6.dp.toPx()
+        val chartWidth = (size.width - axisWidth).coerceAtLeast(1f)
+        val chartHeight = (size.height - axisHeight - topPad - bottomPad).coerceAtLeast(8f)
+        fun yOf(value: Float): Float =
+            topPad + chartHeight - ((value - lo) / (hi - lo).coerceAtLeast(1f)) * chartHeight
+
+        listOf(hi, (hi + lo) / 2f, lo).forEach { tick ->
+            val y = yOf(tick)
+            drawLine(palette.grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
+            val layout = measurer.measure(tick.roundToInt().toString(), axisStyle)
+            drawText(
+                layout,
+                topLeft = Offset(0f, (y - layout.size.height / 2f).coerceAtLeast(0f))
+            )
+        }
+
+        val slot = chartWidth / days.size.coerceAtLeast(1)
+        val barWidth = (slot * 0.5f).coerceAtLeast(3.dp.toPx())
+        days.forEachIndexed { index, day ->
+            val centerX = axisWidth + slot * index + slot / 2f
+            val bandLow = day.optimalMin?.toFloat()
+            val bandHigh = day.optimalMax?.toFloat()
+            if (bandLow != null && bandHigh != null) {
+                val top = yOf(bandHigh)
+                val bottom = yOf(bandLow)
+                drawRoundRect(
+                    color = line.copy(alpha = 0.18f),
+                    topLeft = Offset(centerX - barWidth / 2f, top),
+                    size = androidx.compose.ui.geometry.Size(
+                        barWidth,
+                        (bottom - top).coerceAtLeast(1f)
+                    ),
+                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                )
+            }
+        }
+
+        val points = days.mapIndexedNotNull { index, day ->
+            day.load?.let {
+                Offset(axisWidth + slot * index + slot / 2f, yOf(it.toFloat()))
+            }
+        }
+        if (points.size > 1) {
+            val path = Path()
+            points.forEachIndexed { index, point ->
+                if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+            }
+            drawPath(
+                path,
+                line,
+                style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            )
+        }
+        points.forEach { point ->
+            drawCircle(line, radius = 3.dp.toPx(), center = point)
+        }
+
+        days.forEachIndexed { index, day ->
+            val layout = measurer.measure(Fmt.weekdayShort(day.date), axisStyle)
+            val centerX = axisWidth + slot * index + slot / 2f
+            drawText(
+                layout,
+                topLeft = Offset(
+                    (centerX - layout.size.width / 2f)
+                        .coerceIn(axisWidth, size.width - layout.size.width),
+                    size.height - axisHeight / 2f - layout.size.height / 2f
+                )
+            )
+        }
+    }
+}
+
+// ---------------- training status ----------------
+
+/**
+ * 疲劳 / 体能 as lines and 训练状态 as bars around zero: the same ATL, CTL and TSB
+ * the watch prints, over the last week.
+ */
+@Composable
+private fun TrainingStatusDetail(data: HealthData?) {
+    val source = data ?: run {
+        Missing("还没有训练状态")
+        return
+    }
+    val days = source.exertion.takeLast(7)
+    if (days.isEmpty()) {
+        Missing("还没有训练状态记录")
+        return
+    }
+    val labels = days.map { Fmt.weekdayShort(it.date) }
+    val warn = LocalZgPalette.current.warn
+    SectionTitle("疲劳与体能")
+    FlatPanel {
+        Column(
+            Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "疲劳（ATL）",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            AxisLineChart(
+                values = days.map { it.fatigue?.toFloat() },
+                labels = labels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp),
+                color = warn
+            )
+            Text(
+                "体能（CTL）",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            AxisLineChart(
+                values = days.map { it.fitness?.toFloat() },
+                labels = labels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+
+    SectionTitle("训练状态")
+    FlatPanel {
+        SignedBarChart(
+            values = days.map { it.status?.toFloat() },
+            labels = labels,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 12.dp)
+                .height(150.dp),
+            color = MaterialTheme.colorScheme.tertiary,
+            decimals = 0
+        )
+    }
+    Text(
+        "训练状态 = 体能 − 疲劳，0 以上还有余力，负数越大越疲劳。",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
 
 // ---------------- PAI ----------------
 

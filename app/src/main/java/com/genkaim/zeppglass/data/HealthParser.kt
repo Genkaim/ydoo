@@ -978,6 +978,29 @@ object HealthParser {
      * re-estimated the value; most days carry 0. The official app keeps showing
      * the last real estimate, so take the newest item with a plausible value.
      */
+    /**
+     * Every day the watch re-estimated VO2 max, as `dayId` → the larger of the
+     * run and walking estimates. The line chart needs the history, not just the
+     * newest number.
+     */
+    fun parseVo2History(json: JSONObject): List<Pair<LocalDate, Float>> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<Pair<LocalDate, Float>>()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val day = item.anyString("dayId")
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                ?: continue
+            val value = maxOf(
+                item.anyNumber("vo2_max_run") ?: 0.0,
+                item.anyNumber("vo2_max_walking") ?: 0.0
+            )
+            if (value !in 10.0..90.0) continue
+            out.add(day to value.toFloat())
+        }
+        return out.distinctBy { it.first }.sortedBy { it.first }
+    }
+
     fun parseVo2Max(json: JSONObject): Int? {
         val items = json.optJSONArray("items") ?: return null
         var bestDate: LocalDate? = null

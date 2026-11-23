@@ -415,6 +415,8 @@ data class HealthData(
     val nightBreathing: List<NightBreathing> = emptyList(),
     /** Watch's latest VO2 max, independent of the 34-day page window. */
     val vo2Max: Int? = null,
+    /** Every day the watch re-estimated VO2 max, oldest first. */
+    val vo2History: List<Pair<LocalDate, Float>> = emptyList(),
     /** Blood-pressure readings (mmHg), newest last. Usually empty. */
     val bloodPressure: List<BloodPressure> = emptyList(),
     /** Zepp's daily activity advice and load status, newest last. */

@@ -460,6 +460,8 @@ class HealthStore private constructor(
             nightBreathing = nightBreathing?.let { HealthParser.parseNightBreathing(it, zone) }
                 .orEmpty().ifEmpty { previous?.nightBreathing.orEmpty() },
             vo2Max = vo2?.let { HealthParser.parseVo2Max(it) } ?: previous?.vo2Max,
+            vo2History = vo2?.let { HealthParser.parseVo2History(it) }
+                .orEmpty().ifEmpty { previous?.vo2History.orEmpty() },
             bloodPressure = bloodPressure?.let { HealthParser.parseBloodPressure(it) }
                 .orEmpty().ifEmpty { previous?.bloodPressure.orEmpty() },
             exertion = exertion?.let { HealthParser.parseExertion(it, zone) }
@@ -609,6 +611,8 @@ private fun readSnapshotFile(file: File, zone: ZoneId): HealthData? {
             nightBreathing = json.optJSONObject("nightBreathing")
                 ?.let { HealthParser.parseNightBreathing(it, zone) }.orEmpty(),
             vo2Max = json.optJSONObject("vo2")?.let { HealthParser.parseVo2Max(it) },
+            vo2History = json.optJSONObject("vo2")
+                ?.let { HealthParser.parseVo2History(it) }.orEmpty(),
             bloodPressure = json.optJSONObject("bloodPressure")
                 ?.let { HealthParser.parseBloodPressure(it) }.orEmpty(),
             exertion = json.optJSONObject("exertion")

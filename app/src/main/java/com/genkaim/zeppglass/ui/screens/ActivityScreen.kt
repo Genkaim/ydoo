@@ -212,7 +212,15 @@ fun ActivityScreen(
                         SectionTitle("今日活动")
                         ActivityAdviceCard(advice)
                     }
-                    LoadRecoveryCard(load = load, vo2 = vo2, advice = advice)
+                    LoadVo2Card(
+                        load = load,
+                        vo2 = vo2,
+                        onClick = { onOpenDetail(DetailTarget(DetailKind.LOAD, today)) }
+                    )
+                    TrainingStatusCard(
+                        advice = advice,
+                        onClick = { onOpenDetail(DetailTarget(DetailKind.TRAINING_STATUS)) }
+                    )
 
                     if (hrToday.size > 10) {
                         HeartRateCard(hrToday, restingHr)
@@ -385,85 +393,140 @@ private fun HeroStat(value: String, label: String, color: Color) {
 }
 
 /**
- * The official 运动状态 block: 7-day EPOC load and VO2 max, with the official
- * load band as the status. The same card carries today's 疲劳 / 体能 / 训练状态
- * (ATL / CTL / TSB) from Zepp's own activity algorithm.
+ * 运动负荷 and 最大摄氧量 in one card: the 7-day EPOC load with its band verdict and
+ * the watch's VO2 max with its rating. Out-of-range numbers colour their value,
+ * unit and verdict together, and the card opens the load history page.
  */
 @Composable
-private fun LoadRecoveryCard(
-    load: LoadDay?,
-    vo2: Int?,
-    advice: ExertionDay?
-) {
+private fun LoadVo2Card(load: LoadDay?, vo2: Int?, onClick: () -> Unit) {
+    val warn = LocalZgPalette.current.warn
+    val critical = LocalZgPalette.current.critical
+    val ink = MaterialTheme.colorScheme.onSurface
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val weekLoad = load?.weekLoad
+    val minOk = load?.optimalMin
+    val maxOk = load?.optimalMax
+    val loadVerdict: Pair<String, Color> = when {
+        weekLoad == null -> "还没有负荷" to muted
+        minOk != null && weekLoad < minOk -> "偏低" to warn
+        maxOk != null && weekLoad > maxOk -> "偏高" to critical
+        minOk != null -> "合适" to ink
+        else -> "7 天累计" to muted
+    }
+    val loadColor = if (loadVerdict.first in setOf("偏低", "偏高")) loadVerdict.second else ink
+    val rating = vo2Rating(vo2)
+    val vo2Color = when (rating) {
+        "偏低", "一般" -> warn
+        else -> ink
+    }
     SectionTitle("运动状态")
-    FlatPanel {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+    FlatPanel(onClick = onClick) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("运动负荷", style = MaterialTheme.typography.labelSmall, color = muted)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        "运动负荷",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        weekLoad?.roundToInt()?.toString() ?: "--",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = loadColor
                     )
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            load?.weekLoad?.roundToInt()?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            " EPOC",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                    }
                     Text(
-                        load?.let { l ->
-                            val value = l.weekLoad
-                            val min = l.optimalMin
-                            val max = l.optimalMax
-                            when {
-                                value == null -> "还没有负荷"
-                                min != null && value < min -> "偏低"
-                                max != null && value > max -> "偏高"
-                                min != null -> "合适"
-                                else -> "7 天累计"
-                            }
-                        } ?: "还没有负荷",
+                        " EPOC",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = loadColor,
+                        modifier = Modifier.padding(bottom = 3.dp)
                     )
-                }
-                Column(Modifier.weight(1f)) {
+                    Spacer(Modifier.width(4.dp))
                     Text(
-                        "最大摄氧量",
+                        loadVerdict.first,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            vo2?.toString() ?: "--",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            " ml/kg",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                    }
-                    Text(
-                        vo2Rating(vo2),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = loadColor,
+                        modifier = Modifier.padding(bottom = 3.dp)
                     )
                 }
             }
-            if (advice != null &&
-                (advice.fatigue != null || advice.fitness != null || advice.status != null)
+            Column(Modifier.weight(1f)) {
+                Text("最大摄氧量", style = MaterialTheme.typography.labelSmall, color = muted)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        vo2?.toString() ?: "--",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = vo2Color
+                    )
+                    Text(
+                        " ml/kg",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = vo2Color,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        rating,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = vo2Color,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 疲劳 / 体能 / 训练状态 as their own card. TSB is CTL − ATL, so only a genuinely
+ * tired day gets a sentence; the neutral cases stay silent.
+ */
+@Composable
+private fun TrainingStatusCard(advice: ExertionDay?, onClick: () -> Unit) {
+    if (advice == null) return
+    val warn = LocalZgPalette.current.warn
+    val status = advice.status
+    FlatPanel(onClick = onClick) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Spacer(Modifier.height(14.dp))
-                TrainingStatusRow(advice)
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.LocalFireDepartment,
+                    "疲劳",
+                    advice.fatigue?.roundToInt()?.toString() ?: "--",
+                    warn
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Favorite,
+                    "体能",
+                    advice.fitness?.roundToInt()?.toString() ?: "--",
+                    MaterialTheme.colorScheme.primary
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Timer,
+                    "训练状态",
+                    status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
+                    MaterialTheme.colorScheme.tertiary
+                )
+            }
+            if (status != null && status < -10) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "偏疲劳，建议降低强度",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = warn
+                )
             }
         }
     }
@@ -756,54 +819,3 @@ private fun planIntensityWord(intensity: Int): String = when (intensity) {
     else -> "强度 $intensity"
 }
 
-/**
- * 疲劳 / 体能 / 训练状态, the same ATL/CTL/TSB Zepp prints, as one row inside the
- * 运动状态 card. TSB is CTL − ATL, so a positive number means there is room to
- * train today; below −10 the body is carrying more load than it has built up.
- */
-@Composable
-private fun TrainingStatusRow(advice: ExertionDay) {
-    val warn = LocalZgPalette.current.warn
-    val status = advice.status
-    val note = status?.let {
-        when {
-            it > 5 -> "有余力，可以按计划训练" to MaterialTheme.colorScheme.onSurface
-            it > -10 -> "维持，正常练即可" to MaterialTheme.colorScheme.onSurface
-            else -> "偏疲劳，建议降低强度" to warn
-        }
-    }
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        StatBlock(
-            Modifier.weight(1f),
-            Icons.Rounded.LocalFireDepartment,
-            "疲劳",
-            advice.fatigue?.roundToInt()?.toString() ?: "--",
-            warn
-        )
-        StatBlock(
-            Modifier.weight(1f),
-            Icons.Rounded.Favorite,
-            "体能",
-            advice.fitness?.roundToInt()?.toString() ?: "--",
-            MaterialTheme.colorScheme.primary
-        )
-        StatBlock(
-            Modifier.weight(1f),
-            Icons.Rounded.Timer,
-            "训练状态",
-            status?.let { (if (it > 0) "+" else "") + it.roundToInt() } ?: "--",
-            MaterialTheme.colorScheme.tertiary
-        )
-    }
-    if (note != null) {
-        Spacer(Modifier.height(8.dp))
-        Text(
-            note.first,
-            style = MaterialTheme.typography.labelSmall,
-            color = note.second
-        )
-    }
-}

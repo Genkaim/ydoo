@@ -21,7 +21,10 @@ enum class DetailKind {
     BLOOD_PRESSURE,
 
     /** The workout's leftover tiles and every raw field the watch sent. */
-    WORKOUT_MORE
+    WORKOUT_MORE,
+
+    /** 疲劳 / 体能 / 训练状态 (ATL / CTL / TSB) history. */
+    TRAINING_STATUS
 }
 
 /** What a card opens. Dates are local days; workouts are addressed by id. */

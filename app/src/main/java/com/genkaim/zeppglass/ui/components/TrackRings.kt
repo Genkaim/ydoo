@@ -113,23 +113,24 @@ fun TrackRings(
                     )
                 }
                 // Past the goal there is nothing left to draw on this track: it is
-                // already full, and a second lap would be identical. The overshoot
-                // is shown by a hairline at the head of the extra distance, which
-                // fades in as the lap completes — so it never jumps into place and
-                // the ring never runs a second revolution.
+                // already full. The overshoot is marked at a position computed
+                // before the animation runs, and the mark rides the arc head until
+                // it reaches that position — so the animation ends where the mark
+                // already is, with no last-moment jump and no second lap.
                 val realValue = values.getOrElse(index) { 0f }
                 if (realValue > 1f) {
-                    val appear = ((progress - 0.85f) / 0.15f).coerceIn(0f, 1f)
-                    if (appear > 0f) {
-                        val over = (realValue - 1f).coerceAtMost(1f)
-                        // A whole extra lap ends on the start point, where the
-                        // badge is; wrap it to zero before the clearance check.
-                        val wrapped = if (over >= 1f) 0f else over
-                        // Arc length the badge would cover: its radius plus a hair,
-                        // as a fraction of the lap. Only a smaller overshoot is
-                        // pushed forward to that distance.
-                        val clearFrac = ((stroke * 0.85f) / rect.perimeter).coerceAtMost(0.5f)
-                        val markAt = if (wrapped < clearFrac) clearFrac else wrapped
+                    val over = (realValue - 1f).coerceAtMost(1f)
+                    // A whole extra lap ends on the start point, where the badge
+                    // is; wrap it to zero before the clearance check.
+                    val wrapped = if (over >= 1f) 0f else over
+                    // Arc length the badge would hide: its radius plus a hair, as
+                    // a fraction of the lap. Only a smaller overshoot is pushed
+                    // forward to that distance.
+                    val clearFrac = ((stroke * 0.85f) / rect.perimeter).coerceAtMost(0.5f)
+                    val finalMark = if (wrapped < clearFrac) clearFrac else wrapped
+                    val markAt = minOf(progress, finalMark)
+                    // Below the clearance it would be under the badge anyway.
+                    if (markAt > clearFrac) {
                         val head = rect.pointAt(rect.perimeter * markAt)
                         val before = rect.pointAt(rect.perimeter * markAt - 0.5f)
                         val dir = Math.toDegrees(
@@ -140,16 +141,13 @@ fun TrackRings(
                         ).toFloat()
                         val r = stroke * 0.57f
                         drawArc(
-                            color = badgeColor.copy(alpha = appear),
+                            color = badgeColor,
                             startAngle = dir - 90f,
                             sweepAngle = 180f,
                             useCenter = false,
                             topLeft = Offset(head.x - r, head.y - r),
                             size = Size(r * 2f, r * 2f),
-                            style = Stroke(
-                                stroke * 0.14f * appear,
-                                cap = StrokeCap.Round
-                            )
+                            style = Stroke(stroke * 0.14f, cap = StrokeCap.Round)
                         )
                     }
                 }

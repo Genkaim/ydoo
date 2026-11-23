@@ -131,6 +131,7 @@ import com.genkaim.zeppglass.ui.components.BodySourceToggle
 import com.genkaim.zeppglass.ui.components.BarChart
 import com.genkaim.zeppglass.ui.components.DataRow
 import com.genkaim.zeppglass.ui.components.FlatPanel
+import com.genkaim.zeppglass.ui.components.drawBadgedLabel
 import com.genkaim.zeppglass.ui.components.HeartRateRed
 import com.genkaim.zeppglass.ui.components.HrvDayChart
 import com.genkaim.zeppglass.ui.components.LegendDot
@@ -1327,39 +1328,104 @@ private fun ActivityDetail(data: HealthData?, date: LocalDate) {
         }
     }
 
-    val days = (13 downTo 0).map { data?.day(date.minusDays(it.toLong())) }
-    val labels = (13 downTo 0).map { Fmt.weekdayShort(date.minusDays(it.toLong())) }
-    if (days.any { it != null }) {
-        // The steps chart moved up to the 7-day block; keeping the 14-day bars
-        // here too would draw the same metric twice on one page.
-        SectionTitle("距离")
+    // Distance and burn follow the step block exactly: the three numbers on a
+    // card, then the same line chart, only the colour differs.
+    val weekKm = weekSlots.mapNotNull { it?.distanceM?.let { d -> d / 1000.0 } }
+    if (weekKm.isNotEmpty()) {
+        SectionTitle("近 7 天距离")
         FlatPanel {
-            AxisLineChart(
-                values = days.map { it?.distanceM?.let { d -> (d / 1000).toFloat() } },
-                labels = labels,
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.Straighten,
+                    "平均",
+                    Fmt.oneDecimal(weekKm.average()),
+                    MaterialTheme.colorScheme.tertiary,
+                    unit = "km"
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowUpward,
+                    "最高",
+                    Fmt.oneDecimal(weekKm.max()),
+                    MaterialTheme.colorScheme.primary,
+                    unit = "km"
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowDownward,
+                    "最低",
+                    Fmt.oneDecimal(weekKm.min()),
+                    LocalZgPalette.current.sleepRem,
+                    unit = "km"
+                )
+            }
+        }
+        FlatPanel {
+            TrendLineChart(
+                values = weekSlots.map { it?.distanceM?.let { d -> (d / 1000).toFloat() } },
+                labels = weekLabels,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp)
-                    .height(110.dp),
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(150.dp),
                 color = MaterialTheme.colorScheme.tertiary,
-                valueSuffix = " km",
-                // Straight segments: a smoothed line puts peaks between days that
-                // never happened.
-                smooth = false
+                valueLabel = { km -> String.format(java.util.Locale.US, "%.1f", km) }
             )
         }
-        SectionTitle("消耗")
+    }
+    val weekKcal = weekSlots.mapNotNull { it?.calories }
+    if (weekKcal.isNotEmpty()) {
+        SectionTitle("近 7 天消耗")
         FlatPanel {
-            AxisLineChart(
-                values = days.map { it?.calories?.toFloat() },
-                labels = labels,
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.LocalFireDepartment,
+                    "平均",
+                    Fmt.int(weekKcal.average()),
+                    LocalZgPalette.current.critical,
+                    unit = "千卡"
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowUpward,
+                    "最高",
+                    Fmt.int(weekKcal.max()),
+                    MaterialTheme.colorScheme.primary,
+                    unit = "千卡"
+                )
+                StatBlock(
+                    Modifier.weight(1f),
+                    Icons.Rounded.ArrowDownward,
+                    "最低",
+                    Fmt.int(weekKcal.min()),
+                    LocalZgPalette.current.sleepRem,
+                    unit = "千卡"
+                )
+            }
+        }
+        FlatPanel {
+            TrendLineChart(
+                values = weekSlots.map { it?.calories?.toFloat() },
+                labels = weekLabels,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp)
-                    .height(110.dp),
-                color = MaterialTheme.colorScheme.primary,
-                valueSuffix = " kcal",
-                smooth = false
+                    .padding(horizontal = 10.dp, vertical = 12.dp)
+                    .height(150.dp),
+                color = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -1408,8 +1474,7 @@ private fun LoadDetail(data: HealthData?, date: LocalDate?) {
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
                     .height(160.dp),
-                color = MaterialTheme.colorScheme.primary,
-                showValues = false
+                color = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -1426,6 +1491,8 @@ private fun LoadBandChart(days: List<LoadDay>, modifier: Modifier = Modifier) {
     val axisStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val palette = LocalZgPalette.current
     val line = MaterialTheme.colorScheme.primary
+    val valueStyle = TextStyle(fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
+    val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
 
     val values = buildList {
         days.forEach { day ->
@@ -1500,6 +1567,24 @@ private fun LoadBandChart(days: List<LoadDay>, modifier: Modifier = Modifier) {
         }
         points.forEach { point ->
             drawCircle(line, radius = 3.dp.toPx(), center = point)
+        }
+        // Every point carries its own number: the dot alone says "somewhere in
+        // this band", the label says how much.
+        days.forEachIndexed { index, day ->
+            val load = day.weekLoad ?: return@forEachIndexed
+            val layout = measurer.measure(load.roundToInt().toString(), valueStyle)
+            val centerX = axisWidth + slot * index + slot / 2f
+            drawBadgedLabel(
+                measurer,
+                load.roundToInt().toString(),
+                valueStyle,
+                Offset(
+                    (centerX - layout.size.width / 2f)
+                        .coerceIn(axisWidth, (size.width - layout.size.width).coerceAtLeast(axisWidth)),
+                    (yOf(load.toFloat()) - layout.size.height - 6.dp.toPx()).coerceAtLeast(0f)
+                ),
+                badgeColor
+            )
         }
 
         days.forEachIndexed { index, day ->
@@ -3244,8 +3329,7 @@ private fun Vo2Detail(data: HealthData?) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(130.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    showValues = false
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }

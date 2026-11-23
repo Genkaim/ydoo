@@ -137,7 +137,13 @@ fun SignedBarChart(
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.tertiary,
     /** Decimal places on the axis and the bar labels; 0 keeps the integer look. */
-    decimals: Int = 0
+    decimals: Int = 0,
+    /**
+     * A fixed half-height for the axis, so bars stay comparable between pages:
+     * 训练状态 passes 10 so ±10 is always the top and bottom of the chart.
+     * Null means fit the axis to the data.
+     */
+    bound: Float? = null
 ) {
     val valid = values.filterNotNull()
     if (valid.isEmpty()) {
@@ -149,7 +155,7 @@ fun SignedBarChart(
     val grid = LocalZgPalette.current.grid
     val badgeColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
     val maxAbs = max(abs(valid.max()), abs(valid.min()))
-    val bound = if (decimals == 0) {
+    val axisBound = bound ?: if (decimals == 0) {
         ceil(maxAbs.coerceAtLeast(5f) / 5f) * 5f
     } else {
         // Tenths-scale readings (skin temperature): start at ±1 so the axis is
@@ -184,9 +190,9 @@ fun SignedBarChart(
         val chartHeight = (size.height - axisHeight - topPad).coerceAtLeast(10f)
         val zeroY = topPad + chartHeight / 2f
         val half = chartHeight / 2f
-        fun yOf(v: Float) = zeroY - (v / bound) * half
+        fun yOf(v: Float) = zeroY - (v / axisBound) * half
 
-        listOf(bound, 0f, -bound).forEach { value ->
+        listOf(axisBound, 0f, -axisBound).forEach { value ->
             val y = yOf(value)
             drawLine(grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
             val layout = measurer.measure(

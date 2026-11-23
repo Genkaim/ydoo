@@ -356,7 +356,7 @@ private fun title(target: DetailTarget): String = when (target.kind) {
     DetailKind.STRESS -> "压力"
     DetailKind.READINESS -> "准备度"
     DetailKind.ACTIVITY -> "活动"
-    DetailKind.LOAD -> "训练负荷"
+    DetailKind.LOAD -> "运动状态"
     DetailKind.TRAINING_STATUS -> "训练状态"
     DetailKind.PAI -> "PAI"
     DetailKind.WEIGHT -> "身体成分"
@@ -384,7 +384,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.READINESS -> target.date?.let(Fmt::date) ?: "手表评分，满分 100"
     DetailKind.ACTIVITY -> target.date?.let(Fmt::date) ?: "今天"
     DetailKind.LOAD -> target.date?.let(Fmt::date) ?: "7 天累计负荷与个人合适区间"
-    DetailKind.TRAINING_STATUS -> "疲劳、体能与训练状态，来自 Zepp 的算法"
+    DetailKind.TRAINING_STATUS -> target.date?.let(Fmt::date) ?: Fmt.date(LocalDate.now())
     DetailKind.PAI -> target.date?.let(Fmt::date) ?: "个人活动强度积分"
     DetailKind.WEIGHT -> target.date?.let(Fmt::date) ?: "来自体脂秤与手动记录"
     DetailKind.SPO2 -> target.date?.let(Fmt::date) ?: "最近读数"
@@ -1394,6 +1394,7 @@ private fun LoadDetail(data: HealthData?, date: LocalDate?) {
         Missing("还没有训练负荷记录")
         return
     }
+    SectionTitle("运动负荷")
     FlatPanel {
         LoadBandChart(
             days = days,
@@ -1541,11 +1542,15 @@ private fun TrainingStatusDetail(data: HealthData?) {
         return
     }
     val labels = days.map { Fmt.weekdayShort(it.date) }
+    // Round first: the watch's ATL / CTL carry decimals, and a whole number is
+    // what the axis, the point labels and the card's three numbers all show.
+    val fatigue = days.map { it.fatigue?.let { v -> v.roundToInt().toFloat() } }
+    val fitness = days.map { it.fitness?.let { v -> v.roundToInt().toFloat() } }
     val warn = LocalZgPalette.current.warn
     SectionTitle("疲劳")
     FlatPanel {
-        AxisLineChart(
-            values = days.map { it.fatigue?.toFloat() },
+        TrendLineChart(
+            values = fatigue,
             labels = labels,
             modifier = Modifier
                 .fillMaxWidth()
@@ -1557,8 +1562,8 @@ private fun TrainingStatusDetail(data: HealthData?) {
 
     SectionTitle("体能")
     FlatPanel {
-        AxisLineChart(
-            values = days.map { it.fitness?.toFloat() },
+        TrendLineChart(
+            values = fitness,
             labels = labels,
             modifier = Modifier
                 .fillMaxWidth()
@@ -1577,8 +1582,11 @@ private fun TrainingStatusDetail(data: HealthData?) {
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 12.dp)
                 .height(150.dp),
-            color = MaterialTheme.colorScheme.tertiary,
-            decimals = 0
+            // Softer than the theme's tertiary: the bars are a background story,
+            // and the zero line has to stay the strongest mark on the chart.
+            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.70f),
+            decimals = 0,
+            bound = 10f
         )
     }
 }

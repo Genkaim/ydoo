@@ -416,7 +416,7 @@ private fun subtitle(target: DetailTarget, data: HealthData?): String = when (ta
     DetailKind.NIGHT_SPO2 -> target.date?.let(Fmt::date) ?: "每夜平均血氧，近 7 天趋势"
     DetailKind.BLOOD_PRESSURE -> target.date?.let(Fmt::date) ?: "收缩压 / 舒张压，mmHg"
     DetailKind.WORKOUT_MORE -> ""
-    DetailKind.BODY_METRIC -> if (target.source == "watch") "手表 · 近 1 个月" else "体脂秤 · 近 1 个月"
+    DetailKind.BODY_METRIC -> if (target.source == "watch") "手表" else "体脂秤"
 }
 
 // ---------------- sleep ----------------

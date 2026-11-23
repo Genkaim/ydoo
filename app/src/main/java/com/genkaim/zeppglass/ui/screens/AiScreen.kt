@@ -111,6 +111,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.genkaim.zeppglass.data.AiChatSession
@@ -269,28 +270,37 @@ fun AiScreen(
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
     // it; anything else pulls the reader back down on every chunk.
-    // A switch between conversations brings a page-tint curtain down over the
-    // transcript, swaps the words behind it, then lifts it again: the old reply
-    // fades out and the new one fades in. An alpha on the transcript itself was
-    // invisible here — the sheet's own slide finished first, so the swap only
-    // ever looked like content changing.
-    val curtain = remember { Animatable(0f) }
+    // A switch takes the transcript to transparent, swaps the conversation
+    // behind that blank, then brings it back: the old words fade out and the new
+    // ones fade in. The value is held by the composition, not by a coroutine, and
+    // the session key below always returns it to 1 — a cancelled switch can never
+    // leave the page empty.
+    var hiding by remember { mutableStateOf(false) }
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (hiding) 0f else 1f,
+        animationSpec = tween(180),
+        label = "transcript"
+    )
     val keyboard = LocalSoftwareKeyboardController.current
     val view = LocalView.current
     val focusManager = LocalFocusManager.current
 
     /**
-     * The IME is its own window, above everything the app draws, so a drawer
-     * opened while it is up has its lower half covered and its taps eaten. The
-     * field drops focus and the window's inset controller asks it down; the
-     * Compose controller alone can be a no-op on some ROMs.
+     * The IME is drawn in its own window above everything the app paints: with
+     * it up, a sheet that opens behind it has its lower half covered and its
+     * taps eaten, and the sheet's dialog window never receives an IME inset, so
+     * padding cannot lift it clear. The field therefore gives up focus and the
+     * window's inset controller sends the IME down before the sheet appears.
+     * The Compose controller alone is a no-op on some ROMs, and the view's
+     * context can be a wrapper, hence [findActivity].
      */
     fun hideKeyboard() {
         focusManager.clearFocus(force = true)
         keyboard?.hide()
-        val window = (view.context as? Activity)?.window ?: return
+        val window = findActivity(view.context)?.window ?: return
         runCatching {
-            WindowInsetsControllerCompat(window, view).hide(WindowInsetsCompat.Type.ime())
+            WindowCompat.getInsetsController(window, view)
+                .hide(WindowInsetsCompat.Type.ime())
         }
     }
 
@@ -305,6 +315,8 @@ fun AiScreen(
             }
     }
     LaunchedEffect(AiChatSession.currentId) { followBottom = true }
+    // Whatever becomes of a switch, the transcript has to come back.
+    LaunchedEffect(AiChatSession.sessionEpoch) { hiding = false }
 
     // A new message jumps to its top; the layout observer below then pins its
     // bottom edge. Doing both in one pass computed the overflow from the frame
@@ -444,7 +456,10 @@ fun AiScreen(
             // Greeting and transcript cross-fade instead of swapping in one
             // frame, so the first message lands while the empty state is still
             // leaving instead of cutting it off.
-            FadeLayer(visible = messages.isEmpty()) {
+            FadeLayer(
+                visible = messages.isEmpty(),
+                modifier = Modifier.alpha(contentAlpha)
+            ) {
                 EmptyTranscript(
                     configured = configured,
                     onOpenSettings = onOpenSettings,
@@ -454,7 +469,10 @@ fun AiScreen(
                 )
             }
 
-            FadeLayer(visible = messages.isNotEmpty()) {
+            FadeLayer(
+                visible = messages.isNotEmpty(),
+                modifier = Modifier.alpha(contentAlpha)
+            ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -511,16 +529,8 @@ fun AiScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .alpha(contentAlpha)
                     .padding(bottom = deckSpace + 6.dp)
-            )
-
-            // The curtain sits over the transcript but under the deck, so the
-            // input field stays put while the words behind it change.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .graphicsLayer { alpha = curtain.value }
             )
 
             Column(
@@ -620,14 +630,18 @@ fun AiScreen(
                 onOpen = { id ->
                     scope.launch {
                         hideKeyboard()
-                        // Then the sheet folds away, the old words fade out under
-                        // the curtain, the conversation is swapped while nothing
-                        // is readable, and the new words fade back in.
                         runCatching { sheetState.hide() }
                         showHistory = false
-                        curtain.animateTo(1f, tween(130))
-                        AiChatSession.open(id)
-                        curtain.animateTo(0f, tween(240))
+                        try {
+                            // The sheet is out of the way before the reading
+                            // goes: old words fade out, the conversation is
+                            // swapped on the blank frame, new words fade in.
+                            hiding = true
+                            kotlinx.coroutines.delay(160)
+                            AiChatSession.open(id)
+                        } finally {
+                            hiding = false
+                        }
                     }
                 },
                 onDelete = { AiChatSession.delete(it) },
@@ -779,9 +793,14 @@ private fun Composer(
  * from inside the Box.
  */
 @Composable
-private fun FadeLayer(visible: Boolean, content: @Composable () -> Unit) {
+private fun FadeLayer(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
     AnimatedVisibility(
         visible = visible,
+        modifier = modifier,
         enter = fadeIn(tween(180)),
         exit = fadeOut(tween(130))
     ) {
@@ -1326,4 +1345,14 @@ private fun HistorySheet(
             }
         )
     }
+}
+
+/** Walks out of any context wrappers to the activity that owns the window. */
+private fun findActivity(context: Context): Activity? {
+    var current: Context? = context
+    while (current != null) {
+        if (current is Activity) return current
+        current = (current as? android.content.ContextWrapper)?.baseContext
+    }
+    return null
 }

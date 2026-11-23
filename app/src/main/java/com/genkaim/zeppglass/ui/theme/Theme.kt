@@ -58,12 +58,13 @@ private val LightScheme = lightColorScheme(
 
 /**
  * Card colour for pop-up surfaces: dialogs, menus, the calendar. Light mode
- * keeps white paper; dark mode lifts the card one step above the near-black
- * page so it reads as a sheet laid on top instead of a hole in the page.
+ * keeps white paper. Dark mode uses a grey one step *below* the text fields'
+ * surfaceVariant (#232529): the fields have to read as wells inside the dialog,
+ * and the dialog still has to read as grey rather than the page's near-black.
  */
 @Composable
 fun popupCardColor(): Color =
-    if (LocalZgPalette.current.isDark) MaterialTheme.colorScheme.surfaceVariant
+    if (LocalZgPalette.current.isDark) Color(0xFF1E2024)
     else MaterialTheme.colorScheme.surface
 
 private val DarkScheme = darkColorScheme(

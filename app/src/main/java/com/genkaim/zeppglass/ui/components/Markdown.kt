@@ -23,6 +23,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -147,7 +148,15 @@ fun MarkdownView(
                     if (block.lang.equals("card", true) || block.lang.equals("metric", true) ||
                         (block.lang.equals("json", true) && block.code.contains("\"type\""))
                     ) {
-                        AiDataCard(block.code, data)
+                        // A card only becomes renderable once its JSON is closed,
+                        // and it replaces the code block it grew out of at the
+                        // same list slot. Keying on the payload gives it a fresh
+                        // composition, so the fade it gets here actually runs
+                        // instead of inheriting the finished alpha of the text
+                        // that was there a moment ago.
+                        key(block.code) {
+                            FadeInBlock(enabled = true) { AiDataCard(block.code, data) }
+                        }
                     } else {
                         Box(
                             Modifier

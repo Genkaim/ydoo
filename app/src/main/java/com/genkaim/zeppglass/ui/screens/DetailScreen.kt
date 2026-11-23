@@ -2250,18 +2250,16 @@ private fun MiniTrendChart(
         val minV = values.minOf { it.second }
         val maxV = values.maxOf { it.second }
         val pad = ((maxV - minV) * 0.06).coerceAtLeast(0.12)
-        // One grid step, chosen so three to four lines fit the fixed height: a
-        // 0.6 kg swing gets 0.2 steps, a 5 kg swing gets 1 kg steps. Only the
-        // value per step changes with the data; the chart keeps its height.
-        val rawLow = minV - pad
-        val rawHigh = maxV + pad
-        val rawSpan = (rawHigh - rawLow).coerceAtLeast(0.1)
+        // The plot is exactly the data plus that small pad; the labels are placed
+        // at round values inside it instead of rounding the plot out to whole
+        // steps, which used to add up to a full step of empty space on each side.
+        val lowD = minV - pad
+        val highD = maxV + pad
+        val spanD = (highD - lowD).coerceAtLeast(0.1)
         val niceSteps = listOf(0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0)
-        val step = niceSteps.firstOrNull { rawSpan / it <= 4.0 } ?: (rawSpan / 4.0)
-        val lowD = kotlin.math.floor(rawLow / step) * step
-        val highD = kotlin.math.ceil(rawHigh / step) * step
+        val step = niceSteps.firstOrNull { spanD / it <= 5.0 } ?: (spanD / 5.0)
         val low = lowD.toFloat()
-        val spanY = (highD - lowD).toFloat().coerceAtLeast(step.toFloat())
+        val spanY = spanD.toFloat().coerceAtLeast(0.1f)
         fun xOf(epochMs: Long) =
             (plotLeft + (epochMs.toFloat() - startMs) / xSpan * (plotRight - plotLeft))
                 .coerceIn(plotLeft, plotRight)
@@ -2271,8 +2269,8 @@ private fun MiniTrendChart(
 
         // The values on the axis, without the thin guide lines: the labels alone
         // are enough, and the lines crossed the curve at every level.
-        var tick = lowD
-        while (tick <= highD + step * 0.5) {
+        var tick = kotlin.math.ceil(lowD / step) * step
+        while (tick <= highD + 1e-6) {
             val y = yOf(tick)
             val text = if (step < 1.0) {
                 String.format(java.util.Locale.CHINA, "%.1f", tick)

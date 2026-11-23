@@ -3042,7 +3042,10 @@ private fun EffectGauge(label: String, value: Double?, modifier: Modifier = Modi
         BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
-                .height(108.dp)
+                // 92dp instead of 108: the arc's open ends already leave a gap
+                // above the name, and the extra height only pushed the name away
+                // from the dial.
+                .height(92.dp)
         ) {
             val strokeDp = 10.dp
             // The dial is inset from the sides and the top; the bottom needs no

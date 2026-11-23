@@ -2722,8 +2722,8 @@ private fun WorkoutDetail(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    EffectGauge("有氧", workout.aerobicTe, Modifier.weight(1f))
-                    EffectGauge("无氧", workout.anaerobicTe, Modifier.weight(1f))
+                    EffectGauge("有氧训练效果", workout.aerobicTe, Modifier.weight(1f))
+                    EffectGauge("无氧训练效果", workout.anaerobicTe, Modifier.weight(1f))
                 }
             }
         }
@@ -2921,6 +2921,15 @@ private fun WorkoutMoreDetail(data: HealthData?, workoutId: String?) {
 private data class TeZone(val from: Double, val to: Double, val label: String, val color: Color)
 
 /** The five bands the watch's own app colours the training-effect ring with. */
+/**
+ * The 0–5 training-effect scale, with each band's interval expressed the way the
+ * gauge selects it: `[from, to)` for every band, the top one closed at 5
+ * (`[4, 5]`). A reading of exactly 1.0 therefore belongs to 恢复, not 无效果.
+ *
+ * ZeppBridge carries the same two figures (`training_effect`,
+ * `anaerobic_training_effect`, 0.0–5.0, shown with one decimal) and does not
+ * band them at all; the wording here follows the scale itself.
+ */
 @Composable
 private fun teZones(): List<TeZone> {
     val palette = LocalZgPalette.current

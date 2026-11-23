@@ -1634,35 +1634,49 @@ private fun DietAiDialog(
                             }
 
                         result?.let { current ->
+                            // Same rows as the old editor card: the name on the
+                            // left, "份量 · 热量" in small muted text on the right.
                             current.items.forEach { item ->
                                 Row(
-                                    Modifier.fillMaxWidth(),
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         item.name,
                                         style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    item.amount?.let {
-                                        Text(
-                                            it,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                    }
+                                    Spacer(Modifier.width(10.dp))
                                     Text(
-                                        item.kcal?.let { "$it" } ?: "--",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        " kcal",
+                                        listOfNotNull(
+                                            item.amount?.takeIf { it.isNotBlank() },
+                                            item.kcal?.let { "$it kcal" }
+                                        ).joinToString(" · "),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(bottom = 2.dp)
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                            }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "合计",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "${current.items.sumOf { it.kcal ?: 0 }} kcal",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
                             }
                             val macros = listOfNotNull(
                                 current.proteinG?.roundToInt()?.let { "蛋白 $it g" },
@@ -1687,18 +1701,6 @@ private fun DietAiDialog(
                         }
                     }
 
-                    if (result != null) {
-                        Spacer(Modifier.height(12.dp))
-                        FlatButton(
-                            text = "记录这一餐",
-                            onClick = {
-                                save()
-                                close()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
                     Spacer(Modifier.height(10.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1719,6 +1721,32 @@ private fun DietAiDialog(
                             enabled = reply.isNotBlank() && !running,
                             primary = reply.isNotBlank() && !running
                         )
+                    }
+                    // Once there is an estimate, the old card's cancel / confirm
+                    // pair sits under the input box: close without saving, or
+                    // write the meal into the log.
+                    if (result != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RoundIconButton(
+                                icon = Icons.Rounded.Close,
+                                contentDescription = "取消",
+                                onClick = { close() }
+                            )
+                            RoundIconButton(
+                                icon = Icons.Rounded.Check,
+                                contentDescription = "记录这一餐",
+                                onClick = {
+                                    save()
+                                    close()
+                                },
+                                primary = true
+                            )
+                        }
                     }
                 }
             }

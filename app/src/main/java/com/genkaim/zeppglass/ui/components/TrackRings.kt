@@ -129,7 +129,9 @@ fun TrackRings(
                     ).toFloat()
                     // Only the half that faces forward: it traces the arc's head
                     // instead of drawing a full little circle.
-                    val r = stroke * 0.40f
+                    // Inner diameter of the outline equals the ring width:
+                    // 2 * (r - outlineWidth / 2) = stroke.
+                    val r = stroke * 0.57f
                     drawArc(
                         color = badgeColor,
                         startAngle = dir - 90f,

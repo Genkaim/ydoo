@@ -897,12 +897,49 @@ private fun UserBubble(text: String) {
  * arriving rather than as a spinner of letters.
  */
 @Composable
-private fun StreamingAnswer(content: String, streaming: Boolean, data: HealthData?) {
-    // What is shown is only what the model has finished: the paragraph it is
-    // still writing stays hidden, so the answer arrives in whole pieces instead
-    // of growing a character at a time.
-    val visible = if (streaming) finishedParagraphs(content) else content
-    MarkdownView(visible, data = data, animateNewBlocks = streaming)
+private fun StreamingAnswer(
+    content: String,
+    streaming: Boolean,
+    leaving: Boolean,
+    data: HealthData?
+) {
+    // Only finished paragraphs are shown — half a JSON card must never render —
+    // and inside them the text itself is revealed a few characters per frame.
+    //
+    // Fading whole blocks in could not animate a paragraph that grew in place: it
+    // kept its old state and simply got longer, so the animation only ever showed
+    // on blocks that were freshly created and vanished once a single paragraph
+    // was streaming. Revealing the text animates every answer the same way.
+    val target = if (streaming) finishedParagraphs(content) else content
+    var shown by remember { mutableStateOf(target) }
+    val alpha = remember { Animatable(1f) }
+
+    LaunchedEffect(target, streaming) {
+        // A rewrite starts again from nothing.
+        if (shown.length > target.length) shown = target
+        while (shown.length < target.length) {
+            // Catch up: the further behind, the bigger the step, so a burst never
+            // leaves the text sentences behind the model. A finished answer skips
+            // the wait entirely.
+            val behind = target.length - shown.length
+            val step = (behind / 8).coerceIn(1, if (streaming) 6 else 64)
+            var cut = (shown.length + step).coerceAtMost(target.length)
+            // Never stop right after a formatting marker: "**bo" would flash.
+            while (cut < target.length && target[cut - 1] in "*_`#[]") cut++
+            shown = target.substring(0, cut.coerceAtMost(target.length))
+            kotlinx.coroutines.delay(if (streaming) 24 else 8)
+        }
+    }
+
+    // 重新生成 empties this row in place; the old words leave over a moment
+    // instead of blinking out between two frames.
+    LaunchedEffect(leaving) {
+        if (leaving) alpha.animateTo(0f, tween(180)) else alpha.snapTo(1f)
+    }
+
+    Box(Modifier.alpha(alpha.value)) {
+        MarkdownView(shown, data = data)
+    }
 }
 
 /**
@@ -959,9 +996,18 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onCopy: () -> Unit
 ) {
+    // 重新生成 replaces the answer in the same row. The words that were there are
+    // kept for a moment so they can fade out; the dots only take over once they
+    // are gone.
+    var lastText by remember { mutableStateOf(message.content) }
+    LaunchedEffect(message.content) {
+        if (message.content.isNotBlank()) lastText = message.content
+    }
+    val leaving = streaming && message.content.isBlank() && lastText.isNotBlank()
+    val answer = if (leaving) lastText else message.content
     val mode = when {
         message.error -> AnswerMode.ERROR
-        message.content.isBlank() && streaming -> AnswerMode.WAITING
+        message.content.isBlank() && streaming && !leaving -> AnswerMode.WAITING
         else -> AnswerMode.TEXT
     }
     // A plain cut, on purpose. Swapping these states used to run a cross-fade, so
@@ -1006,7 +1052,7 @@ private fun AssistantMessage(
             }
 
             AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
-                StreamingAnswer(message.content, streaming, data)
+                StreamingAnswer(answer, streaming, leaving, data)
                 AnimatedVisibility(
                     visible = streaming,
                     enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),

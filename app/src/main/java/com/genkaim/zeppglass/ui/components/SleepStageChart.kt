@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextMeasurer
@@ -139,11 +140,23 @@ fun SleepStageChart(
             val down = rowB > rowA
             val from = rowCenter(rowA) + if (down) barHeight / 2f else -barHeight / 2f
             val to = rowCenter(rowB) + if (down) -barHeight / 2f else barHeight / 2f
-            drawLine(
-                color = (colors[a.stage] ?: Color.Gray).copy(alpha = if (faded) 0.14f else 0.55f),
-                start = Offset(x, from),
-                end = Offset(x, to),
-                strokeWidth = 1.dp.toPx()
+            // Half of the line sits in the row it leaves and half in the row it
+            // enters, so a single stage colour always looked wrong against one of
+            // the two blocks. The colour now travels from one stage to the next.
+            val alpha = if (faded) 0.14f else 0.55f
+            val fromColor = (colors[a.stage] ?: Color.Gray).copy(alpha = alpha)
+            val toColor = (colors[b.stage] ?: Color.Gray).copy(alpha = alpha)
+            val top = min(from, to)
+            val bottom = max(from, to)
+            val width = 0.7.dp.toPx()
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = if (down) listOf(fromColor, toColor) else listOf(toColor, fromColor),
+                    startY = top,
+                    endY = bottom
+                ),
+                topLeft = Offset(x - width / 2f, top),
+                size = Size(width, (bottom - top).coerceAtLeast(1f))
             )
         }
 

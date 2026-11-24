@@ -106,7 +106,11 @@ fun SleepStageChart(
         val barHeight = BAR_HEIGHT.toPx()
         val chartWidth = (size.width - labelWidth).coerceAtLeast(1f)
         fun xOf(epochSec: Long): Float =
-            labelWidth + ((epochSec - night.startEpochSec).toFloat() / span) * chartWidth
+            (labelWidth + ((epochSec - night.startEpochSec).toFloat() / span) * chartWidth)
+                // A stage that runs past the recorded end (a nap tail, a slice
+                // rounded to the minute) must stop at the chart, not draw over
+                // the card edge.
+                .coerceIn(labelWidth, labelWidth + chartWidth)
         fun rowCenter(index: Int): Float = index * (rowHeight + rowGap) + rowHeight / 2f
         val stageRow = rows.withIndex().associate { it.value to it.index }
 
@@ -124,9 +128,10 @@ fun SleepStageChart(
             val rowB = stageRow[b.stage] ?: return@zipWithNext
             if (rowA == rowB) return@zipWithNext
             val x = xOf(a.endEpochSec)
-            // A selected block dims the rest, connectors included, so the one
-            // being inspected stands out as a whole shape.
-            val faded = selected != null && selected != a && selected != b
+            // Any selection dims every connector, including the two that touch
+            // the chosen block: those used to stay bright, so the block never
+            // read as standing on its own.
+            val faded = selected != null
             drawLine(
                 color = (colors[a.stage] ?: Color.Gray).copy(alpha = if (faded) 0.14f else 0.55f),
                 start = Offset(x, rowCenter(rowA)),
@@ -141,11 +146,19 @@ fun SleepStageChart(
             val start = xOf(slice.startEpochSec)
             val end = xOf(slice.endEpochSec)
             val dim = selected != null && selected != slice
+            // A very short stage still has to be visible, but that extra width
+            // must not reach past the segment's own end — a block used to grow to
+            // the right, swallowing the stage connector and poking into the next
+            // block. It grows leftwards instead, so its right edge stays exactly
+            // on the connector.
+            val width = (end - start).coerceAtLeast(2.dp.toPx())
+            val left = (end - width).coerceAtLeast(labelWidth)
+            if (end <= left) return@forEach
             // Square edges, so a block and its connector read as one shape.
             drawRect(
                 color = if (dim) color.copy(alpha = 0.32f) else color,
-                topLeft = Offset(start, rowCenter(row) - barHeight / 2f),
-                size = Size((end - start).coerceAtLeast(2.dp.toPx()), barHeight)
+                topLeft = Offset(left, rowCenter(row) - barHeight / 2f),
+                size = Size(end - left, barHeight)
             )
         }
 

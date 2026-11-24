@@ -540,6 +540,11 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
                     messages[assistantIndex] = Message("assistant", "（没有收到内容）")
                 }
                 phase = ""
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 停止 is not a failure. Without this the cancel was caught as an
+                // ordinary exception and written over the answer as "请求失败",
+                // leaving an error bubble (and its retry key) after a stop.
+                throw e
             } catch (e: Exception) {
                 val reason = e.message ?: "请求失败"
                 phase = ""
@@ -771,10 +776,23 @@ table 只能取 daily / sleep / charge / readiness / stress / pai / load / weigh
         job = null
         sending = false
         phase = ""
-        // A stop before the first token would leave an empty bubble behind.
+        // A stop before the first token would leave an empty bubble behind. It is
+        // removed a moment later, not on this frame: the "正在思考" line gets that
+        // moment to fade out instead of vanishing under the reader's eyes.
         val last = messages.lastOrNull()
         if (last != null && last.role == "assistant" && last.content.isBlank() && !last.error) {
-            messages.removeAt(messages.lastIndex)
+            snapshot()
+            scope.launch {
+                kotlinx.coroutines.delay(220)
+                val index = messages.indexOfFirst { it === last }
+                // A new request keeps the list as it is: request() captured an
+                // index that removing an earlier row would move.
+                if (index >= 0 && !sending) {
+                    messages.removeAt(index)
+                    snapshot()
+                }
+            }
+            return
         }
         snapshot()
     }

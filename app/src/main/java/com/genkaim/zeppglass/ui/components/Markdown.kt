@@ -80,11 +80,12 @@ fun MarkdownView(
     /** Fade each block the first time it appears (used while an answer streams). */
     animateNewBlocks: Boolean = false,
     /**
-     * Blocks already drawn for this answer. Supplied by the caller so the record
-     * survives a new MarkdownView composition; without that, a recomposition could
-     * make every block "new" and re-fade paragraphs that were already read.
+     * Positions already drawn for this answer. Supplied by the caller so the
+     * record survives a new MarkdownView composition; without that, a
+     * recomposition could make every block "new" and re-fade paragraphs that were
+     * already read.
      */
-    seenBlocks: MutableSet<String>? = null
+    seenBlocks: MutableSet<Int>? = null
 ) {
     val blocks = remember(text) { parseBlocks(text) }
     // A little more air between lines than Material's default: answers carry
@@ -93,23 +94,24 @@ fun MarkdownView(
     // app and 14sp was small on a phone.
     val bodyStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp)
     val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
-    // Every block that has already been drawn, by its own content. A block is
-    // animated the first time its content appears, so neither a recomposition nor
-    // a block moving to another position can lose the entrance; a paragraph that
-    // was already on screen is never animated again.
-    val known = seenBlocks ?: remember { mutableSetOf<String>() }
+    // Every position that has already been drawn. By position, not by content: the
+    // paragraph at the end of a streaming answer grows as words arrive, and keying
+    // on its text made it flash again on every chunk. An existing paragraph is
+    // never animated again.
+    val known = seenBlocks ?: remember { mutableSetOf<Int>() }
     val rise = with(LocalDensity.current) { 8.dp.toPx() }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        blocks.forEach { block ->
-            val identity = block.identity()
-            // Decided once per block identity: a block that was here before is
-            // drawn at full strength for the rest of the answer, whatever else the
-            // composition does.
-            val fresh = remember(identity) { animateNewBlocks && identity !in known }
-            val arriving = remember(identity) { Animatable(if (fresh) 0f else 1f) }
-            LaunchedEffect(identity) { arriving.animateTo(1f, tween(260)) }
-            known += identity
+        blocks.forEachIndexed { index, block ->
+            // Decided once per position: a block that was here before is drawn at
+            // full strength for the rest of the answer, whatever else the
+            // composition does. Only an animating stream records positions, so the
+            // old answer drawn during a regenerate's fade cannot consume the new
+            // answer's entrance.
+            val fresh = remember(index) { animateNewBlocks && index !in known }
+            val arriving = remember(index) { Animatable(if (fresh) 0f else 1f) }
+            LaunchedEffect(index) { arriving.animateTo(1f, tween(200)) }
+            if (animateNewBlocks) known += index
             // Read in composition, not inside the layer block: the modifier is
             // then rebuilt with the new value every frame, which is what actually
             // moves the block.
@@ -454,20 +456,6 @@ private sealed interface Block {
     data class Quote(val text: String) : Block
     data class Code(val lang: String, val code: String) : Block
     data object Rule : Block
-}
-
-/** What makes a block the same block across frames: its type and its text. */
-private fun Block.identity(): String = when (this) {
-    is Block.Heading -> "h$level:$text"
-    is Block.Paragraph -> "p:$text"
-    // A list is identified by its first item only. Keying it on every item made
-    // the whole list a "new block" each time one more bullet arrived, so the
-    // bullets already on screen flashed with it.
-    is Block.Bullets -> "b:${items.firstOrNull().orEmpty()}"
-    is Block.Ordered -> "o:${items.firstOrNull().orEmpty()}"
-    is Block.Quote -> "q:$text"
-    is Block.Rule -> "r"
-    is Block.Code -> "c$lang:${code.hashCode()}"
 }
 
 private fun parseBlocks(text: String): List<Block> {

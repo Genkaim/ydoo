@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -81,6 +80,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,6 +109,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.core.view.WindowCompat
@@ -367,7 +368,7 @@ fun AiScreen(
             // animating, the list is already pinned, and adding a scroll on top of
             // it is the second animation that made the move look wrong.
             if (overflow <= settlePx) continue
-            val step = (overflow * 0.3f).coerceAtMost(maxStep)
+            val step = (overflow * 0.42f).coerceAtMost(maxStep)
             autoScroll = true
             try {
                 listState.scrollBy(if (step < 1f) overflow else step)
@@ -463,7 +464,12 @@ fun AiScreen(
                 ) {
                     itemsIndexed(
                         items = messages,
-                        key = { index, message -> "$index-${message.role}" }
+                        // The conversation is part of the identity: opening
+                        // another chat must not reuse a row's fade/regenerate
+                        // state from the one before it.
+                        key = { index, message ->
+                            "${AiChatSession.currentId}-$index-${message.role}"
+                        }
                     ) { index, message ->
                         val streamingHere = sending && index == messages.lastIndex && message.role == "assistant"
                         // A row gets its entrance exactly once. The answer waits
@@ -612,6 +618,7 @@ fun AiScreen(
                 // Newest first, whatever order the archive happens to keep.
                 sessions = AiChatSession.sessions.sortedByDescending { it.updatedAt },
                 currentId = drawerSelection,
+                navBottom = with(density) { navBarPx.toDp() },
                 onOpen = { id ->
                     // Straight away: the conversation the reader asked for is on
                     // screen on this frame. The green does not follow it, because
@@ -859,10 +866,10 @@ private fun UserBubble(text: String) {
  * A streamed answer, revealed in sentence-sized pieces.
  *
  * The model sends a few characters at a time; painting every chunk as it lands
- * made the answer crawl in one character at a time. Here the text only moves on
- * at a stop (a line end or a sentence mark, at most 90 characters), and each
- * Markdown block that appears on the way fades in, so it reads as paragraphs
- * arriving rather than as a spinner of letters.
+ * made the answer crawl in one character at a time. Here whole paragraphs move
+ * on as they are finished (or the unfinished tail after a quiet second), and
+ * each Markdown block that appears on the way fades in, so the answer reads as
+ * paragraphs arriving rather than as a spinner of letters.
  */
 @Composable
 private fun StreamingAnswer(
@@ -870,17 +877,13 @@ private fun StreamingAnswer(
     streaming: Boolean,
     leaving: Boolean,
     data: HealthData?,
-    seenBlocks: MutableSet<String>
+    seenBlocks: MutableSet<Int>
 ) {
-    // Paragraph by paragraph: only paragraphs the model has finished are shown,
-    // and each one fades up as it lands. Revealing the text a few characters at a
-    // time was tried and rejected — it reads as a typewriter, not as an answer
-    // arriving in paragraphs.
-    // While the stream is open only finished paragraphs are shown. If the model
-    // goes quiet for a moment, the unfinished paragraph is shown as it is: a
-    // stalled stream must not look like an answer cut off mid-sentence. Once the
-    // tail has been shown it stays shown for this answer, so a later chunk cannot
-    // make the text shrink back.
+    // During the stream only finished paragraphs are shown. If the model goes
+    // quiet for a moment, the unfinished paragraph is shown as it is: a stalled
+    // stream must not look like an answer cut off mid-sentence. Once the tail has
+    // been shown it stays shown for this answer, so a later chunk cannot make the
+    // text shrink back.
     var showTail by remember { mutableStateOf(false) }
     LaunchedEffect(content) {
         if (!streaming || content.isBlank()) return@LaunchedEffect
@@ -888,15 +891,26 @@ private fun StreamingAnswer(
         showTail = true
     }
     val visible = if (streaming && !showTail) finishedParagraphs(content) else content
+    // An answer that has streamed keeps its entrance on for the frame it finishes:
+    // the last paragraph usually lands together with `streaming = false`, and
+    // switching the entrance off exactly then showed it with no fade at all. An
+    // answer opened from history never streamed here and stays still.
+    val live = remember { booleanArrayOf(false) }
+    if (streaming) live[0] = true
+    // 重新生成: the old answer fades where it is. The caller keeps sending the
+    // old words here for that moment, so the fade has something to fade.
     val fade = remember { Animatable(1f) }
     LaunchedEffect(leaving) {
-        if (leaving) fade.animateTo(0f, tween(180)) else fade.snapTo(1f)
+        if (leaving) fade.animateTo(0f, tween(130)) else fade.snapTo(1f)
     }
     Box(Modifier.alpha(fade.value)) {
         MarkdownView(
             visible,
             data = data,
-            animateNewBlocks = streaming && !showTail,
+            // The entrance stays on for the whole stream, not only until the tail
+            // is shown: that condition switched it off for every paragraph after
+            // the first stalled moment, which is why only the first few faded.
+            animateNewBlocks = live[0] && !leaving,
             seenBlocks = seenBlocks
         )
     }
@@ -923,9 +937,6 @@ private fun finishedParagraphs(text: String): String {
     }
     return shown
 }
-
-/** The three faces one answer can have; swapping them is animated. */
-private enum class AnswerMode { WAITING, ERROR, TEXT }
 
 /**
  * Answers are page text, not a bubble: full width, so long paragraphs use the
@@ -960,161 +971,156 @@ private fun AssistantMessage(
     // their own, over an emptied block, they read as a second animation starting
     // while the old one is still leaving.
     var dotsHeld by remember { mutableStateOf(false) }
-    // The height is eased only while a collapse runs. Easing it all the time
-    // clipped paragraphs that were still growing (the new lines were cut off at
-    // the bottom of an animating box) and its curve fought the scroll's.
-    var smoothHeight by remember { mutableStateOf(false) }
-    LaunchedEffect(leaving, smoothHeight) {
-        if (leaving) {
-            smoothHeight = true
-        } else if (smoothHeight) {
-            kotlinx.coroutines.delay(900)
-            smoothHeight = false
-        }
-    }
-    // 报错重试: the button goes first, then the request restarts.
+    // Which answer the paragraph record belongs to. It moves on exactly when the
+    // replacement answer takes the old one's place, so the new answer's first
+    // paragraphs fade in again instead of counting as already read.
+    var epoch by remember { mutableIntStateOf(0) }
+    // 报错重试: the failed line and its key leave together, then the request
+    // restarts. The key must come back if that retry fails too.
     var retrying by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(message.content) {
-        if (message.content.isNotBlank()) {
+
+    LaunchedEffect(message.error) {
+        // retry() replaces the failed message in place and reuses this slot; a
+        // remembered "retrying" then hid the key on every later failure. Leaving
+        // the error state is the one reliable moment to give it back.
+        retrying = false
+        if (message.error) {
             leaving = false
             dotsHeld = false
         }
     }
+    LaunchedEffect(message.content) {
+        if (message.content.isNotBlank()) dotsHeld = false
+    }
     LaunchedEffect(leaving) {
         if (leaving) {
-            // 180 ms fade plus a beat, then the height collapses.
-            kotlinx.coroutines.delay(260)
+            // One short fade, then the old words are gone. The new answer's
+            // paragraph record starts at this boundary.
+            kotlinx.coroutines.delay(170)
+            epoch++
             leaving = false
         }
     }
     val answer = if (leaving) lastWords[0] else message.content
     // Blocks already drawn for this answer. Held here, one level above the answer
-    // body, so a new composition of that body cannot make every paragraph "new"
-    // and fade the paragraphs that were already read.
-    val seenBlocks = remember { mutableSetOf<String>() }
+    // body, so its recomposition never makes paragraphs look new.
+    val seenBlocks = remember(epoch) { mutableSetOf<Int>() }
+    // "正在思考" is a state of its own: the request is out and no word has arrived.
+    // The line used to disappear whenever phase happened to be empty.
+    val thinking = !message.error && streaming && message.content.isBlank() &&
+        !leaving && !dotsHeld
+    val status = phase.ifBlank { "正在思考" }
 
-    val mode = when {
-        message.error -> AnswerMode.ERROR
-        message.content.isBlank() && streaming && !leaving && !dotsHeld -> AnswerMode.WAITING
-        else -> AnswerMode.TEXT
-    }
-
-    // The three states change through a short fade of this block alone, and the
-    // height eases with it. It is a fade of the *state*, never of the answer while
-    // it streams, so paragraphs arriving in the same window keep their own
-    // entrance.
-    var shownMode by remember { mutableStateOf(mode) }
-    val swap = remember { Animatable(1f) }
-    LaunchedEffect(mode) {
-        if (mode != shownMode) {
-            swap.animateTo(0f, tween(120))
-            shownMode = mode
-        }
-        // Always finishes visible: a state change during the fade used to cancel
-        // the fade-in and leave the whole block half transparent, which read as
-        // "the status text turns pale grey".
-        swap.animateTo(1f, tween(160))
-    }
-
-    // The block's own height is eased; the follow chase below leaves small gaps
-    // alone, so a collapse is carried by this one animation and the page is not
-    // pulled up by a second one at the same time.
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .alpha(swap.value)
-            .then(
-                if (smoothHeight) Modifier.animateContentSize(tween(240)) else Modifier
-            )
-    ) {
-    when (shownMode) {
-            AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth()) {
+        // The failure and its key are one block: both fade out, then the request
+        // restarts, so nothing else moves while they go.
+        AnimatedVisibility(
+            visible = message.error && !retrying,
+            enter = fadeIn(tween(170)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(150), shrinkTowards = Alignment.Top)
+        ) {
+            Column(Modifier.fillMaxWidth()) {
                 Text(
                     message.content,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AnimatedVisibility(
-                        visible = !retrying,
-                        exit = fadeOut(tween(130)) + shrinkVertically(tween(150), shrinkTowards = Alignment.Top)
+                    TextButton(
+                        onClick = {
+                            // The block leaves first; the request restarts once it
+                            // is gone. The timer at the end brings the key back if
+                            // the retry never turned into a request.
+                            retrying = true
+                            scope.launch {
+                                kotlinx.coroutines.delay(150)
+                                onRetry()
+                                kotlinx.coroutines.delay(600)
+                                retrying = false
+                            }
+                        }
                     ) {
-                        TextButton(
-                            onClick = {
-                                // The button leaves first; the request restarts
-                                // once it is gone, so nothing else moves while it
-                                // is still on screen.
-                                retrying = true
-                                scope.launch {
-                                    kotlinx.coroutines.delay(170)
-                                    onRetry()
+                        Icon(Icons.Rounded.Autorenew, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(4.dp))
+                        Text("重试")
+                    }
+                }
+            }
+        }
+
+        // Waiting owns only its own row. Its alpha is never shared with the answer,
+        // so a state change cannot leave the status line pale or missing.
+        AnimatedVisibility(
+            visible = thinking,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(130)) + shrinkVertically(tween(150), shrinkTowards = Alignment.Top)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TypingDots(Modifier.padding(vertical = 8.dp))
+                Spacer(Modifier.size(10.dp))
+                // Every status change (思考 → 读取数据 → 深度思考) is a short
+                // cross-fade, not a swap.
+                AnimatedContent(
+                    targetState = status,
+                    transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(110)) },
+                    label = "phase"
+                ) { line ->
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // The answer itself only fades. Its height is laid out at the final size
+        // from the first frame, so no paragraph is ever cut off at the bottom of an
+        // animating box, and no height curve competes with the scroll.
+        AnimatedVisibility(
+            visible = !message.error && answer.isNotBlank(),
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(110))
+        ) {
+            key(epoch) {
+                Column(Modifier.fillMaxWidth()) {
+                    StreamingAnswer(answer, streaming && !leaving, leaving, data, seenBlocks)
+                    // The dots belong to the answer that is arriving; while the old
+                    // one fades out they would be a second thing moving at once.
+                    AnimatedVisibility(
+                        visible = streaming && !leaving,
+                        enter = fadeIn(tween(140)) + expandVertically(tween(180), expandFrom = Alignment.Top),
+                        exit = fadeOut(tween(140)) + shrinkVertically(tween(160), shrinkTowards = Alignment.Top)
+                    ) {
+                        TypingDots(Modifier.padding(top = 8.dp))
+                    }
+                    AnimatedVisibility(
+                        visible = !streaming,
+                        enter = fadeIn(tween(180)) + expandVertically(tween(200), expandFrom = Alignment.Top),
+                        exit = fadeOut(tween(100)) + shrinkVertically(tween(130), shrinkTowards = Alignment.Top)
+                    ) {
+                        Row(
+                            Modifier.padding(top = 2.dp, start = 0.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MessageAction("复制", Icons.Rounded.ContentCopy, onCopy)
+                            if (canRegenerate) {
+                                MessageAction("重新生成", Icons.Rounded.Autorenew) {
+                                    // Start the fade on the tap, not an effect later,
+                                    // and hold the dots back until the new text
+                                    // arrives.
+                                    leaving = true
+                                    dotsHeld = true
+                                    onRegenerate()
                                 }
                             }
-                        ) {
-                            Icon(Icons.Rounded.Autorenew, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.size(4.dp))
-                            Text("重试")
                         }
                     }
                 }
             }
-
-            AnswerMode.WAITING -> Row(verticalAlignment = Alignment.CenterVertically) {
-                TypingDots(Modifier.padding(vertical = 8.dp))
-                if (phase.isNotBlank()) {
-                    Spacer(Modifier.size(10.dp))
-                    // The status changes as the request moves on (查数据 →
-                    // 组织回答); each change is a small fade, not a swap.
-                    AnimatedContent(
-                        targetState = phase,
-                        transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
-                        label = "phase"
-                    ) { line ->
-                        Text(
-                            line,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
-                StreamingAnswer(answer, streaming, leaving, data, seenBlocks)
-                // The dots belong to the answer that is arriving; while the old one
-                // fades out they would be a second thing moving at the same time.
-                AnimatedVisibility(
-                    visible = streaming && !leaving,
-                    enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),
-                    exit = fadeOut(tween(160)) + shrinkVertically(tween(180), shrinkTowards = Alignment.Top)
-                ) {
-                    TypingDots(Modifier.padding(top = 8.dp))
-                }
-                AnimatedVisibility(
-                    visible = !streaming,
-                    enter = fadeIn(tween(200)) + expandVertically(tween(220), expandFrom = Alignment.Top),
-                    exit = fadeOut(tween(100)) + shrinkVertically(tween(140), shrinkTowards = Alignment.Top)
-                ) {
-                    Row(
-                        Modifier.padding(top = 2.dp, start = 0.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MessageAction("复制", Icons.Rounded.ContentCopy, onCopy)
-                        if (canRegenerate) {
-                            MessageAction("重新生成", Icons.Rounded.Autorenew) {
-                                // Start the fade on the tap, not an effect later, and
-                                // hold the dots back until the new text arrives.
-                                leaving = true
-                                dotsHeld = true
-                                onRegenerate()
-                            }
-                        }
-                    }
-                }
-            }
-    }
+        }
     }
 }
 
@@ -1312,35 +1318,65 @@ private fun RefreshSuggestionsKey(onClick: () -> Unit) {
 private fun HistorySheet(
     sessions: List<AiChatSession.Session>,
     currentId: String?,
+    /** Gesture/navigation bar height, measured in the activity window. */
+    navBottom: Dp,
     onOpen: (String) -> Unit,
     onDelete: (String) -> Unit,
     onDeleteAll: () -> Unit,
     onNew: () -> Unit
 ) {
-    // The drawer lives in a dialog window, and that window kept its own navigation
-    // bar colour and the system's scrim — the strip under the gesture pill. Edge
-    // to edge is per window, so it has to be asked for here, not only in the
-    // activity.
+    // A bottom sheet is not part of the page: it is its own dialog window, so the
+    // activity's edge-to-edge setup does not reach it. The strip under the gesture
+    // pill is outside that window until the window itself is told to span the
+    // display.
     val view = LocalView.current
     LaunchedEffect(view) {
         val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
             ?: return@LaunchedEffect
-        // The strip under the gesture pill is the *window*, not the sheet: the
-        // dialog window was laid out above the navigation bar and painted its own
-        // background there. Edge to edge, a full-window layout and a transparent
-        // background hand that strip back to the sheet's own colour.
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        // A bottom sheet lives in its own dialog window, and that window was laid
+        // out the way a floating dialog is: inside the system bars. Nothing drawn
+        // inside the sheet can cover the strip under the gesture pill, because the
+        // strip is not in the window.
+        //
+        // Compose's own full-screen Dialog does four things to span the display;
+        // ModalBottomSheet's forked window setup predates them. Copying them here
+        // is what makes the sheet's colour run to the screen edge:
+        //   - layout in screen, so the window is not placed in the content frame
+        //   - centre it, the way Dialog does
+        //   - fit no insets
+        //   - draw into the display cutout as well
+        window.setGravity(android.view.Gravity.CENTER)
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR or
+                android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
+        )
+        val attrs = window.attributes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            attrs.layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            attrs.fitInsetsTypes = 0
+            attrs.fitInsetsSides = 0
+        }
+        window.attributes = attrs
         window.setLayout(
             android.view.WindowManager.LayoutParams.MATCH_PARENT,
             android.view.WindowManager.LayoutParams.MATCH_PARENT
         )
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
+            @Suppress("DEPRECATION")
+            window.isStatusBarContrastEnforced = false
         }
         @Suppress("DEPRECATION")
         if (android.os.Build.VERSION.SDK_INT < 35) {
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
         }
+        // The sheet draws its own colour; the window must not paint one behind it.
         window.setBackgroundDrawable(
             android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
         )
@@ -1357,10 +1393,13 @@ private fun HistorySheet(
     val currentFill = if (dark) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
     else MaterialTheme.colorScheme.primary
     val currentInk = Color.White
+    // The dialog window reports its own insets, not the activity's, and this
+    // patch has just told the window to fit none of them. The activity's measured
+    // bar height keeps the last card clear of the pill either way.
     Column(
         Modifier
             .fillMaxHeight(0.72f)
-            .navigationBarsPadding()
+            .padding(bottom = navBottom)
     ) {
         Row(
             Modifier

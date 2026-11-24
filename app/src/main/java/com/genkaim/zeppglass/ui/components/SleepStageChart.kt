@@ -150,8 +150,8 @@ fun SleepStageChart(
             // sliver alone. Decided per connector, from its own two blocks.
             val aWidth = xOf(a.endEpochSec) - xOf(a.startEpochSec)
             val bWidth = xOf(b.endEpochSec) - xOf(b.startEpochSec)
-            val slant = (min(aWidth, bWidth) * 0.22f)
-                .coerceIn(0.4.dp.toPx(), 3.dp.toPx())
+            val slant = (0.6.dp.toPx() + min(aWidth, bWidth) * 0.05f)
+                .coerceAtMost(1.2.dp.toPx())
             val startX = (x - slant).coerceIn(xOf(a.startEpochSec), x)
             val endX = (x + slant).coerceIn(x, xOf(b.endEpochSec))
             val from = Offset(startX, fromY)

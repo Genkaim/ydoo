@@ -78,7 +78,13 @@ fun MarkdownView(
     modifier: Modifier = Modifier,
     color: Color = LocalContentColor.current,
     /** Fade each block the first time it appears (used while an answer streams). */
-    animateNewBlocks: Boolean = false
+    animateNewBlocks: Boolean = false,
+    /**
+     * Blocks already drawn for this answer. Supplied by the caller so the record
+     * survives a new MarkdownView composition; without that, a recomposition could
+     * make every block "new" and re-fade paragraphs that were already read.
+     */
+    seenBlocks: MutableSet<String>? = null
 ) {
     val blocks = remember(text) { parseBlocks(text) }
     // A little more air between lines than Material's default: answers carry
@@ -89,24 +95,25 @@ fun MarkdownView(
     val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
     // Every block that has already been drawn, by its own content. A block is
     // animated the first time its content appears, so neither a recomposition nor
-    // a block moving to another position can lose the entrance — per-slot state
-    // was what left every paragraph after the first unanimated — and a paragraph
-    // that only gained its trailing newline is not re-animated.
-    val known = remember { mutableSetOf<String>() }
+    // a block moving to another position can lose the entrance; a paragraph that
+    // was already on screen is never animated again.
+    val known = seenBlocks ?: remember { mutableSetOf<String>() }
     val rise = with(LocalDensity.current) { 8.dp.toPx() }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         blocks.forEach { block ->
             val identity = block.identity()
-            val arriving = remember(identity) {
-                Animatable(if (animateNewBlocks && identity !in known) 0f else 1f)
-            }
+            // Decided once per block identity: a block that was here before is
+            // drawn at full strength for the rest of the answer, whatever else the
+            // composition does.
+            val fresh = remember(identity) { animateNewBlocks && identity !in known }
+            val arriving = remember(identity) { Animatable(if (fresh) 0f else 1f) }
             LaunchedEffect(identity) { arriving.animateTo(1f, tween(260)) }
             known += identity
             // Read in composition, not inside the layer block: the modifier is
             // then rebuilt with the new value every frame, which is what actually
             // moves the block.
-            val progress = arriving.value
+            val progress = if (fresh) arriving.value else 1f
             Box(
                 Modifier.graphicsLayer {
                     alpha = progress

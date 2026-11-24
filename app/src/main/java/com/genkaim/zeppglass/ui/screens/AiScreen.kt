@@ -859,7 +859,9 @@ private fun UserBubble(text: String) {
 private fun StreamingAnswer(
     content: String,
     streaming: Boolean,
-    data: HealthData?
+    leaving: Boolean,
+    data: HealthData?,
+    seenBlocks: MutableSet<String>
 ) {
     // Paragraph by paragraph: only paragraphs the model has finished are shown,
     // and each one fades up as it lands. Revealing the text a few characters at a
@@ -877,7 +879,18 @@ private fun StreamingAnswer(
         showTail = true
     }
     val visible = if (streaming && !showTail) finishedParagraphs(content) else content
-    MarkdownView(visible, data = data, animateNewBlocks = streaming && !showTail)
+    val fade = remember { Animatable(1f) }
+    LaunchedEffect(leaving) {
+        if (leaving) fade.animateTo(0f, tween(180)) else fade.snapTo(1f)
+    }
+    Box(Modifier.alpha(fade.value)) {
+        MarkdownView(
+            visible,
+            data = data,
+            animateNewBlocks = streaming && !showTail,
+            seenBlocks = seenBlocks
+        )
+    }
 }
 
 /**
@@ -924,13 +937,31 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onCopy: () -> Unit
 ) {
-    // 重新生成 empties this row in place. Nothing to fade: the answer's height is
-    // what changes, eased below, and the document under it simply rises with it.
-    val answer = message.content
+    // 重新生成 empties this row in place. The words that were there fade out
+    // where they are — no slide, no drift — and only then does the block lose its
+    // height, so the page rises after the text is gone rather than around it.
+    var lastText by remember { mutableStateOf(message.content) }
+    var leaving by remember { mutableStateOf(false) }
+    LaunchedEffect(message.content) {
+        if (message.content.isNotBlank()) {
+            lastText = message.content
+            leaving = false
+        } else if (lastText.isNotBlank()) {
+            leaving = true
+            // 180 ms fade plus a beat, then the height collapses.
+            kotlinx.coroutines.delay(260)
+            leaving = false
+        }
+    }
+    val answer = if (leaving) lastText else message.content
+    // Blocks already drawn for this answer. Held here, one level above the answer
+    // body, so a new composition of that body cannot make every paragraph "new"
+    // and fade the paragraphs that were already read.
+    val seenBlocks = remember { mutableSetOf<String>() }
 
     val mode = when {
         message.error -> AnswerMode.ERROR
-        message.content.isBlank() && streaming -> AnswerMode.WAITING
+        message.content.isBlank() && streaming && !leaving -> AnswerMode.WAITING
         else -> AnswerMode.TEXT
     }
 
@@ -941,9 +972,13 @@ private fun AssistantMessage(
     var shownMode by remember { mutableStateOf(mode) }
     val swap = remember { Animatable(1f) }
     LaunchedEffect(mode) {
-        if (mode == shownMode) return@LaunchedEffect
-        swap.animateTo(0f, tween(120))
-        shownMode = mode
+        if (mode != shownMode) {
+            swap.animateTo(0f, tween(120))
+            shownMode = mode
+        }
+        // Always finishes visible: a state change during the fade used to cancel
+        // the fade-in and leave the whole block half transparent, which read as
+        // "the status text turns pale grey".
         swap.animateTo(1f, tween(160))
     }
 
@@ -992,7 +1027,7 @@ private fun AssistantMessage(
             }
 
             AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
-                StreamingAnswer(answer, streaming, data)
+                StreamingAnswer(answer, streaming, leaving, data, seenBlocks)
                 AnimatedVisibility(
                     visible = streaming,
                     enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),

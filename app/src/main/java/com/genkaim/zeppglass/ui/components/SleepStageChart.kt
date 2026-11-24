@@ -132,10 +132,17 @@ fun SleepStageChart(
             // the chosen block: those used to stay bright, so the block never
             // read as standing on its own.
             val faded = selected != null
+            // The connector spans only the space between the two bars: from one
+            // bar's edge to the other's. Running it to the row centres left its
+            // ends visible beside a very short block, which read as the line
+            // poking out of the block's middle.
+            val down = rowB > rowA
+            val from = rowCenter(rowA) + if (down) barHeight / 2f else -barHeight / 2f
+            val to = rowCenter(rowB) + if (down) -barHeight / 2f else barHeight / 2f
             drawLine(
                 color = (colors[a.stage] ?: Color.Gray).copy(alpha = if (faded) 0.14f else 0.55f),
-                start = Offset(x, rowCenter(rowA)),
-                end = Offset(x, rowCenter(rowB)),
+                start = Offset(x, from),
+                end = Offset(x, to),
                 strokeWidth = 1.dp.toPx()
             )
         }
@@ -146,19 +153,17 @@ fun SleepStageChart(
             val start = xOf(slice.startEpochSec)
             val end = xOf(slice.endEpochSec)
             val dim = selected != null && selected != slice
-            // A very short stage still has to be visible, but that extra width
-            // must not reach past the segment's own end — a block used to grow to
-            // the right, swallowing the stage connector and poking into the next
-            // block. It grows leftwards instead, so its right edge stays exactly
-            // on the connector.
-            val width = (end - start).coerceAtLeast(2.dp.toPx())
-            val left = (end - width).coerceAtLeast(labelWidth)
-            if (end <= left) return@forEach
+            // The block is exactly its own span. Padding a short stage out to a
+            // minimum width always spilled it into a neighbour — rightwards it ate
+            // the connector, leftwards it covered the previous block's tail — so a
+            // sliver now stays a sliver (a hairline at worst) and nothing crosses
+            // the line between two stages.
+            val right = end.coerceAtLeast(start + 1f)
             // Square edges, so a block and its connector read as one shape.
             drawRect(
                 color = if (dim) color.copy(alpha = 0.32f) else color,
-                topLeft = Offset(left, rowCenter(row) - barHeight / 2f),
-                size = Size(end - left, barHeight)
+                topLeft = Offset(start, rowCenter(row) - barHeight / 2f),
+                size = Size(right - start, barHeight)
             )
         }
 

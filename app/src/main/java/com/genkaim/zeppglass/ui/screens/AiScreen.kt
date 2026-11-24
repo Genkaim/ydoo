@@ -127,6 +127,7 @@ import com.genkaim.zeppglass.ui.components.TypingDots
 import com.genkaim.zeppglass.ui.theme.LocalZgPalette
 import com.genkaim.zeppglass.ui.theme.popupCardColor
 import kotlin.math.abs
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -356,6 +357,11 @@ fun AiScreen(
         }
     }
     LaunchedEffect(listState) {
+        // collectLatest, not collect: an animated follow that took 220 ms while
+        // text arrived every 50 ms queued up a backlog, so the list fell further
+        // and further behind. Every paragraph that landed in that gap faded in
+        // below the fold and was already opaque by the time it scrolled into
+        // view — the "only the first and last paragraphs animate" report.
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()
@@ -364,9 +370,9 @@ fun AiScreen(
                 last?.let { it.offset + it.size } ?: 0,
                 info.viewportEndOffset - info.afterContentPadding
             )
-        }.collect { (index, bottom, viewportEnd) ->
-            if (!followBottom) return@collect
-            if (index != messages.lastIndex) return@collect
+        }.collectLatest { (index, bottom, viewportEnd) ->
+            if (!followBottom) return@collectLatest
+            if (index != messages.lastIndex) return@collectLatest
             val overflow = bottom - viewportEnd
             // A streamed answer grows in blocks every few tens of milliseconds.
             // Jumping the list by the overflow lifted the page in a single

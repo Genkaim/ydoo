@@ -144,14 +144,10 @@ fun SleepStageChart(
             val down = rowB > rowA
             val fromY = rowCenter(rowA) + if (down) barHeight / 2f else -barHeight / 2f
             val toY = rowCenter(rowB) + if (down) -barHeight / 2f else barHeight / 2f
-            // How far the line leans sideways follows the shorter of the two
-            // blocks it joins: a long stage can carry a visible diagonal, a sliver
-            // only a hair of it, or the line would look like it belongs to the
-            // sliver alone. Decided per connector, from its own two blocks.
-            val aWidth = xOf(a.endEpochSec) - xOf(a.startEpochSec)
-            val bWidth = xOf(b.endEpochSec) - xOf(b.startEpochSec)
-            val slant = (0.6.dp.toPx() + min(aWidth, bWidth) * 0.05f)
-                .coerceAtMost(1.2.dp.toPx())
+            // Just a hair of lean — enough that the transition is not a hard
+            // vertical stub, small enough that it never reads as a diagonal,
+            // whatever the length of the two stages.
+            val slant = 0.3.dp.toPx()
             val startX = (x - slant).coerceIn(xOf(a.startEpochSec), x)
             val endX = (x + slant).coerceIn(x, xOf(b.endEpochSec))
             val from = Offset(startX, fromY)

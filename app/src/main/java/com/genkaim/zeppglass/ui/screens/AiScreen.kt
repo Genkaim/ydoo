@@ -937,23 +937,27 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onCopy: () -> Unit
 ) {
-    // 重新生成 empties this row in place. The words that were there fade out
-    // where they are — no slide, no drift — and only then does the block lose its
+    // 重新生成 empties this row in place. The words that were there fade out where
+    // they are — no slide, no drift — and only then does the block lose its
     // height, so the page rises after the text is gone rather than around it.
-    var lastText by remember { mutableStateOf(message.content) }
+    //
+    // The words are held in a plain holder, not in a state: the fade is started by
+    // the button itself, so the emptied answer is never composed for the frame
+    // between the request and an effect noticing it (that frame was the flash).
+    val lastWords = remember { arrayOf("") }
+    if (message.content.isNotBlank()) lastWords[0] = message.content
     var leaving by remember { mutableStateOf(false) }
     LaunchedEffect(message.content) {
-        if (message.content.isNotBlank()) {
-            lastText = message.content
-            leaving = false
-        } else if (lastText.isNotBlank()) {
-            leaving = true
+        if (message.content.isNotBlank()) leaving = false
+    }
+    LaunchedEffect(leaving) {
+        if (leaving) {
             // 180 ms fade plus a beat, then the height collapses.
             kotlinx.coroutines.delay(260)
             leaving = false
         }
     }
-    val answer = if (leaving) lastText else message.content
+    val answer = if (leaving) lastWords[0] else message.content
     // Blocks already drawn for this answer. Held here, one level above the answer
     // body, so a new composition of that body cannot make every paragraph "new"
     // and fade the paragraphs that were already read.
@@ -1047,7 +1051,11 @@ private fun AssistantMessage(
                     ) {
                         MessageAction("复制", Icons.Rounded.ContentCopy, onCopy)
                         if (canRegenerate) {
-                            MessageAction("重新生成", Icons.Rounded.Autorenew, onRegenerate)
+                            MessageAction("重新生成", Icons.Rounded.Autorenew) {
+                                // Start the fade on the tap, not an effect later.
+                                leaving = true
+                                onRegenerate()
+                            }
                         }
                     }
                 }

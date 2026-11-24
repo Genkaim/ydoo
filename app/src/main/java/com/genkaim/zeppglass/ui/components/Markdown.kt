@@ -460,8 +460,11 @@ private sealed interface Block {
 private fun Block.identity(): String = when (this) {
     is Block.Heading -> "h$level:$text"
     is Block.Paragraph -> "p:$text"
-    is Block.Bullets -> "b:${items.joinToString("\u0001")}"
-    is Block.Ordered -> "o:${items.joinToString("\u0001")}"
+    // A list is identified by its first item only. Keying it on every item made
+    // the whole list a "new block" each time one more bullet arrived, so the
+    // bullets already on screen flashed with it.
+    is Block.Bullets -> "b:${items.firstOrNull().orEmpty()}"
+    is Block.Ordered -> "o:${items.firstOrNull().orEmpty()}"
     is Block.Quote -> "q:$text"
     is Block.Rule -> "r"
     is Block.Code -> "c$lang:${code.hashCode()}"

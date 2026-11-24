@@ -859,7 +859,6 @@ private fun UserBubble(text: String) {
 private fun StreamingAnswer(
     content: String,
     streaming: Boolean,
-    leaving: Boolean,
     data: HealthData?
 ) {
     // Paragraph by paragraph: only paragraphs the model has finished are shown,
@@ -878,17 +877,7 @@ private fun StreamingAnswer(
         showTail = true
     }
     val visible = if (streaming && !showTail) finishedParagraphs(content) else content
-    val alpha = remember { Animatable(1f) }
-
-    // 重新生成 empties this row in place; the old words leave over a moment
-    // instead of blinking out between two frames.
-    LaunchedEffect(leaving) {
-        if (leaving) alpha.animateTo(0f, tween(180)) else alpha.snapTo(1f)
-    }
-
-    Box(Modifier.alpha(alpha.value)) {
-        MarkdownView(visible, data = data, animateNewBlocks = streaming && !showTail)
-    }
+    MarkdownView(visible, data = data, animateNewBlocks = streaming && !showTail)
 }
 
 /**
@@ -935,44 +924,13 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onCopy: () -> Unit
 ) {
-    // 重新生成 empties this row in place. The words that were there are held for
-    // exactly one fade, then the block collapses to the waiting state: keeping
-    // them any longer left a tall, blank answer standing behind the dots.
-    var lastText by remember { mutableStateOf(message.content) }
-    var holdingOld by remember { mutableStateOf(false) }
-    LaunchedEffect(message.content) {
-        if (message.content.isNotBlank()) {
-            lastText = message.content
-            holdingOld = false
-        } else if (lastText.isNotBlank()) {
-            // Long enough for the 180 ms fade to be over before the block starts
-            // collapsing: the flow has to rise after the words are gone, not
-            // while they are still dissolving.
-            holdingOld = true
-            kotlinx.coroutines.delay(300)
-            holdingOld = false
-        }
-    }
-    val leaving = holdingOld && message.content.isBlank()
-    val answer = if (leaving) lastText else message.content
-
-    // 重新生成 replaces a tall answer with a short one. The height is eased from
-    // the moment the answer is emptied until the new one has settled; adding the
-    // modifier only afterwards would not animate the collapse it is meant to
-    // smooth.
-    var smoothHeight by remember { mutableStateOf(false) }
-    LaunchedEffect(leaving) {
-        if (leaving) {
-            smoothHeight = true
-        } else if (smoothHeight) {
-            kotlinx.coroutines.delay(1200)
-            smoothHeight = false
-        }
-    }
+    // 重新生成 empties this row in place. Nothing to fade: the answer's height is
+    // what changes, eased below, and the document under it simply rises with it.
+    val answer = message.content
 
     val mode = when {
         message.error -> AnswerMode.ERROR
-        message.content.isBlank() && streaming && !leaving -> AnswerMode.WAITING
+        message.content.isBlank() && streaming -> AnswerMode.WAITING
         else -> AnswerMode.TEXT
     }
 
@@ -989,17 +947,13 @@ private fun AssistantMessage(
         swap.animateTo(1f, tween(160))
     }
 
+    // The height is always eased: a state change, a collapse after 重新生成 and a
+    // new paragraph all move the document under the answer instead of jerking it.
     Box(
         Modifier
             .fillMaxWidth()
             .alpha(swap.value)
-            .then(
-                if (smoothHeight || shownMode != AnswerMode.TEXT || mode != AnswerMode.TEXT) {
-                    Modifier.animateContentSize(tween(220))
-                } else {
-                    Modifier
-                }
-            )
+            .animateContentSize(tween(220))
     ) {
     when (shownMode) {
             AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
@@ -1037,15 +991,8 @@ private fun AssistantMessage(
                 }
             }
 
-            AnswerMode.TEXT -> Column(
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (smoothHeight) Modifier.animateContentSize(tween(240))
-                        else Modifier
-                    )
-            ) {
-                StreamingAnswer(answer, streaming, leaving, data)
+            AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
+                StreamingAnswer(answer, streaming, data)
                 AnimatedVisibility(
                     visible = streaming,
                     enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),

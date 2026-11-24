@@ -655,7 +655,14 @@ fun OverviewScreen(
                         ambientColor = Color.Black.copy(alpha = 0.13f),
                         spotColor = Color.Black.copy(alpha = 0.18f)
                     )
-                    .background(popupCardColor(), sheetShape)
+                    // One step lighter than a plain popup in dark mode: the
+                    // month grid is read, not skimmed, and the popup grey was too
+                    // close to the page behind it.
+                    .background(
+                        if (LocalZgPalette.current.isDark) MaterialTheme.colorScheme.surfaceVariant
+                        else popupCardColor(),
+                        sheetShape
+                    )
                     // The height animation comes last, inside the card: it clips
                     // to its own size, so wrapping the shadow in it cut the shadow
                     // off at the card's edges. A month with six weeks is taller

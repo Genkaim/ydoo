@@ -137,21 +137,18 @@ fun SleepStageChart(
             // bar's edge to the other's. Running it to the row centres left its
             // ends visible beside a very short block, which read as the line
             // poking out of the block's middle.
-            // A slanted line joins the two stages the way a hypnogram does: it
-            // leaves the middle of one bar, crosses the gap and enters the middle
-            // of the next, so the eye follows the change instead of hitting a
-            // vertical stub. Its ends sit under the bars, so only the crossing is
-            // seen. The colour travels from the stage it leaves to the one it
-            // enters — one colour for the whole line never matched both blocks.
+            // A very short stage is a sliver: the connector must not pass
+            // through the bar band, or its end shows beside the sliver as a
+            // spike. It therefore runs only across the gap between the two bars,
+            // from one bar's edge to the other's.
+            val down = rowB > rowA
+            val fromY = rowCenter(rowA) + if (down) barHeight / 2f else -barHeight / 2f
+            val toY = rowCenter(rowB) + if (down) -barHeight / 2f else barHeight / 2f
             val slant = 0.6.dp.toPx()
-            val from = Offset(
-                (x - slant).coerceIn(xOf(a.startEpochSec), x),
-                rowCenter(rowA)
-            )
-            val to = Offset(
-                (x + slant).coerceIn(x, xOf(b.endEpochSec)),
-                rowCenter(rowB)
-            )
+            val startX = (x - slant).coerceIn(xOf(a.startEpochSec), x)
+            val endX = (x + slant).coerceIn(x, xOf(b.endEpochSec))
+            val from = Offset(startX, fromY)
+            val to = Offset(endX, toY)
             val alpha = if (faded) 0.14f else 0.55f
             drawLine(
                 brush = Brush.linearGradient(

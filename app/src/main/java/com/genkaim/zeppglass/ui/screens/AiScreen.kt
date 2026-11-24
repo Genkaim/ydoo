@@ -924,20 +924,28 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     onCopy: () -> Unit
 ) {
-    // 重新生成 replaces the answer in the same row. The words that were there are
-    // kept for a moment so they can fade out; the dots only take over once they
-    // are gone.
+    // 重新生成 empties this row in place. The words that were there are held for
+    // exactly one fade, then the block collapses to the waiting state: keeping
+    // them any longer left a tall, blank answer standing behind the dots.
     var lastText by remember { mutableStateOf(message.content) }
+    var holdingOld by remember { mutableStateOf(false) }
     LaunchedEffect(message.content) {
-        if (message.content.isNotBlank()) lastText = message.content
+        if (message.content.isNotBlank()) {
+            lastText = message.content
+            holdingOld = false
+        } else if (lastText.isNotBlank()) {
+            holdingOld = true
+            kotlinx.coroutines.delay(200)
+            holdingOld = false
+        }
     }
-    val leaving = streaming && message.content.isBlank() && lastText.isNotBlank()
+    val leaving = holdingOld && message.content.isBlank()
     val answer = if (leaving) lastText else message.content
-    // 重新生成 replaces a tall answer with a short one. Without a size animation the
-    // row collapses in a single frame and everything under it jumps, so the
-    // height is eased from the moment the answer is emptied until the new one has
-    // settled. The modifier has to be in place before the swap, which is why it
-    // is added here rather than at the moment the text changes.
+
+    // 重新生成 replaces a tall answer with a short one. The height is eased from
+    // the moment the answer is emptied until the new one has settled; adding the
+    // modifier only afterwards would not animate the collapse it is meant to
+    // smooth.
     var smoothHeight by remember { mutableStateOf(false) }
     LaunchedEffect(leaving) {
         if (leaving) {
@@ -947,17 +955,39 @@ private fun AssistantMessage(
             smoothHeight = false
         }
     }
+
     val mode = when {
         message.error -> AnswerMode.ERROR
         message.content.isBlank() && streaming && !leaving -> AnswerMode.WAITING
         else -> AnswerMode.TEXT
     }
-    // A plain cut, on purpose. Swapping these states used to run a cross-fade, so
-    // the whole answer sat under an alpha of its own and every paragraph arriving
-    // during that fade was invisible until it finished — reported as "the first
-    // few paragraphs have no animation". The blocks fade themselves now, and the
-    // dots inside the TEXT branch keep their own fade.
-    when (mode) {
+
+    // The three states change through a short fade of this block alone, and the
+    // height eases with it. It is a fade of the *state*, never of the answer while
+    // it streams, so paragraphs arriving in the same window keep their own
+    // entrance.
+    var shownMode by remember { mutableStateOf(mode) }
+    val swap = remember { Animatable(1f) }
+    LaunchedEffect(mode) {
+        if (mode == shownMode) return@LaunchedEffect
+        swap.animateTo(0f, tween(120))
+        shownMode = mode
+        swap.animateTo(1f, tween(160))
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .alpha(swap.value)
+            .then(
+                if (smoothHeight || shownMode != AnswerMode.TEXT || mode != AnswerMode.TEXT) {
+                    Modifier.animateContentSize(tween(220))
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+    when (shownMode) {
             AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
                 Text(
                     message.content,
@@ -1026,6 +1056,7 @@ private fun AssistantMessage(
                     }
                 }
             }
+    }
     }
 }
 

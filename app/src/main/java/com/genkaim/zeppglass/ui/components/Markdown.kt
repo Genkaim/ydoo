@@ -87,30 +87,26 @@ fun MarkdownView(
     // app and 14sp was small on a phone.
     val bodyStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp)
     val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
-    // How many blocks were already on screen. Anything above that arrived in this
-    // frame and shares one entrance. Counting them — instead of giving every slot
-    // its own animation state — is what keeps the entrance alive across a
-    // recomposition in the middle of the fade; per-slot state was how only the
-    // first paragraph ever animated.
-    var shownCount by remember { mutableIntStateOf(blocks.size) }
-    var enteringFrom by remember { mutableIntStateOf(Int.MAX_VALUE) }
-    val enter = remember { Animatable(1f) }
-    LaunchedEffect(blocks.size) {
-        if (animateNewBlocks && blocks.size > shownCount) {
-            enteringFrom = shownCount
-            shownCount = blocks.size
-            enter.snapTo(0f)
-            enter.animateTo(1f, tween(260))
-        } else {
-            shownCount = blocks.size
-        }
-        enteringFrom = Int.MAX_VALUE
-    }
+    // Every block that has already been drawn, by its own content. A block is
+    // animated the first time its content appears, so neither a recomposition nor
+    // a block moving to another position can lose the entrance — per-slot state
+    // was what left every paragraph after the first unanimated — and a paragraph
+    // that only gained its trailing newline is not re-animated.
+    val known = remember { mutableSetOf<String>() }
     val rise = with(LocalDensity.current) { 8.dp.toPx() }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        blocks.forEachIndexed { index, block ->
-            val progress = if (index >= enteringFrom) enter.value else 1f
+        blocks.forEach { block ->
+            val identity = block.identity()
+            val arriving = remember(identity) {
+                Animatable(if (animateNewBlocks && identity !in known) 0f else 1f)
+            }
+            LaunchedEffect(identity) { arriving.animateTo(1f, tween(260)) }
+            known += identity
+            // Read in composition, not inside the layer block: the modifier is
+            // then rebuilt with the new value every frame, which is what actually
+            // moves the block.
+            val progress = arriving.value
             Box(
                 Modifier.graphicsLayer {
                     alpha = progress
@@ -451,6 +447,17 @@ private sealed interface Block {
     data class Quote(val text: String) : Block
     data class Code(val lang: String, val code: String) : Block
     data object Rule : Block
+}
+
+/** What makes a block the same block across frames: its type and its text. */
+private fun Block.identity(): String = when (this) {
+    is Block.Heading -> "h$level:$text"
+    is Block.Paragraph -> "p:$text"
+    is Block.Bullets -> "b:${items.joinToString("\u0001")}"
+    is Block.Ordered -> "o:${items.joinToString("\u0001")}"
+    is Block.Quote -> "q:$text"
+    is Block.Rule -> "r"
+    is Block.Code -> "c$lang:${code.hashCode()}"
 }
 
 private fun parseBlocks(text: String): List<Block> {

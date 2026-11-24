@@ -137,26 +137,34 @@ fun SleepStageChart(
             // bar's edge to the other's. Running it to the row centres left its
             // ends visible beside a very short block, which read as the line
             // poking out of the block's middle.
-            val down = rowB > rowA
-            val from = rowCenter(rowA) + if (down) barHeight / 2f else -barHeight / 2f
-            val to = rowCenter(rowB) + if (down) -barHeight / 2f else barHeight / 2f
-            // Half of the line sits in the row it leaves and half in the row it
-            // enters, so a single stage colour always looked wrong against one of
-            // the two blocks. The colour now travels from one stage to the next.
+            // A slanted line joins the two stages the way a hypnogram does: it
+            // leaves the middle of one bar, crosses the gap and enters the middle
+            // of the next, so the eye follows the change instead of hitting a
+            // vertical stub. Its ends sit under the bars, so only the crossing is
+            // seen. The colour travels from the stage it leaves to the one it
+            // enters — one colour for the whole line never matched both blocks.
+            val slant = 4.dp.toPx()
+            val from = Offset(
+                (x - slant).coerceIn(xOf(a.startEpochSec), x),
+                rowCenter(rowA)
+            )
+            val to = Offset(
+                (x + slant).coerceIn(x, xOf(b.endEpochSec)),
+                rowCenter(rowB)
+            )
             val alpha = if (faded) 0.14f else 0.55f
-            val fromColor = (colors[a.stage] ?: Color.Gray).copy(alpha = alpha)
-            val toColor = (colors[b.stage] ?: Color.Gray).copy(alpha = alpha)
-            val top = min(from, to)
-            val bottom = max(from, to)
-            val width = 0.7.dp.toPx()
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = if (down) listOf(fromColor, toColor) else listOf(toColor, fromColor),
-                    startY = top,
-                    endY = bottom
+            drawLine(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        (colors[a.stage] ?: Color.Gray).copy(alpha = alpha),
+                        (colors[b.stage] ?: Color.Gray).copy(alpha = alpha)
+                    ),
+                    start = from,
+                    end = to
                 ),
-                topLeft = Offset(x - width / 2f, top),
-                size = Size(width, (bottom - top).coerceAtLeast(1f))
+                start = from,
+                end = to,
+                strokeWidth = 0.7.dp.toPx()
             )
         }
 

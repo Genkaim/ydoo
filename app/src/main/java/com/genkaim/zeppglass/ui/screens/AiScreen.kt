@@ -903,33 +903,12 @@ private fun StreamingAnswer(
     leaving: Boolean,
     data: HealthData?
 ) {
-    // Only finished paragraphs are shown — half a JSON card must never render —
-    // and inside them the text itself is revealed a few characters per frame.
-    //
-    // Fading whole blocks in could not animate a paragraph that grew in place: it
-    // kept its old state and simply got longer, so the animation only ever showed
-    // on blocks that were freshly created and vanished once a single paragraph
-    // was streaming. Revealing the text animates every answer the same way.
-    val target = if (streaming) finishedParagraphs(content) else content
-    var shown by remember { mutableStateOf(target) }
+    // Paragraph by paragraph: only paragraphs the model has finished are shown,
+    // and each one fades up as it lands. Revealing the text a few characters at a
+    // time was tried and rejected — it reads as a typewriter, not as an answer
+    // arriving in paragraphs.
+    val visible = if (streaming) finishedParagraphs(content) else content
     val alpha = remember { Animatable(1f) }
-
-    LaunchedEffect(target, streaming) {
-        // A rewrite starts again from nothing.
-        if (shown.length > target.length) shown = target
-        while (shown.length < target.length) {
-            // Catch up: the further behind, the bigger the step, so a burst never
-            // leaves the text sentences behind the model. A finished answer skips
-            // the wait entirely.
-            val behind = target.length - shown.length
-            val step = (behind / 8).coerceIn(1, if (streaming) 6 else 64)
-            var cut = (shown.length + step).coerceAtMost(target.length)
-            // Never stop right after a formatting marker: "**bo" would flash.
-            while (cut < target.length && target[cut - 1] in "*_`#[]") cut++
-            shown = target.substring(0, cut.coerceAtMost(target.length))
-            kotlinx.coroutines.delay(if (streaming) 24 else 8)
-        }
-    }
 
     // 重新生成 empties this row in place; the old words leave over a moment
     // instead of blinking out between two frames.
@@ -938,7 +917,7 @@ private fun StreamingAnswer(
     }
 
     Box(Modifier.alpha(alpha.value)) {
-        MarkdownView(shown, data = data)
+        MarkdownView(visible, data = data, animateNewBlocks = streaming)
     }
 }
 
@@ -950,21 +929,11 @@ private fun StreamingAnswer(
  * drawn as a code box.
  */
 private fun finishedParagraphs(text: String): String {
+    // A paragraph is finished by a line break; without one there is nothing yet
+    // to show. Cutting at a sentence instead was tried: it kept the text growing
+    // inside one paragraph, which is exactly the state that cannot animate.
     val cut = text.lastIndexOf('\n')
-    if (cut <= 0) {
-        // Nothing has been wrapped yet. A short answer is often a single line, and
-        // holding it back until its trailing newline arrived made the first reply
-        // of a conversation appear all at once — no streaming at all. The last
-        // finished sentence is enough to keep it arriving in pieces.
-        //
-        // An unfinished fenced block still waits: half a card's JSON must never be
-        // shown as a code box.
-        if (Regex("```").findAll(text).count() % 2 == 1) return ""
-        val stop = text.indexOfLast {
-            it == '。' || it == '！' || it == '？' || it == '!' || it == '?'
-        }
-        return if (stop >= 0) text.substring(0, stop + 1) else ""
-    }
+    if (cut <= 0) return ""
     var shown = text.substring(0, cut)
     while (shown.isNotEmpty() && Regex("```").findAll(shown).count() % 2 == 1) {
         val fence = shown.lastIndexOf("```")

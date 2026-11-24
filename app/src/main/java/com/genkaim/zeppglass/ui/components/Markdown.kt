@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
@@ -68,9 +69,21 @@ private fun FadeInBlock(enabled: Boolean, content: @Composable () -> Unit) {
         content()
         return
     }
-    val alpha = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { alpha.animateTo(1f, tween(240)) }
-    Box(Modifier.graphicsLayer { this.alpha = alpha.value }) { content() }
+    // Fade in while rising a few dp: a paragraph arriving whole still needs some
+    // movement, or a short one is easy to miss.
+    val rise = with(LocalDensity.current) { 7.dp.toPx() }
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
+    }
+    Box(
+        Modifier.graphicsLayer {
+            alpha = appear.value
+            translationY = rise * (1f - appear.value)
+        }
+    ) {
+        content()
+    }
 }
 
 @Composable

@@ -9,7 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -1527,19 +1527,21 @@ private fun DietAiDialog(
             contentAlignment = Alignment.Center
         ) {
             FlatPanel(
-                Modifier
-                    .fillMaxWidth()
-                    .animateContentSize(tween(240)),
+                Modifier.fillMaxWidth(),
                 color = popupCardColor(),
                 shape = RoundedCornerShape(24.dp)
             ) {
                 // Describing the meal and inspecting the estimate are two faces of
-                // the same card. They cross-fade, and the card's height eases
-                // between them, instead of the whole panel changing in one frame
-                // the moment the estimate starts.
-                Crossfade(
+                // the same card. AnimatedContent owns both the cross-fade and the
+                // height, and it does not clip: easing the panel's own height as
+                // well was a second animation, and it cut the list and the card's
+                // bottom corners while it ran.
+                AnimatedContent(
                     targetState = asking,
-                    animationSpec = tween(190),
+                    transitionSpec = {
+                        (fadeIn(tween(190)) togetherWith fadeOut(tween(140)))
+                            .using(SizeTransform(clip = false))
+                    },
                     label = "dietComposer"
                 ) { describing ->
                 Column(Modifier.padding(16.dp)) {

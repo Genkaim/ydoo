@@ -956,8 +956,15 @@ private fun AssistantMessage(
     val lastWords = remember { arrayOf("") }
     if (message.content.isNotBlank()) lastWords[0] = message.content
     var leaving by remember { mutableStateOf(false) }
+    // After a regenerate the dots stay away until the new answer has words: on
+    // their own, over an emptied block, they read as a second animation starting
+    // while the old one is still leaving.
+    var dotsHeld by remember { mutableStateOf(false) }
     LaunchedEffect(message.content) {
-        if (message.content.isNotBlank()) leaving = false
+        if (message.content.isNotBlank()) {
+            leaving = false
+            dotsHeld = false
+        }
     }
     LaunchedEffect(leaving) {
         if (leaving) {
@@ -974,7 +981,7 @@ private fun AssistantMessage(
 
     val mode = when {
         message.error -> AnswerMode.ERROR
-        message.content.isBlank() && streaming && !leaving -> AnswerMode.WAITING
+        message.content.isBlank() && streaming && !leaving && !dotsHeld -> AnswerMode.WAITING
         else -> AnswerMode.TEXT
     }
 
@@ -1042,10 +1049,12 @@ private fun AssistantMessage(
 
             AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
                 StreamingAnswer(answer, streaming, leaving, data, seenBlocks)
+                // The dots belong to the answer that is arriving; while the old one
+                // fades out they would be a second thing moving at the same time.
                 AnimatedVisibility(
-                    visible = streaming,
+                    visible = streaming && !leaving,
                     enter = fadeIn(tween(160)) + expandVertically(tween(200), expandFrom = Alignment.Top),
-                    exit = fadeOut(tween(120)) + shrinkVertically(tween(160), shrinkTowards = Alignment.Top)
+                    exit = fadeOut(tween(160)) + shrinkVertically(tween(180), shrinkTowards = Alignment.Top)
                 ) {
                     TypingDots(Modifier.padding(top = 8.dp))
                 }
@@ -1062,8 +1071,10 @@ private fun AssistantMessage(
                         MessageAction("复制", Icons.Rounded.ContentCopy, onCopy)
                         if (canRegenerate) {
                             MessageAction("重新生成", Icons.Rounded.Autorenew) {
-                                // Start the fade on the tap, not an effect later.
+                                // Start the fade on the tap, not an effect later, and
+                                // hold the dots back until the new text arrives.
                                 leaving = true
+                                dotsHeld = true
                                 onRegenerate()
                             }
                         }
@@ -1273,6 +1284,21 @@ private fun HistorySheet(
     onDeleteAll: () -> Unit,
     onNew: () -> Unit
 ) {
+    // The drawer lives in a dialog window, and that window kept its own navigation
+    // bar colour and the system's scrim — the strip under the gesture pill. Edge
+    // to edge is per window, so it has to be asked for here, not only in the
+    // activity.
+    val view = LocalView.current
+    LaunchedEffect(view) {
+        val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            ?: return@LaunchedEffect
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+    }
+
     var confirmDeleteAll by remember { mutableStateOf(false) }
     val dark = LocalZgPalette.current.isDark
     // The drawer is a light card in dark mode and white paper in light mode, so

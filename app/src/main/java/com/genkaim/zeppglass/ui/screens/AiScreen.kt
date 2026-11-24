@@ -501,9 +501,15 @@ fun AiScreen(
                         // in unison while the suggestions are still folding up.
                         val rowKey = "$index-${message.role}"
                         val fresh = index >= settled && playedEntrance.add(rowKey)
+                        // The answer that is still arriving animates its own
+                        // paragraphs. Fading the whole row in at the same time hid
+                        // the first few: they land inside those 240 ms and were
+                        // already rising with their parent, so no fade of their own
+                        // could be seen.
+                        val enterRow = fresh && !streamingHere
                         AppearFromBelow(
-                            animate = fresh,
-                            delayMillis = if (fresh && message.role == "assistant") 70 else 0
+                            animate = enterRow,
+                            delayMillis = if (enterRow && message.role == "assistant") 70 else 0
                         ) {
                             if (message.role == "user") {
                                 UserBubble(message.content)
@@ -952,12 +958,12 @@ private fun AssistantMessage(
         message.content.isBlank() && streaming -> AnswerMode.WAITING
         else -> AnswerMode.TEXT
     }
-    AnimatedContent(
-        targetState = mode,
-        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(130)) },
-        label = "answerMode"
-    ) { current ->
-        when (current) {
+    // A plain cut, on purpose. Swapping these states used to run a cross-fade, so
+    // the whole answer sat under an alpha of its own and every paragraph arriving
+    // during that fade was invisible until it finished — reported as "the first
+    // few paragraphs have no animation". The blocks fade themselves now, and the
+    // dots inside the TEXT branch keep their own fade.
+    when (mode) {
             AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
                 Text(
                     message.content,
@@ -1019,7 +1025,6 @@ private fun AssistantMessage(
                     }
                 }
             }
-        }
     }
 }
 

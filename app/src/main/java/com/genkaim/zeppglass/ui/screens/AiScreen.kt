@@ -960,6 +960,21 @@ private fun AssistantMessage(
     // their own, over an emptied block, they read as a second animation starting
     // while the old one is still leaving.
     var dotsHeld by remember { mutableStateOf(false) }
+    // The height is eased only while a collapse runs. Easing it all the time
+    // clipped paragraphs that were still growing (the new lines were cut off at
+    // the bottom of an animating box) and its curve fought the scroll's.
+    var smoothHeight by remember { mutableStateOf(false) }
+    LaunchedEffect(leaving, smoothHeight) {
+        if (leaving) {
+            smoothHeight = true
+        } else if (smoothHeight) {
+            kotlinx.coroutines.delay(900)
+            smoothHeight = false
+        }
+    }
+    // 报错重试: the button goes first, then the request restarts.
+    var retrying by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(message.content) {
         if (message.content.isNotBlank()) {
             leaving = false
@@ -1009,7 +1024,9 @@ private fun AssistantMessage(
         Modifier
             .fillMaxWidth()
             .alpha(swap.value)
-            .animateContentSize(tween(220))
+            .then(
+                if (smoothHeight) Modifier.animateContentSize(tween(240)) else Modifier
+            )
     ) {
     when (shownMode) {
             AnswerMode.ERROR -> Column(Modifier.fillMaxWidth()) {
@@ -1019,10 +1036,26 @@ private fun AssistantMessage(
                     color = MaterialTheme.colorScheme.error
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onRetry) {
-                        Icon(Icons.Rounded.Autorenew, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("重试")
+                    AnimatedVisibility(
+                        visible = !retrying,
+                        exit = fadeOut(tween(130)) + shrinkVertically(tween(150), shrinkTowards = Alignment.Top)
+                    ) {
+                        TextButton(
+                            onClick = {
+                                // The button leaves first; the request restarts
+                                // once it is gone, so nothing else moves while it
+                                // is still on screen.
+                                retrying = true
+                                scope.launch {
+                                    kotlinx.coroutines.delay(170)
+                                    onRetry()
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Rounded.Autorenew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.size(4.dp))
+                            Text("重试")
+                        }
                     }
                 }
             }
@@ -1292,11 +1325,25 @@ private fun HistorySheet(
     LaunchedEffect(view) {
         val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
             ?: return@LaunchedEffect
+        // The strip under the gesture pill is the *window*, not the sheet: the
+        // dialog window was laid out above the navigation bar and painted its own
+        // background there. Edge to edge, a full-window layout and a transparent
+        // background hand that strip back to the sheet's own colour.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setLayout(
+            android.view.WindowManager.LayoutParams.MATCH_PARENT,
+            android.view.WindowManager.LayoutParams.MATCH_PARENT
+        )
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
         @Suppress("DEPRECATION")
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT < 35) {
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        }
+        window.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        )
     }
 
     var confirmDeleteAll by remember { mutableStateOf(false) }

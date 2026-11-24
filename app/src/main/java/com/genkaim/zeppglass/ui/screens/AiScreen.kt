@@ -866,7 +866,18 @@ private fun StreamingAnswer(
     // and each one fades up as it lands. Revealing the text a few characters at a
     // time was tried and rejected — it reads as a typewriter, not as an answer
     // arriving in paragraphs.
-    val visible = if (streaming) finishedParagraphs(content) else content
+    // While the stream is open only finished paragraphs are shown. If the model
+    // goes quiet for a moment, the unfinished paragraph is shown as it is: a
+    // stalled stream must not look like an answer cut off mid-sentence. Once the
+    // tail has been shown it stays shown for this answer, so a later chunk cannot
+    // make the text shrink back.
+    var showTail by remember { mutableStateOf(false) }
+    LaunchedEffect(content) {
+        if (!streaming || content.isBlank()) return@LaunchedEffect
+        kotlinx.coroutines.delay(1200)
+        showTail = true
+    }
+    val visible = if (streaming && !showTail) finishedParagraphs(content) else content
     val alpha = remember { Animatable(1f) }
 
     // 重新生成 empties this row in place; the old words leave over a moment
@@ -876,7 +887,7 @@ private fun StreamingAnswer(
     }
 
     Box(Modifier.alpha(alpha.value)) {
-        MarkdownView(visible, data = data, animateNewBlocks = streaming)
+        MarkdownView(visible, data = data, animateNewBlocks = streaming && !showTail)
     }
 }
 
@@ -934,8 +945,11 @@ private fun AssistantMessage(
             lastText = message.content
             holdingOld = false
         } else if (lastText.isNotBlank()) {
+            // Long enough for the 180 ms fade to be over before the block starts
+            // collapsing: the flow has to rise after the words are gone, not
+            // while they are still dissolving.
             holdingOld = true
-            kotlinx.coroutines.delay(200)
+            kotlinx.coroutines.delay(300)
             holdingOld = false
         }
     }

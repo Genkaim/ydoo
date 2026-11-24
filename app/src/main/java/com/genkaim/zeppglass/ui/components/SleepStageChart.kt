@@ -144,7 +144,15 @@ fun SleepStageChart(
             val down = rowB > rowA
             val fromY = rowCenter(rowA) + if (down) barHeight / 2f else -barHeight / 2f
             val toY = rowCenter(rowB) + if (down) -barHeight / 2f else barHeight / 2f
-            val slant = 0.6.dp.toPx()
+            // Only a very short stage needs the slight lean: its sliver is too
+            // narrow to meet the other bar cleanly. Every other connector drops
+            // straight down between the two bars, which is what reads best when
+            // both stages last a while. The decision is per connector, from the
+            // two blocks it joins.
+            val aWidth = xOf(a.endEpochSec) - xOf(a.startEpochSec)
+            val bWidth = xOf(b.endEpochSec) - xOf(b.startEpochSec)
+            val shortJoiner = min(aWidth, bWidth) < 6.dp.toPx()
+            val slant = if (shortJoiner) 0.6.dp.toPx() else 0f
             val startX = (x - slant).coerceIn(xOf(a.startEpochSec), x)
             val endX = (x + slant).coerceIn(x, xOf(b.endEpochSec))
             val from = Offset(startX, fromY)

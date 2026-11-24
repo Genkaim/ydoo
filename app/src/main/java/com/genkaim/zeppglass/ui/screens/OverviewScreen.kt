@@ -798,7 +798,10 @@ private fun HomeHeader(
             Surface(
                 onClick = onToggle,
                 shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                // The pill opens the month card, so it takes the same grey that
+                // card uses instead of being one step lighter than it.
+                color = if (LocalZgPalette.current.isDark) popupCardColor()
+                else MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = MaterialTheme.colorScheme.onSurface
             ) {
                 Row(

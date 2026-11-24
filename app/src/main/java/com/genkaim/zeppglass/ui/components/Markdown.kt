@@ -28,6 +28,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -70,38 +71,6 @@ import kotlin.math.roundToInt
  * fades in over a quarter second, so the text arrives in readable pieces
  * instead of snapping in character by character.
  */
-/**
- * One block of an answer, and its entrance.
- *
- * A block that arrives while the answer is streaming fades up once. The state
- * belongs to the block's position ([index]): paragraphs are only ever appended,
- * so a position already on screen keeps its finished entrance and a new one runs
- * its own. The transition itself is handed to [AnimatedVisibility], which starts
- * it when `visible` flips — one frame after composition, so the animation cannot
- * be spent before the block is first drawn.
- */
-@Composable
-private fun BlockEntrance(
-    index: Int,
-    animate: Boolean,
-    content: @Composable () -> Unit
-) {
-    if (!animate) {
-        content()
-        return
-    }
-    var settled by remember(index) { mutableStateOf(false) }
-    LaunchedEffect(index) { settled = true }
-    val rise = with(LocalDensity.current) { 8.dp.roundToPx() }
-    AnimatedVisibility(
-        visible = settled,
-        enter = fadeIn(tween(260)) + slideInVertically(tween(260)) { rise },
-        exit = ExitTransition.None
-    ) {
-        content()
-    }
-}
-
 @Composable
 fun MarkdownView(
     text: String,
@@ -118,9 +87,36 @@ fun MarkdownView(
     // app and 14sp was small on a phone.
     val bodyStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp)
     val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
+    // How many blocks were already on screen. Anything above that arrived in this
+    // frame and shares one entrance. Counting them — instead of giving every slot
+    // its own animation state — is what keeps the entrance alive across a
+    // recomposition in the middle of the fade; per-slot state was how only the
+    // first paragraph ever animated.
+    var shownCount by remember { mutableIntStateOf(blocks.size) }
+    var enteringFrom by remember { mutableIntStateOf(Int.MAX_VALUE) }
+    val enter = remember { Animatable(1f) }
+    LaunchedEffect(blocks.size) {
+        if (animateNewBlocks && blocks.size > shownCount) {
+            enteringFrom = shownCount
+            shownCount = blocks.size
+            enter.snapTo(0f)
+            enter.animateTo(1f, tween(260))
+        } else {
+            shownCount = blocks.size
+        }
+        enteringFrom = Int.MAX_VALUE
+    }
+    val rise = with(LocalDensity.current) { 8.dp.toPx() }
+
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         blocks.forEachIndexed { index, block ->
-            BlockEntrance(index = index, animate = animateNewBlocks) {
+            val progress = if (index >= enteringFrom) enter.value else 1f
+            Box(
+                Modifier.graphicsLayer {
+                    alpha = progress
+                    translationY = rise * (1f - progress)
+                }
+            ) {
             when (block) {
                 is Block.Heading -> Text(
                     block.text,

@@ -251,8 +251,6 @@ fun AiScreen(
     val travelPx = (keyboardPx - navBarPx).coerceAtLeast(1)
     val insetTyping = ((imePx - navBarPx).toFloat() / travelPx).coerceIn(0f, 1f)
     val typing = if (insetTravels) insetTyping else fallbackTyping
-    // True only while the keyboard is between the two ends.
-    val keyboardMoving = rememberUpdatedState(typing > 0.01f && typing < 0.99f)
     // Measured by the shell, so the field clears the bar on every device no
     // matter which system-bar insets it reports.
     val barSpace = LocalTabBarSpace.current.takeIf { it > 0.dp } ?: FallbackBarSpace
@@ -261,11 +259,6 @@ fun AiScreen(
         stop = with(density) { keyboardPx.toDp() } + ComposerAir,
         fraction = typing
     )
-
-    // True while the deck (composer + the air under it) is changing size; those
-    // frames keep the list attached instead of animating it.
-    var trackingDeck by remember { mutableStateOf(false) }
-    val trackingNow = rememberUpdatedState(trackingDeck)
 
     // ---- following the bottom -------------------------------------------
     // Dragging up during streaming must leave the page where the finger left
@@ -330,20 +323,13 @@ fun AiScreen(
     }
     LaunchedEffect(AiChatSession.currentId) { followBottom = true }
 
-    // A new message jumps to its top; the layout observer below then pins its
-    // bottom edge. Doing both in one pass computed the overflow from the frame
-    // before the new text was measured, which is what made the list flicker
-    // while a long answer streamed in.
+    // A new message jumps to its top; the chase below then keeps its bottom edge
+    // pinned. Doing both in one pass computed the overflow from the frame before
+    // the new text was measured, which is what made the list flicker while a long
+    // answer streamed in.
     // The first pass lands without animation: a restored page must not move, and
-    // a conversation opened from history must simply be at its bottom, not
-    // slide there. The follow below is eased only from the second frame on.
+    // a conversation opened from history must simply be at its bottom.
     var firstPass by remember(sessionId) { mutableStateOf(true) }
-    var followAnimated by remember(sessionId) { mutableStateOf(false) }
-    LaunchedEffect(sessionId) {
-        withFrameNanos { }
-        withFrameNanos { }
-        followAnimated = true
-    }
     LaunchedEffect(messages.size) {
         val landing = firstPass
         firstPass = false
@@ -356,46 +342,32 @@ fun AiScreen(
             autoScroll = false
         }
     }
-    LaunchedEffect(listState) {
-        // collectLatest, not collect: an animated follow that took 220 ms while
-        // text arrived every 50 ms queued up a backlog, so the list fell further
-        // and further behind. Every paragraph that landed in that gap faded in
-        // below the fold and was already opaque by the time it scrolled into
-        // view — the "only the first and last paragraphs animate" report.
-        snapshotFlow {
+
+    // Following the bottom is a per-frame chase, not a tween.
+    //
+    // A 220 ms tween restarted by every new chunk only travelled a fraction of the
+    // gap before the next chunk restarted it, so the page crawled upward while the
+    // answer grew: the "scrolls up very slowly" report, worst on the second answer
+    // and after, where the text arrives fast. Moving a share of the remaining gap
+    // on every frame is quick when far behind, gentle as it closes, and it cannot
+    // stall because nothing restarts it.
+    LaunchedEffect(listState, followBottom) {
+        if (!followBottom) return@LaunchedEffect
+        val maxStep = with(density) { 56.dp.toPx() }
+        while (true) {
+            withFrameNanos { }
             val info = listState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()
-            Triple(
-                last?.index ?: -1,
-                last?.let { it.offset + it.size } ?: 0,
-                info.viewportEndOffset - info.afterContentPadding
-            )
-        }.collectLatest { (index, bottom, viewportEnd) ->
-            if (!followBottom) return@collectLatest
-            if (index != messages.lastIndex) return@collectLatest
-            val overflow = bottom - viewportEnd
-            // A streamed answer grows in blocks every few tens of milliseconds.
-            // Jumping the list by the overflow lifted the page in a single
-            // frame; animating it keeps the text rising instead of snapping up.
-            if (overflow > 1) {
-                autoScroll = true
-                try {
-                    // While the keyboard is on its way the field itself is moving;
-                    // animating the list as well made it arrive in two or three
-                    // separate steps. Those frames just keep the list attached.
-                    if (followAnimated && !keyboardMoving.value && !trackingNow.value) {
-                        listState.animateScrollBy(
-                            overflow.toFloat(),
-                            // Eased at both ends: the text rises, settles, and
-                            // rises again with the next block instead of ticking up.
-                            tween(durationMillis = 220, easing = FastOutSlowInEasing)
-                        )
-                    } else {
-                        listState.scrollBy(overflow.toFloat())
-                    }
-                } finally {
-                    autoScroll = false
-                }
+            val last = info.visibleItemsInfo.lastOrNull() ?: continue
+            if (last.index != messages.lastIndex) continue
+            val overflow = (last.offset + last.size -
+                (info.viewportEndOffset - info.afterContentPadding)).toFloat()
+            if (overflow <= 0.5f) continue
+            val step = (overflow * 0.3f).coerceAtMost(maxStep)
+            autoScroll = true
+            try {
+                listState.scrollBy(if (step < 1f) overflow else step)
+            } finally {
+                autoScroll = false
             }
         }
     }
@@ -456,19 +428,6 @@ fun AiScreen(
                 mutableIntStateOf(with(density) { (bottomSpace + 68.dp).roundToPx() })
             }
             val deckSpace = with(density) { deckPx.toDp() }
-            // A deck jump — the keyboard rising, the suggestion strip folding
-            // away — is followed by layout, not by a tween. Animating those
-            // frames on top of each other is what made the page climb in several
-            // separate pieces; only the quiet growth of a reply animates.
-            var lastDeckDp by remember { mutableStateOf(deckSpace) }
-            LaunchedEffect(deckSpace) {
-                if (abs((deckSpace - lastDeckDp).value) > 6f) {
-                    trackingDeck = true
-                    kotlinx.coroutines.delay(280)
-                    trackingDeck = false
-                }
-                lastDeckDp = deckSpace
-            }
 
             // Greeting and transcript cross-fade instead of swapping in one
             // frame, so the first message lands while the empty state is still
@@ -974,6 +933,20 @@ private fun AssistantMessage(
     }
     val leaving = streaming && message.content.isBlank() && lastText.isNotBlank()
     val answer = if (leaving) lastText else message.content
+    // 重新生成 replaces a tall answer with a short one. Without a size animation the
+    // row collapses in a single frame and everything under it jumps, so the
+    // height is eased from the moment the answer is emptied until the new one has
+    // settled. The modifier has to be in place before the swap, which is why it
+    // is added here rather than at the moment the text changes.
+    var smoothHeight by remember { mutableStateOf(false) }
+    LaunchedEffect(leaving) {
+        if (leaving) {
+            smoothHeight = true
+        } else if (smoothHeight) {
+            kotlinx.coroutines.delay(1200)
+            smoothHeight = false
+        }
+    }
     val mode = when {
         message.error -> AnswerMode.ERROR
         message.content.isBlank() && streaming && !leaving -> AnswerMode.WAITING
@@ -1020,7 +993,14 @@ private fun AssistantMessage(
                 }
             }
 
-            AnswerMode.TEXT -> Column(Modifier.fillMaxWidth()) {
+            AnswerMode.TEXT -> Column(
+                Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (smoothHeight) Modifier.animateContentSize(tween(240))
+                        else Modifier
+                    )
+            ) {
                 StreamingAnswer(answer, streaming, leaving, data)
                 AnimatedVisibility(
                     visible = streaming,

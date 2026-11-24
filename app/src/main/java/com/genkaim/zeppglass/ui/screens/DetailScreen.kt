@@ -448,7 +448,10 @@ private fun SleepDetail(data: HealthData?, date: LocalDate?, onOpen: (DetailTarg
                 progress = (night.score ?: 0) / 100f,
                 value = night.score?.toString() ?: "--",
                 caption = "睡眠分 / 100",
-                color = palette.sleepLight
+                // The same rule as the ring on the overview: a poor night turns
+                // amber, a bad one red. The two pages must not disagree about
+                // what last night looked like.
+                color = scoreTint(night.score, palette.sleepLight, palette.warn, palette.critical)
             )
         }
         // Same breathing room the Charge / activity / load pages leave under
@@ -5136,7 +5139,17 @@ private fun SleepMetricDetail(data: HealthData?, date: LocalDate?, metric: Sleep
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 12.dp)
                     .height(170.dp),
-                color = color
+                color = color,
+                // 呼吸率 and 低通气 are fractional readings: rounding them to whole
+                // numbers printed a 0.3 night as "0", which reads as no data.
+                valueLabel = if (metric == SleepMetric.HEART_RATE) {
+                    null
+                } else {
+                    { value -> String.format(Locale.CHINA, "%.1f", value) }
+                },
+                // A whole-number step would put the apnea axis at 0 / 2 / 4 with
+                // every real reading between the first two lines.
+                suggestedStep = if (metric == SleepMetric.APNEA) 0.5f else null
             )
         }
     }

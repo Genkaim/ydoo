@@ -1207,7 +1207,7 @@ private fun TopRings(
  * Score bands for the two 0–100 rings. Under 60 is the red band, 60–74 the
  * amber one; above that the ring keeps its own colour.
  */
-private fun scoreTint(score: Int?, base: Color, warn: Color, critical: Color): Color = when {
+fun scoreTint(score: Int?, base: Color, warn: Color, critical: Color): Color = when {
     score == null -> base
     score < 60 -> critical
     score < 75 -> warn

@@ -72,11 +72,16 @@ fun TrendLineChart(
         val chartHeight = (size.height - axisHeight - topPad).coerceAtLeast(10f)
         fun yOf(v: Float) = topPad + chartHeight - ((v - lo) / range) * chartHeight
 
-        // Grid + y labels (lo / mid / hi)
+        // Grid + y labels (lo / mid / hi). A fractional step — the apnea index
+        // moves in tenths — needs the decimals, or 0.5 and 0.3 both read "0".
+        val axisText: (Float) -> String = { value ->
+            if (step < 1f) String.format(java.util.Locale.CHINA, "%.1f", value)
+            else value.roundToInt().toString()
+        }
         listOf(hi, (hi + lo) / 2f, lo).forEach { value ->
             val y = yOf(value)
             drawLine(grid, Offset(axisWidth, y), Offset(size.width, y), 1f)
-            val layout = measurer.measure(value.roundToInt().toString(), axisStyle)
+            val layout = measurer.measure(axisText(value), axisStyle)
             drawText(layout, topLeft = Offset(0f, y - layout.size.height / 2f))
         }
 

@@ -902,7 +902,20 @@ private fun StreamingAnswer(content: String, streaming: Boolean, data: HealthDat
  */
 private fun finishedParagraphs(text: String): String {
     val cut = text.lastIndexOf('\n')
-    if (cut <= 0) return ""
+    if (cut <= 0) {
+        // Nothing has been wrapped yet. A short answer is often a single line, and
+        // holding it back until its trailing newline arrived made the first reply
+        // of a conversation appear all at once — no streaming at all. The last
+        // finished sentence is enough to keep it arriving in pieces.
+        //
+        // An unfinished fenced block still waits: half a card's JSON must never be
+        // shown as a code box.
+        if (Regex("```").findAll(text).count() % 2 == 1) return ""
+        val stop = text.indexOfLast {
+            it == '。' || it == '！' || it == '？' || it == '!' || it == '?'
+        }
+        return if (stop >= 0) text.substring(0, stop + 1) else ""
+    }
     var shown = text.substring(0, cut)
     while (shown.isNotEmpty() && Regex("```").findAll(shown).count() % 2 == 1) {
         val fence = shown.lastIndexOf("```")

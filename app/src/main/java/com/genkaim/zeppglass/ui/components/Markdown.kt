@@ -19,13 +19,20 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -63,24 +70,33 @@ import kotlin.math.roundToInt
  * fades in over a quarter second, so the text arrives in readable pieces
  * instead of snapping in character by character.
  */
+/**
+ * One block of an answer, and its entrance.
+ *
+ * A block that arrives while the answer is streaming fades up once. The state
+ * belongs to the block's position ([index]): paragraphs are only ever appended,
+ * so a position already on screen keeps its finished entrance and a new one runs
+ * its own. The transition itself is handed to [AnimatedVisibility], which starts
+ * it when `visible` flips — one frame after composition, so the animation cannot
+ * be spent before the block is first drawn.
+ */
 @Composable
-private fun FadeInBlock(enabled: Boolean, content: @Composable () -> Unit) {
-    if (!enabled) {
+private fun BlockEntrance(
+    index: Int,
+    animate: Boolean,
+    content: @Composable () -> Unit
+) {
+    if (!animate) {
         content()
         return
     }
-    // Fade in while rising a few dp: a paragraph arriving whole still needs some
-    // movement, or a short one is easy to miss.
-    val rise = with(LocalDensity.current) { 7.dp.toPx() }
-    val appear = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        appear.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
-    }
-    Box(
-        Modifier.graphicsLayer {
-            alpha = appear.value
-            translationY = rise * (1f - appear.value)
-        }
+    var settled by remember(index) { mutableStateOf(false) }
+    LaunchedEffect(index) { settled = true }
+    val rise = with(LocalDensity.current) { 8.dp.roundToPx() }
+    AnimatedVisibility(
+        visible = settled,
+        enter = fadeIn(tween(260)) + slideInVertically(tween(260)) { rise },
+        exit = ExitTransition.None
     ) {
         content()
     }
@@ -103,8 +119,8 @@ fun MarkdownView(
     val bodyStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp)
     val quoteStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        blocks.forEach { block ->
-            FadeInBlock(animateNewBlocks) {
+        blocks.forEachIndexed { index, block ->
+            BlockEntrance(index = index, animate = animateNewBlocks) {
             when (block) {
                 is Block.Heading -> Text(
                     block.text,
@@ -167,13 +183,11 @@ fun MarkdownView(
                         // composition, so the fade it gets here actually runs
                         // instead of inheriting the finished alpha of the text
                         // that was there a moment ago.
-                        key(block.code) {
-                            // Fades while it arrives; a card restored from history
-                            // is simply there.
-                            FadeInBlock(enabled = animateNewBlocks) {
-                                AiDataCard(block.code, data)
-                            }
-                        }
+                        // The card replaces the code block inside the same
+                        // block, so the entrance above already covers it; the key
+                        // makes the swap a new composition rather than a text
+                        // change. A card restored from history simply appears.
+                        key(block.code) { AiDataCard(block.code, data) }
                     } else {
                         Box(
                             Modifier

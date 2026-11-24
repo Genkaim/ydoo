@@ -143,7 +143,7 @@ fun SleepStageChart(
             // vertical stub. Its ends sit under the bars, so only the crossing is
             // seen. The colour travels from the stage it leaves to the one it
             // enters — one colour for the whole line never matched both blocks.
-            val slant = 4.dp.toPx()
+            val slant = 1.5.dp.toPx()
             val from = Offset(
                 (x - slant).coerceIn(xOf(a.startEpochSec), x),
                 rowCenter(rowA)

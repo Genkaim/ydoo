@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -1430,7 +1432,20 @@ private fun DietAiDialog(
                 }
                 val raw = answer.toString()
                 val json = parseFoodJson(raw)
-                    ?: error("AI 返回的内容不是可用的估算：${raw.take(60)}")
+                if (json == null) {
+                    // The model answered with prose, or with nothing at all. Dumping
+                    // its text at the reader was unreadable (it could be empty, so
+                    // the line ended in a bare colon). Ask the way a person would,
+                    // which is what this card is for.
+                    result = null
+                    error = null
+                    guidance = if (raw.isBlank()) {
+                        "这次没估出来。再说说吃了什么、大概多少，例如：一碗牛肉面、一个鸡蛋。"
+                    } else {
+                        "这段描述我没把握估。补充一下份量和做法，例如：米饭两碗、清炒西兰花。"
+                    }
+                    return@launch
+                }
                 previousJson = json.toString()
                 // Unable to tell what the food is: keep the model's question and
                 // drop any earlier estimate, so the card asks instead of guessing.
@@ -1441,7 +1456,12 @@ private fun DietAiDialog(
                     return@launch
                 }
                 val items = parseItems(json)
-                if (items.isEmpty()) error("AI 没有给出具体的食物，换个说法再试")
+                if (items.isEmpty()) {
+                    result = null
+                    error = null
+                    guidance = "没认出具体的食物。换个说法再试，例如：米饭一碗、鸡腿两个、青菜一盘。"
+                    return@launch
+                }
                 result = MealDraft(
                     id = null,
                     epochMs = System.currentTimeMillis(),
@@ -1507,12 +1527,23 @@ private fun DietAiDialog(
             contentAlignment = Alignment.Center
         ) {
             FlatPanel(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(tween(240)),
                 color = popupCardColor(),
                 shape = RoundedCornerShape(24.dp)
             ) {
+                // Describing the meal and inspecting the estimate are two faces of
+                // the same card. They cross-fade, and the card's height eases
+                // between them, instead of the whole panel changing in one frame
+                // the moment the estimate starts.
+                Crossfade(
+                    targetState = asking,
+                    animationSpec = tween(190),
+                    label = "dietComposer"
+                ) { describing ->
                 Column(Modifier.padding(16.dp)) {
-                    if (asking) {
+                    if (describing) {
                         Text("用文字描述这一餐", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(6.dp))
                         Text(
@@ -1759,6 +1790,7 @@ private fun DietAiDialog(
                             )
                         }
                     }
+                }
                 }
             }
         }

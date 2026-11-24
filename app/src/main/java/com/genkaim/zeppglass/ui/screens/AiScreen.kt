@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -354,6 +355,7 @@ fun AiScreen(
     LaunchedEffect(listState, followBottom) {
         if (!followBottom) return@LaunchedEffect
         val maxStep = with(density) { 56.dp.toPx() }
+        val settlePx = with(density) { 2.dp.toPx() }
         while (true) {
             withFrameNanos { }
             val info = listState.layoutInfo
@@ -361,7 +363,10 @@ fun AiScreen(
             if (last.index != messages.lastIndex) continue
             val overflow = (last.offset + last.size -
                 (info.viewportEndOffset - info.afterContentPadding)).toFloat()
-            if (overflow <= 0.5f) continue
+            // Small gaps are left to the layout: while the answer's height is
+            // animating, the list is already pinned, and adding a scroll on top of
+            // it is the second animation that made the move look wrong.
+            if (overflow <= settlePx) continue
             val step = (overflow * 0.3f).coerceAtMost(maxStep)
             autoScroll = true
             try {
@@ -597,7 +602,11 @@ fun AiScreen(
             sheetState = sheetState,
             // The drawer is a raised panel, not a hole in the page: the same
             // lighter card tone the app's popups use in dark mode.
-            containerColor = popupCardColor()
+            containerColor = popupCardColor(),
+            // The drawer's own surface runs to the bottom of the window, so the
+            // gesture pill sits on the drawer instead of on a strip of the page
+            // behind it; the list below keeps clear of it with its own inset.
+            contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
         ) {
             HistorySheet(
                 // Newest first, whatever order the archive happens to keep.
@@ -986,8 +995,9 @@ private fun AssistantMessage(
         swap.animateTo(1f, tween(160))
     }
 
-    // The height is always eased: a state change, a collapse after 重新生成 and a
-    // new paragraph all move the document under the answer instead of jerking it.
+    // The block's own height is eased; the follow chase below leaves small gaps
+    // alone, so a collapse is carried by this one animation and the page is not
+    // pulled up by a second one at the same time.
     Box(
         Modifier
             .fillMaxWidth()
@@ -1274,7 +1284,11 @@ private fun HistorySheet(
     val currentFill = if (dark) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
     else MaterialTheme.colorScheme.primary
     val currentInk = Color.White
-    Column(Modifier.fillMaxHeight(0.72f)) {
+    Column(
+        Modifier
+            .fillMaxHeight(0.72f)
+            .navigationBarsPadding()
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()

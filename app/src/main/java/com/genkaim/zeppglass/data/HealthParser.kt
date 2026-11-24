@@ -783,9 +783,11 @@ object HealthParser {
                 if (plausible(value)) value else null
             }
             val real = values.filterNotNull()
-            // One or two readings are not a curve, and a stream that is nothing
-            // but sentinels is no reading at all.
+            // One or two readings are not a curve, a stream that is nothing but
+            // sentinels is no reading at all, and a stream that never leaves zero
+            // is a watch that was not measuring — a flat line at 0 helps nobody.
             if (real.size < 3 || real.size < values.size / 20) return
+            if (real.all { it == 0f }) return
             out.add(WorkoutSeries(label, unit, downsample(values, 160)))
         }
 
